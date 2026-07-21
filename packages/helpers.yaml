@@ -178,19 +178,6 @@ input_number:
         step: 1
         mode: box
 
-    # Weather Forecast Helpers
-    weather_forecast_outside_high_today:
-      name: Weather Forecast Outside High Today
-      min: -20
-      max: 50
-      step: 0.1
-
-    weather_forecast_outside_low_today:
-      name: Weather Forecast Outside Low Today
-      min: -20
-      max: 50
-      step: 0.1
-
     # Window Thermal Management
     bedroom_automation_window_frame_threshold:
         name: Bedroom Window Frame Threshold
