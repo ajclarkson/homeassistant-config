@@ -4,35 +4,6 @@ mqtt:
       unique_id: house_active_mode
       state_topic: "house/mode/active"
 
-    # Active Scene Topics
-    - name: "Parlour Active Scene"
-      unique_id: parlour_active_scene
-      state_topic: "parlour/scene/active"
-    - name: "Hallway Downstairs Active Scene"
-      unique_id: hallway_downstairs_active_scene
-      state_topic: "hallway_downstairs/scene/active"
-    - name: "Hallway Upstairs Active Scene"
-      unique_id: hallway_upstairs_active_scene
-      state_topic: "hallway_upstairs/scene/active"
-    - name: "Kitchen Active Scene"
-      unique_id: kitchen_active_scene
-      state_topic: "kitchen/scene/active"
-    - name: "Bedroom Active Scene"
-      unique_id: bedroom_active_scene
-      state_topic: "bedroom/scene/active"
-    - name: "Bathroom Active Scene"
-      unique_id: bathroom_active_scene
-      state_topic: "bathroom/scene/active"
-    - name: "Home Office Active Scene"
-      unique_id: home_office_active_scene
-      state_topic: "home_office/scene/active"
-    - name: "Foreign Office Active Scene"
-      unique_id: foreign_office_active_scene
-      state_topic: "foreign_office/scene/active"
-    - name: "Back Garden Active Scene"
-      unique_id: back_garden_active_scene
-      state_topic: "back_garden/scene/active"
-
     # Active Heating Topics
     - name: "Parlour Active Heating"
       unique_id: parlour_active_heating

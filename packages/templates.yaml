@@ -1,4 +1,78 @@
 template:
+  # Active Scene Sensors
+  # Trigger-based: fire when any scene in the room is activated, record the scene name.
+  - trigger:
+      - platform: state
+        entity_id: "scene.parlour_*"
+    sensor:
+      - name: "Parlour Active Scene"
+        unique_id: parlour_active_scene
+        state: "{{ trigger.entity_id | replace('scene.', '') }}"
+
+  - trigger:
+      - platform: state
+        entity_id: "scene.hallway_downstairs_*"
+    sensor:
+      - name: "Hallway Downstairs Active Scene"
+        unique_id: hallway_downstairs_active_scene
+        state: "{{ trigger.entity_id | replace('scene.', '') }}"
+
+  - trigger:
+      - platform: state
+        entity_id: "scene.hallway_upstairs_*"
+    sensor:
+      - name: "Hallway Upstairs Active Scene"
+        unique_id: hallway_upstairs_active_scene
+        state: "{{ trigger.entity_id | replace('scene.', '') }}"
+
+  - trigger:
+      - platform: state
+        entity_id: "scene.kitchen_*"
+    sensor:
+      - name: "Kitchen Active Scene"
+        unique_id: kitchen_active_scene
+        state: "{{ trigger.entity_id | replace('scene.', '') }}"
+
+  - trigger:
+      - platform: state
+        entity_id: "scene.bedroom_*"
+    sensor:
+      - name: "Bedroom Active Scene"
+        unique_id: bedroom_active_scene
+        state: "{{ trigger.entity_id | replace('scene.', '') }}"
+
+  - trigger:
+      - platform: state
+        entity_id: "scene.bathroom_*"
+    sensor:
+      - name: "Bathroom Active Scene"
+        unique_id: bathroom_active_scene
+        state: "{{ trigger.entity_id | replace('scene.', '') }}"
+
+  - trigger:
+      - platform: state
+        entity_id: "scene.home_office_*"
+    sensor:
+      - name: "Home Office Active Scene"
+        unique_id: home_office_active_scene
+        state: "{{ trigger.entity_id | replace('scene.', '') }}"
+
+  - trigger:
+      - platform: state
+        entity_id: "scene.foreign_office_*"
+    sensor:
+      - name: "Foreign Office Active Scene"
+        unique_id: foreign_office_active_scene
+        state: "{{ trigger.entity_id | replace('scene.', '') }}"
+
+  - trigger:
+      - platform: state
+        entity_id: "scene.back_garden_*"
+    sensor:
+      - name: "Back Garden Active Scene"
+        unique_id: back_garden_active_scene
+        state: "{{ trigger.entity_id | replace('scene.', '') }}"
+
   # Octopus Agile Helpers
   - sensor:
       - name: "Bin Collection Min Days"
