@@ -1,0 +1,10 @@
+- id: '1780153574763'
+  alias: Target Timeframes - Octopus Energy source
+  description: ''
+  use_blueprint:
+    path: bottlecapdave.github.io/target_timeframes_octopus_energy.yaml
+    input:
+      target_timeframe_data_source_sensor: sensor.target_timeframes_octopus_energy_24e8140196_1012483035417_data_source_last_updated
+      octopus_energy_previous_day_rates: event.octopus_energy_electricity_24e8140196_1012483035417_previous_day_rates
+      octopus_energy_current_day_rates: event.octopus_energy_electricity_24e8140196_1012483035417_current_day_rates
+      octopus_energy_next_day_rates: event.octopus_energy_electricity_24e8140196_1012483035417_next_day_rates

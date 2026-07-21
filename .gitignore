@@ -1,5 +1,4 @@
 secrets.yaml
-automations.yaml
 *.db
 *.db-shm
 *.db-wal
