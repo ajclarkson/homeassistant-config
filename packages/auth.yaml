@@ -1,9 +1,0 @@
-auth_oidc:
-  client_id: home-assistant
-  client_secret: !secret oidc_client_secret
-  discovery_url: https://sso.clarksons.me/realms/rackman/.well-known/openid-configuration
-  roles:
-    admin: admins
-    user: users
-  features:
-    automatic_user_linking: true
