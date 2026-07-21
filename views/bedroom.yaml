@@ -1,0 +1,147 @@
+title: Bedroom
+type: sections
+max_columns: 1
+path: bedroom
+sections:
+  - type: grid
+    cards:
+      - type: custom:streamline-card
+        template: room_header_stack
+        variables:
+          navigation_path: /mobile-dashboard
+          title: Bedroom
+          room_motion_sensor: binary_sensor.bedroom_occupied
+          room_climate_entity: climate.bedroom_trv
+          room_temp_sensor: sensor.bedroom_sensor_climate_temperature
+          popup_hash: '#bedroom-settings'
+      - type: custom:streamline-card
+        template: spacer_card
+        variables:
+          padding: 16px
+      - type: custom:streamline-card
+        template: room_tabs_scaffold
+        variables:
+          room_tab_cards:
+            - type: custom:streamline-card
+              template: lighting_scenes_section_3
+              variables:
+                title: Lighting
+                scene_1_entity: scene.bedroom_all
+                scene_1_name: All
+                scene_2_entity: scene.bedroom_all_full
+                scene_2_name: Full
+                scene_3_entity: scene.bedroom_lamps
+                scene_3_name: Lamps
+                scene_off_entity: scene.bedroom_off
+                scene_off_name: 'Off'
+                lights_group: group.bedroom_lights
+                popup_hash: '#bedroom-lights'
+                room: bedroom
+          climate_tab_cards:
+            - type: custom:streamline-card
+              template: heating_mode_section
+              variables:
+                room: bedroom
+                climate_entity: climate.bedroom_trv
+                temp_sensor: sensor.bedroom_sensor_climate_temperature
+                humidity_entity: sensor.bedroom_sensor_climate_humidity
+  - type: grid
+    cards:
+      - type: custom:streamline-card
+        template: lights_popup_scaffold
+        variables:
+          popup_hash: '#bedroom-lights'
+          off_scene: scene.bedroom_off
+          off_label: All off
+          title: Individual Lights
+          icon: m3of:lightbulb
+          popup_cards:
+            - type: custom:streamline-card
+              template: popup_light_section
+              variables:
+                title: Lamps
+                columns: 2
+                cards:
+                  - type: custom:streamline-card
+                    template: popup_light_slider
+                    variables:
+                      entity: light.bedroom_light_adam_lamp
+                      name: Adam Lamp
+                  - type: custom:streamline-card
+                    template: popup_light_slider
+                    variables:
+                      entity: light.bedroom_light_sarah_lamp
+                      name: Sarah Lamp
+            - type: custom:streamline-card
+              template: popup_light_section
+              variables:
+                title: Overhead
+                columns: 1
+                cards:
+                  - type: custom:streamline-card
+                    template: popup_light_slider
+                    variables:
+                      entity: light.bedroom_light_ceiling
+                      name: Ceiling
+  - type: custom:streamline-card
+    template: rooms_popup
+  - type: custom:bubble-card
+    card_type: pop-up
+    hash: '#bedroom-settings'
+    show_header: false
+    cards:
+      - type: custom:paper-buttons-row
+        styles:
+          justify-content: flex-start
+          margin: 20px 12px 8px 12px
+        buttons:
+          - layout: name
+            name: Bedroom Settings
+            styles:
+              name:
+                font-size: 22px
+                font-weight: 700
+                letter-spacing: -0.3px
+                color: var(--primary-text-color)
+              button:
+                padding: 0
+                background: none
+      - type: custom:streamline-card
+        template: presence_section
+        variables:
+          occupied_entity: binary_sensor.bedroom_occupied
+          pir_entity: binary_sensor.bedroom_sensor_motion_occupancy
+          motion_enabled_entity: input_boolean.bedroom_sensor_motion_enabled
+          override_entity: input_boolean.bedroom_automation_presence_override
+          contained_entity: binary_sensor.bedroom_occupied_contained
+          title: Presence
+          subtitle: Control how this room decides it is occupied.
+          motion_title: Motion
+          motion_subtitle: Use motion sensor evidence
+          motion_toggle_name: Use motion sensor
+          override_title: Override
+          override_subtitle: Force occupied
+          override_toggle_name: Presence override
+          reason_1_entity: binary_sensor.bedroom_bed_occupancy
+          reason_1_state: 'on'
+          reason_1_icon: m3of:bed
+          reason_1_label: Bed occupied
+          reason_2_entity: binary_sensor.bedroom_occupied_contained
+          reason_2_state: 'on'
+          reason_2_icon: m3of:meeting-room
+          reason_2_label: Doors closed
+      - type: custom:streamline-card
+        template: lighting_automation_section_sleep_hold
+        variables:
+          toggle_entity: input_boolean.bedroom_automation_lights_enabled
+      - type: custom:streamline-card
+        template: heating_automation_section
+        variables:
+          toggle_entity: input_boolean.bedroom_automation_heating_enabled
+          heating_hold_entity: binary_sensor.bedroom_external_openings
+  - type: custom:streamline-card
+    template: navbar_spacer
+  - type: custom:streamline-card
+    template: floating_navbar
+    variables:
+      active: rooms

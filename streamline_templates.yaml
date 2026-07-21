@@ -1,0 +1,2548 @@
+
+# ── climate_settings_popup ──────────────────────────────────────────
+climate_settings_popup:
+  card:
+    type: custom:bubble-card
+    card_type: pop-up
+    hash: '#climate_settings'
+    show_header: false
+    cards:
+      - type: custom:paper-buttons-row
+        styles:
+          justify-content: flex-start
+          margin: 20px 12px 8px 12px
+        buttons:
+          - layout: name
+            name: Heating settings
+            styles:
+              name:
+                font-size: 22px
+                font-weight: 700
+                letter-spacing: -0.3px
+                color: var(--primary-text-color)
+              button:
+                padding: 0
+                background: none
+      - type: grid
+        columns: 1
+        square: false
+        cards:
+          - type: custom:mushroom-template-card
+            entity: input_boolean.house_heating_enabled
+            primary: Central heating
+            icon: >
+              {{ 'm3of:mode-heat' if is_state('input_boolean.house_heating_enabled', 'on') else 'mdi:radiator-off' }}
+            icon_color: >
+              {% if is_state('input_boolean.house_heating_enabled', 'on') %}var(--md-sys-color-primary){% else %}rgba(255,255,255,0.45){% endif %}
+            layout: horizontal
+            tap_action:
+              action: toggle
+            hold_action:
+              action: more-info
+            card_mod:
+              style:
+                .: |
+                  ha-card {
+                    border-radius: 8px;
+                    border: none;
+                    background: {% if is_state('input_boolean.house_heating_enabled', 'on') %}color-mix(in srgb, var(--md-sys-color-primary) 10%, var(--md-sys-color-surface-container-high)){% else %}var(--md-sys-color-surface-container-high){% endif %};
+                    box-shadow: none;
+                    padding: 0;
+                    --icon-size: 18px;
+                    --shape-color: transparent;
+                    --shape-border-radius: 0px;
+                    --spacing: 10px;
+                  }
+                  ha-card:active { transform: scale(0.99); }
+                ha-tile-icon$: |
+                  .container::before { background: transparent !important; }
+                mushroom-state-item$: |
+                  .container { padding: 10px 14px; gap: 12px; }
+                mushroom-primary-info$: |
+                  .primary { font-size: 14px; font-weight: 600; }
+      - type: custom:streamline-card
+        template: section_title
+        variables:
+          font_size: '18px'
+          compact: 'true'
+          title: Temperature modes
+      - type: grid
+        columns: 2
+        square: false
+        cards:
+          - type: tile
+            entity: input_number.global_temperature_baseline_day
+            name: Day baseline
+            icon: m3of:light-mode
+            features:
+              - type: numeric-input
+          - type: tile
+            entity: input_number.global_temperature_baseline_night
+            name: Night baseline
+            icon: m3of:bedtime
+            features:
+              - type: numeric-input
+          - type: tile
+            entity: input_number.global_temperature_comfort
+            name: Comfort
+            icon: m3of:mode-heat
+            features:
+              - type: numeric-input
+          - type: tile
+            entity: input_number.global_temperature_minimum
+            name: Minimum
+            icon: m3of:ac-unit
+            features:
+              - type: numeric-input
+      - type: custom:mushroom-title-card
+        subtitle: Applies to all rooms that use the global setpoints.
+        card_mod:
+          style: |
+            ha-card {
+              padding: 6px 6px 0 6px !important;
+              background: none;
+              box-shadow: none;
+              border: 0;
+              --subtitle-font-size: 12px !important;
+            }
+            .subtitle { opacity: 0.62; }
+
+# ── climate_ambient_summary ──────────────────────────────────────────
+climate_ambient_summary:
+  card:
+    type: vertical-stack
+    cards:
+      - type: custom:button-card
+        entity: sensor.house_average_temperature
+        show_icon: false
+        show_name: false
+        show_state: false
+        tap_action:
+          action: more-info
+        custom_fields:
+          temp: >
+            [[[
+              const t = parseFloat(entity?.state);
+              return isNaN(t) ? '—' : `${t.toFixed(1)}°`;
+            ]]]
+          sub: >
+            [[[
+              const n = parseInt(states['sensor.house_heating_rooms']?.state) || 0;
+              const firing = states['binary_sensor.house_heating_boiler_firing']?.state === 'on';
+              const enabled = states['input_boolean.house_heating_enabled']?.state === 'on';
+              if (!enabled) return 'Heating off';
+              if (firing && n > 0) return `${n} room${n > 1 ? 's' : ''} heating`;
+              if (firing) return 'Heating';
+              return 'Idle';
+            ]]]
+        styles:
+          card:
+            - background: transparent
+            - box-shadow: none
+            - border: none
+            - padding: 4px 12px 0 12px
+            - cursor: default
+          grid:
+            - grid-template-areas: '"temp" "sub"'
+            - grid-template-rows: auto auto
+            - justify-items: start
+          custom_fields:
+            temp:
+              - font-size: 54px
+              - font-weight: 700
+              - color: var(--primary-text-color)
+              - line-height: '1'
+              - letter-spacing: -2px
+            sub:
+              - font-size: 13px
+              - color: rgba(255,255,255,0.45)
+              - margin-top: 6px
+      - type: conditional
+        conditions:
+          - condition: state
+            entity: binary_sensor.house_has_comfort_outliers
+            state: 'on'
+        card:
+          type: custom:mushroom-chips-card
+          alignment: start
+          chips:
+            - type: template
+              entity: sensor.house_comfort_outliers
+              icon: m3of:warning
+              content: |
+                Out of band: {{ states('sensor.house_comfort_outliers') }}
+              tap_action:
+                action: more-info
+                entity: sensor.house_comfort_outliers
+              card_mod:
+                style: |
+                  ha-card {
+                    --chip-background: color-mix(in srgb, var(--md-sys-color-error) 12%, transparent);
+                    --color: color-mix(in srgb, var(--md-sys-color-error) 92%, white);
+                    animation: premiumPulseSoft 3.2s ease-in-out infinite;
+                  }
+          card_mod:
+            style: |
+              ha-card { --chip-spacing: 10px; margin-bottom: 0.9em; }
+              mushroom-chip {
+                border: none;
+                border-radius: 999px;
+                box-shadow: none;
+                backdrop-filter: blur(14px);
+                -webkit-backdrop-filter: blur(14px);
+              }
+              @keyframes premiumPulseSoft {
+                0%, 100% { filter: brightness(1); }
+                50%      { filter: brightness(1.05); }
+              }
+
+# ── climate_row_card ──────────────────────────────────────────
+climate_row_card:
+  default:
+    - name: Room
+    - icon: m3of:home
+    - navigation_path: /mobile-dashboard/home
+    - climate_entity: ''
+    - temp_entity: ''
+    - humidity_entity: ''
+  variables:
+    name: ''
+    icon: ''
+    navigation_path: ''
+    climate_entity: ''
+    temp_entity: ''
+    humidity_entity: ''
+  card:
+    type: custom:button-card
+    show_icon: true
+    show_name: true
+    icon: '[[icon]]'
+    name: '[[name]]'
+    tap_action:
+      action: navigate
+      navigation_path: '[[navigation_path]]'
+    variables:
+      climate_entity: '[[climate_entity]]'
+      temp_entity: '[[temp_entity]]'
+      humidity_entity: '[[humidity_entity]]'
+    custom_fields:
+      t: |
+        [[[
+          const te = variables.temp_entity;
+          const ce = variables.climate_entity;
+
+          let val = null;
+
+          if (te && hass.states[te] && !['unknown','unavailable'].includes(hass.states[te].state)) {
+            const n = Number(hass.states[te].state);
+            val = Number.isFinite(n) ? n : null;
+          }
+
+          if (val === null && ce && hass.states[ce]) {
+            const ct = hass.states[ce].attributes?.current_temperature;
+            const n = Number(ct);
+            val = Number.isFinite(n) ? n : null;
+          }
+
+          return (val === null) ? '—' : `${val.toFixed(1)}°`;
+        ]]]
+      sub: |
+        [[[
+          const te = variables.temp_entity;
+          const ce = variables.climate_entity;
+          const he = variables.humidity_entity;
+
+          let current = null;
+          if (te && hass.states[te] && !['unknown','unavailable'].includes(hass.states[te].state)) {
+            const n = Number(hass.states[te].state);
+            current = Number.isFinite(n) ? n : null;
+          }
+          if (current === null && ce && hass.states[ce]) {
+            const n = Number(hass.states[ce].attributes?.current_temperature);
+            current = Number.isFinite(n) ? n : null;
+          }
+
+          let target = null;
+          if (ce && hass.states[ce]) {
+            const n = Number(hass.states[ce].attributes?.temperature);
+            target = Number.isFinite(n) ? n : null;
+          }
+
+          let arrow = '→';
+          if (current !== null && target !== null) {
+            if (current < target - 0.5) arrow = '↑';
+            else if (current > target + 0.5) arrow = '↓';
+          }
+
+          let hum = null;
+          if (he && hass.states[he]) {
+            const s = hass.states[he].state;
+            if (s !== 'unknown' && s !== 'unavailable') {
+              const n = Number(s);
+              hum = Number.isFinite(n) ? `${Math.round(n)}%` : null;
+            }
+          }
+
+          const parts = [];
+          if (target !== null) parts.push(`${arrow} ${target}°`);
+          if (hum !== null) parts.push(hum);
+          return parts.join(' · ') || '—';
+        ]]]
+      heatdot: |
+        [[[
+          const ce = variables.climate_entity;
+          const a = ce && hass.states[ce] ? (hass.states[ce].attributes?.hvac_action || '') : '';
+          const heating = (String(a).toLowerCase() === 'heating');
+          return `<div class="heatdot" style="opacity:${heating ? 1 : 0};"></div>`;
+        ]]]
+    styles:
+      card:
+        - border-radius: 22px
+        - padding: 14px 16px 14px 16px
+        - border: none
+        - background: |
+            [[[
+              const ce = variables.climate_entity;
+              const a = ce && hass.states[ce] ? (hass.states[ce].attributes?.hvac_action || '') : '';
+              const heating = (String(a).toLowerCase() === 'heating');
+
+              return heating
+                ? `radial-gradient(120% 140% at 92% 50%,
+                    color-mix(in srgb, var(--md-sys-color-primary) 16%, transparent) 0%,
+                    transparent 55%),
+                   var(--md-sys-color-surface-container-low)`
+                : `var(--md-sys-color-surface-container-low)`;
+            ]]]
+        - box-shadow: none
+        - overflow: hidden
+      grid:
+        - grid-template-areas: '"i n heatdot t" "i n . sub"'
+        - grid-template-columns: 42px 1fr 10px auto
+        - grid-template-rows: auto auto
+        - column-gap: 10px
+        - row-gap: 3px
+        - align-items: center
+      icon:
+        - width: 26px
+        - height: 26px
+        - color: color-mix(in srgb, var(--primary-text-color) 85%, transparent)
+      name:
+        - justify-self: start
+        - font-size: 16px
+        - font-weight: 650
+        - letter-spacing: 0.2px
+        - color: color-mix(in srgb, var(--primary-text-color) 92%, transparent)
+      custom_fields:
+        t:
+          - justify-self: end
+          - font-size: 18px
+          - font-weight: 700
+          - letter-spacing: 0.2px
+          - color: |
+              [[[
+                const ce = variables.climate_entity;
+                const a = ce && hass.states[ce] ? (hass.states[ce].attributes?.hvac_action || '') : '';
+                const heating = (String(a).toLowerCase() === 'heating');
+
+                return heating
+                  ? 'color-mix(in srgb, var(--md-sys-color-primary) 92%, white)'
+                  : 'color-mix(in srgb, var(--primary-text-color) 88%, transparent)';
+              ]]]
+        sub:
+          - justify-self: end
+          - font-size: 13px
+          - font-weight: 600
+          - color: color-mix(in srgb, var(--primary-text-color) 50%, transparent)
+        heatdot:
+          - align-self: center
+          - justify-self: end
+          - width: 10px
+          - height: 10px
+    card_mod:
+      style: |
+        ha-card .heatdot {
+          width: 6px;
+          height: 6px;
+          border-radius: 999px;
+          background: color-mix(in srgb, var(--md-sys-color-primary) 92%, white);
+          box-shadow: 0 0 0 3px color-mix(in srgb, var(--md-sys-color-primary) 18%, transparent);
+          transition: opacity 160ms ease;
+        }
+
+# ── sonos_follow_section ──────────────────────────────────────────
+sonos_follow_section:
+  variables:
+    toggle_entity: ''
+    grouped_entity: ''
+    room_player: ''
+  card:
+    type: vertical-stack
+    cards:
+      - type: custom:streamline-card
+        template: behaviour_section_header
+        variables:
+          title: Audio
+      - type: grid
+        columns: 1
+        square: false
+        cards:
+          - type: custom:streamline-card
+            template: behaviour_toggle_row
+            variables:
+              toggle_entity: '[[toggle_entity]]'
+              name: Follow Parlour
+              icon_on: m3of:speaker-group
+              icon_off: m3of:speaker
+      - type: custom:mushroom-chips-card
+        alignment: start
+        card_mod:
+          style: |
+            ha-card {
+              --chip-background: rgba(255,255,255,0.05);
+              --chip-border-radius: 6px;
+              --color: rgba(255,255,255,0.38);
+              margin-top: 0.2em;
+            }
+        chips:
+          - type: conditional
+            conditions:
+              - condition: state
+                entity: '[[grouped_entity]]'
+                state: 'on'
+            chip:
+              type: template
+              entity: '[[grouped_entity]]'
+              icon: m3of:speaker-group
+              content: Grouped with Parlour
+              tap_action:
+                action: more-info
+                entity: '[[room_player]]'
+# ── navbar_spacer ──────────────────────────────────────────
+navbar_spacer:
+  default:
+    height: 110px
+  variables:
+    height: ''
+  card:
+    type: custom:button-card
+    show_name: false
+    show_icon: false
+    tap_action:
+      action: none
+    styles:
+      card:
+        - background: none
+        - box-shadow: none
+        - height: '[[height]]'
+
+# ── rooms_popup ──────────────────────────────────────────
+rooms_popup:
+  card:
+    type: custom:bubble-card
+    card_type: pop-up
+    hash: '#rooms'
+    show_header: false
+    cards:
+      - type: custom:paper-buttons-row
+        styles:
+          justify-content: flex-start
+          margin: 20px 12px 8px 12px
+        buttons:
+          - layout: name
+            name: Rooms
+            styles:
+              name:
+                font-size: 22px
+                font-weight: 700
+                letter-spacing: -0.3px
+                color: var(--primary-text-color)
+              button:
+                padding: 0
+                background: none
+      - type: grid
+        columns: 2
+        square: false
+        cards:
+          - type: custom:streamline-card
+            template: rooms_popup_tile
+            variables:
+              name: Parlour
+              icon: m3of:weekend
+              navigation_path: /mobile-dashboard/parlour
+              occupancy_entity: binary_sensor.parlour_occupied
+          - type: custom:streamline-card
+            template: rooms_popup_tile
+            variables:
+              name: Kitchen
+              icon: m3of:kitchen
+              navigation_path: /mobile-dashboard/kitchen
+              occupancy_entity: binary_sensor.kitchen_occupied
+          - type: custom:streamline-card
+            template: rooms_popup_tile
+            variables:
+              name: Hallway
+              icon: m3of:stairs
+              navigation_path: /mobile-dashboard/hallway
+              occupancy_entity: binary_sensor.hallway_downstairs_occupied
+          - type: custom:streamline-card
+            template: rooms_popup_tile
+            variables:
+              name: Bedroom
+              icon: m3of:bed
+              navigation_path: /mobile-dashboard/bedroom
+              occupancy_entity: binary_sensor.bedroom_occupied
+          - type: custom:streamline-card
+            template: rooms_popup_tile
+            variables:
+              name: Bathroom
+              icon: m3of:shower
+              navigation_path: /mobile-dashboard/bathroom
+              occupancy_entity: binary_sensor.bathroom_occupied
+          - type: custom:streamline-card
+            template: rooms_popup_tile
+            variables:
+              name: Home Office
+              icon: m3of:desk
+              navigation_path: /mobile-dashboard/home-office
+              occupancy_entity: binary_sensor.home_office_occupied
+          - type: custom:streamline-card
+            template: rooms_popup_tile
+            variables:
+              name: Foreign Office
+              icon: m3of:laptop-chromebook
+              navigation_path: /mobile-dashboard/foreign-office
+              occupancy_entity: binary_sensor.foreign_office_occupied
+          - type: custom:streamline-card
+            template: rooms_popup_tile
+            variables:
+              name: Back Garden
+              icon: m3of:yard
+              navigation_path: /mobile-dashboard/back-garden
+
+# ── rooms_popup_tile ──────────────────────────────────────────
+rooms_popup_tile:
+  variables:
+    name: ''
+    icon: ''
+    navigation_path: ''
+    occupancy_entity: ''
+  card:
+    type: custom:button-card
+    name: '[[name]]'
+    icon: '[[icon]]'
+    entity: '[[occupancy_entity]]'
+    tap_action:
+      action: navigate
+      navigation_path: '[[navigation_path]]'
+    show_state: false
+    custom_fields:
+      glow: <div></div>
+    styles:
+      card:
+        - position: relative
+        - background: var(--md-sys-color-surface-container-high)
+        - border-radius: 28px
+        - border: none
+        - box-shadow: none
+        - overflow: hidden
+        - padding: 14px 14px 12px
+        - height: 110px
+        - backdrop-filter: blur(10px)
+        - '-webkit-backdrop-filter': blur(10px)
+        - transition: >-
+            transform 120ms ease, background 160ms ease, border-color 160ms
+            ease, box-shadow 160ms ease
+      grid:
+        - grid-template-areas: '"glow" "i" "n"'
+        - grid-template-columns: 1fr
+        - grid-template-rows: 0px auto auto
+        - row-gap: 10px
+        - justify-items: center
+        - align-items: center
+      custom_fields:
+        glow:
+          - position: absolute
+          - top: 14px
+          - left: 50%
+          - transform: translateX(-50%)
+          - width: 70px
+          - height: 70px
+          - border-radius: 999px
+          - background: >-
+              radial-gradient(circle at 30% 30%, color-mix(in srgb,
+              var(--md-sys-color-primary) 26%, transparent), transparent 68%)
+          - filter: blur(10px)
+          - opacity: >-
+              [[[
+                return states['[[occupancy_entity]]']?.state === 'on' ? 0.55 : 0.18;
+              ]]]
+          - pointer-events: none
+          - z-index: 0
+      icon:
+        - width: 30px
+        - height: 30px
+        - color: >-
+            [[[
+              return states['[[occupancy_entity]]']?.state === 'on'
+                ? 'var(--md-sys-color-primary)'
+                : 'color-mix(in srgb, var(--primary-text-color) 40%, transparent)';
+            ]]]
+        - z-index: 1
+      name:
+        - font-size: 15px
+        - line-height: 1.1
+        - font-weight: 650
+        - letter-spacing: 0.2px
+        - color: color-mix(in srgb, var(--primary-text-color) 92%, transparent)
+        - z-index: 1
+    extra_styles: |
+      ha-card:hover {
+        background: color-mix(in srgb, var(--ha-card-background, var(--card-background-color)) 92%, transparent);
+        border-color: color-mix(in srgb, var(--primary-text-color) 14%, transparent);
+        box-shadow: 0 14px 34px rgba(0,0,0,0.34);
+      }
+      ha-card:active {
+        transform: scale(0.985);
+        background: color-mix(in srgb, var(--ha-card-background, var(--card-background-color)) 94%, transparent);
+        box-shadow: 0 8px 20px rgba(0,0,0,0.30);
+      }
+
+# ── floating_navbar ──────────────────────────────────────────
+floating_navbar:
+  default:
+    active: home
+    home_path: /mobile-dashboard/home
+    rooms_path: '#rooms'
+    climate_path: /mobile-dashboard/climate
+    energy_path: /mobile-dashboard/energy
+    cameras_path: /mobile-dashboard/cameras
+  variables:
+    active: home
+    home_path: /mobile-dashboard/home
+    rooms_path: '#rooms'
+    climate_path: /mobile-dashboard/climate
+    energy_path: /mobile-dashboard/energy
+    cameras_path: /mobile-dashboard/cameras
+  card:
+    type: custom:mod-card
+    card_mod:
+      style: |
+        :host {
+          position: fixed;
+          left: 0;
+          bottom: 0;
+          z-index: 999;
+          width: 100%;
+        }
+
+        ha-card {
+          border-radius: 0;
+          border: none;
+          border-top: 1px solid rgba(255,255,255,0.07);
+          padding: 8px 10px calc(8px + env(safe-area-inset-bottom, 0px));
+          background: var(--md-sys-color-surface-container);
+          box-shadow: none;
+        }
+    card:
+      type: grid
+      columns: 5
+      square: false
+      cards:
+        - type: custom:button-card
+          name: Home
+          icon: m3of:home
+          tap_action:
+            action: navigate
+            navigation_path: '[[home_path]]'
+          variables:
+            id: home
+            active_key: '[[active]]'
+          styles:
+            card:
+              - background: transparent
+              - border-radius: 0
+              - box-shadow: none
+              - padding: 8px 0 6px
+            grid:
+              - grid-template-areas: '"i" "n"'
+              - grid-template-columns: 1fr
+              - grid-template-rows: auto auto
+              - row-gap: 4px
+              - justify-items: center
+              - align-items: center
+            icon:
+              - width: 26px
+              - height: 26px
+              - color: |
+                  [[[
+                    const active = variables.active_key === variables.id;
+                    return active
+                      ? 'rgba(255,255,255,1.0)'
+                      : 'color-mix(in srgb, var(--primary-text-color) 30%, transparent)';
+                  ]]]
+            name:
+              - font-size: 12px
+              - line-height: 1
+              - font-weight: |
+                  [[[
+                    return (variables.active_key === variables.id) ? '700' : '400';
+                  ]]]
+              - letter-spacing: 0.2px
+              - color: |
+                  [[[
+                    const active = variables.active_key === variables.id;
+                    return active
+                      ? 'rgba(255,255,255,1.0)'
+                      : 'color-mix(in srgb, var(--primary-text-color) 38%, transparent)';
+                  ]]]
+        - type: custom:button-card
+          name: Rooms
+          icon: m3of:grid-view
+          tap_action:
+            action: navigate
+            navigation_path: '[[rooms_path]]'
+          variables:
+            id: rooms
+            active_key: '[[active]]'
+          styles:
+            card:
+              - background: transparent
+              - border-radius: 0
+              - box-shadow: none
+              - padding: 8px 0 6px
+            grid:
+              - grid-template-areas: '"i" "n"'
+              - grid-template-columns: 1fr
+              - grid-template-rows: auto auto
+              - row-gap: 4px
+              - justify-items: center
+              - align-items: center
+            icon:
+              - width: 26px
+              - height: 26px
+              - color: |
+                  [[[
+                    const active = variables.active_key === variables.id;
+                    return active
+                      ? 'rgba(255,255,255,1.0)'
+                      : 'color-mix(in srgb, var(--primary-text-color) 30%, transparent)';
+                  ]]]
+            name:
+              - font-size: 12px
+              - line-height: 1
+              - font-weight: |
+                  [[[
+                    return (variables.active_key === variables.id) ? '700' : '400';
+                  ]]]
+              - letter-spacing: 0.2px
+              - color: |
+                  [[[
+                    const active = variables.active_key === variables.id;
+                    return active
+                      ? 'rgba(255,255,255,1.0)'
+                      : 'color-mix(in srgb, var(--primary-text-color) 38%, transparent)';
+                  ]]]
+        - type: custom:button-card
+          name: Climate
+          icon: m3of:thermostat
+          tap_action:
+            action: navigate
+            navigation_path: '[[climate_path]]'
+          variables:
+            id: climate
+            active_key: '[[active]]'
+          styles:
+            card:
+              - background: transparent
+              - border-radius: 0
+              - box-shadow: none
+              - padding: 8px 0 6px
+            grid:
+              - grid-template-areas: '"i" "n"'
+              - grid-template-columns: 1fr
+              - grid-template-rows: auto auto
+              - row-gap: 4px
+              - justify-items: center
+              - align-items: center
+            icon:
+              - width: 26px
+              - height: 26px
+              - color: |
+                  [[[
+                    const active = variables.active_key === variables.id;
+                    return active
+                      ? 'rgba(255,255,255,1.0)'
+                      : 'color-mix(in srgb, var(--primary-text-color) 30%, transparent)';
+                  ]]]
+            name:
+              - font-size: 12px
+              - line-height: 1
+              - font-weight: |
+                  [[[
+                    return (variables.active_key === variables.id) ? '700' : '400';
+                  ]]]
+              - letter-spacing: 0.2px
+              - color: |
+                  [[[
+                    const active = variables.active_key === variables.id;
+                    return active
+                      ? 'rgba(255,255,255,1.0)'
+                      : 'color-mix(in srgb, var(--primary-text-color) 38%, transparent)';
+                  ]]]
+        - type: custom:button-card
+          name: Energy
+          icon: m3of:bolt
+          tap_action:
+            action: navigate
+            navigation_path: '[[energy_path]]'
+          variables:
+            id: energy
+            active_key: '[[active]]'
+          styles:
+            card:
+              - background: transparent
+              - border-radius: 0
+              - box-shadow: none
+              - padding: 8px 0 6px
+            grid:
+              - grid-template-areas: '"i" "n"'
+              - grid-template-columns: 1fr
+              - grid-template-rows: auto auto
+              - row-gap: 4px
+              - justify-items: center
+              - align-items: center
+            icon:
+              - width: 26px
+              - height: 26px
+              - color: |
+                  [[[
+                    const active = variables.active_key === variables.id;
+                    return active
+                      ? 'rgba(255,255,255,1.0)'
+                      : 'color-mix(in srgb, var(--primary-text-color) 30%, transparent)';
+                  ]]]
+            name:
+              - font-size: 12px
+              - line-height: 1
+              - font-weight: |
+                  [[[
+                    return (variables.active_key === variables.id) ? '700' : '400';
+                  ]]]
+              - letter-spacing: 0.2px
+              - color: |
+                  [[[
+                    const active = variables.active_key === variables.id;
+                    return active
+                      ? 'rgba(255,255,255,1.0)'
+                      : 'color-mix(in srgb, var(--primary-text-color) 38%, transparent)';
+                  ]]]
+        - type: custom:button-card
+          name: Cameras
+          icon: mdi:cctv
+          tap_action:
+            action: navigate
+            navigation_path: '[[cameras_path]]'
+          variables:
+            id: cameras
+            active_key: '[[active]]'
+          styles:
+            card:
+              - background: transparent
+              - border-radius: 0
+              - box-shadow: none
+              - padding: 8px 0 6px
+            grid:
+              - grid-template-areas: '"i" "n"'
+              - grid-template-columns: 1fr
+              - grid-template-rows: auto auto
+              - row-gap: 4px
+              - justify-items: center
+              - align-items: center
+            icon:
+              - width: 26px
+              - height: 26px
+              - color: |
+                  [[[
+                    const active = variables.active_key === variables.id;
+                    return active
+                      ? 'rgba(255,255,255,1.0)'
+                      : 'color-mix(in srgb, var(--primary-text-color) 30%, transparent)';
+                  ]]]
+            name:
+              - font-size: 12px
+              - line-height: 1
+              - font-weight: |
+                  [[[
+                    return (variables.active_key === variables.id) ? '700' : '400';
+                  ]]]
+              - letter-spacing: 0.2px
+              - color: |
+                  [[[
+                    const active = variables.active_key === variables.id;
+                    return active
+                      ? 'rgba(255,255,255,1.0)'
+                      : 'color-mix(in srgb, var(--primary-text-color) 38%, transparent)';
+                  ]]]
+# ── lights_popup_scaffold ──────────────────────────────────────────
+lights_popup_scaffold:
+  default:
+    - title: Individual Lights
+    - icon: m3of:lightbulb
+    - off_label: All off
+    - chip_icon: mdi:power
+  variables:
+    popup_hash: ''
+    title: ''
+    icon: ''
+    off_scene: ''
+    off_label: ''
+    chip_icon: ''
+    popup_cards: []
+  card:
+    type: custom:bubble-card
+    card_type: pop-up
+    name: '[[title]]'
+    icon: '[[icon]]'
+    hash: '[[popup_hash]]'
+    show_header: false
+    cards:
+      - type: custom:paper-buttons-row
+        styles:
+          justify-content: flex-start
+          margin: 20px 12px 8px 12px
+        buttons:
+          - layout: name
+            name: '[[title]]'
+            styles:
+              name:
+                font-size: 22px
+                font-weight: 700
+                letter-spacing: -0.3px
+                color: var(--primary-text-color)
+              button:
+                padding: 0
+                background: none
+      - type: custom:mushroom-template-card
+        primary: '[[off_label]]'
+        icon: '[[chip_icon]]'
+        layout: horizontal
+        tap_action:
+          action: call-service
+          service: scene.turn_on
+          target:
+            entity_id: '[[off_scene]]'
+        card_mod:
+          style: |
+            ha-card {
+              border-radius: 8px;
+              border: none;
+              background: var(--md-sys-color-surface-container-high);
+              box-shadow: none;
+              --icon-size: 18px;
+              --shape-color: transparent;
+              --shape-border-radius: 0px;
+              --spacing: 10px;
+            }
+      - type: vertical-stack
+        cards: '[[popup_cards]]'
+
+# ── popup_light_section ──────────────────────────────────────────
+popup_light_section:
+  default:
+    - columns: 2
+    - square: false
+    - gap_top: 2px
+    - gap_bottom: 6px
+  variables:
+    title: ''
+    columns: ''
+    square: ''
+    cards: []
+    gap_top: ''
+    gap_bottom: ''
+  card:
+    type: vertical-stack
+    cards:
+      - type: custom:streamline-card
+        template: behaviour_section_header
+        variables:
+          title: '[[title]]'
+      - type: grid
+        columns: '[[columns]]'
+        square: '[[square]]'
+        cards: '[[cards]]'
+        card_mod:
+          style: |
+            ha-card {
+              margin-top: [[gap_top]];
+              margin-bottom: [[gap_bottom]];
+            }
+
+# ── popup_light_slider ──────────────────────────────────────────
+popup_light_slider:
+  default:
+    - show_percentage: true
+    - bold_text: false
+    - control_type: light
+  variables:
+    entity: ''
+    name: ''
+    show_percentage: ''
+    bold_text: ''
+    control_type: ''
+  card:
+    type: custom:material-slider-card
+    control_type: '[[control_type]]'
+    show_percentage: '[[show_percentage]]'
+    bold_text: '[[bold_text]]'
+    entity: '[[entity]]'
+    name: '[[name]]'
+
+# ── popup_switch_button ──────────────────────────────────────────
+popup_switch_button:
+  default:
+    - height: 97
+    - dual_icon: true
+    - bold_text: false
+    - control_type: generic
+  variables:
+    entity: ''
+    name: ''
+    height: ''
+    dual_icon: ''
+    bold_text: ''
+    control_type: ''
+  card:
+    type: custom:material-button-card
+    entity: '[[entity]]'
+    name: '[[name]]'
+    control_type: '[[control_type]]'
+    bold_text: '[[bold_text]]'
+    dual_icon: '[[dual_icon]]'
+    height: '[[height]]'
+# ── media_title_card ──────────────────────────────────────────
+media_title_card:
+  default:
+    - title: Media
+  variables:
+    title: ''
+    player_1_entity: ''
+    player_2_entity: ''
+  card:
+    type: custom:paper-buttons-row
+    styles:
+      justify-content: flex-start
+      gap: 10px
+      align-items: center
+      margin: 28px 12px 0 12px
+    buttons:
+      - layout: name
+        name: '[[title]]'
+        styles:
+          name:
+            font-size: 20px
+            font-weight: 600
+            color: var(--primary-text-color)
+          button:
+            padding: 0
+            background: none
+      - layout: name
+        name: >
+          {% set playing = [states('[[player_1_entity]]'), states('[[player_2_entity]]')] | select('in', ['playing','paused','on']) | list | count %}
+          {% if playing > 0 %}● Playing{% else %}● Idle{% endif %}
+        styles:
+          name:
+            font-size: 11px
+            font-weight: 600
+            letter-spacing: 0.3px
+            color: >
+              {% set playing = [states('[[player_1_entity]]'), states('[[player_2_entity]]')] | select('in', ['playing','paused','on']) | list | count %}
+              {% if playing > 0 %}rgba(134, 239, 172, 0.85){% else %}rgba(255,255,255,0.28){% endif %}
+          button:
+            padding: 3px 8px
+            background: >
+              {% set playing = [states('[[player_1_entity]]'), states('[[player_2_entity]]')] | select('in', ['playing','paused','on']) | list | count %}
+              {% if playing > 0 %}rgba(134, 239, 172, 0.1){% else %}rgba(255,255,255,0.05){% endif %}
+            border-radius: 999px
+
+# ── lighting_title_card ──────────────────────────────────────────
+lighting_title_card:
+  default:
+    - title: Lighting
+  variables:
+    title: ''
+    lights_group: ''
+    popup_hash: ''
+  card:
+    type: custom:paper-buttons-row
+    styles:
+      justify-content: flex-start
+      gap: 10px
+      align-items: center
+      margin: 12px 12px 0 12px
+    buttons:
+      - layout: name
+        name: '[[title]]'
+        styles:
+          name:
+            font-size: 20px
+            font-weight: 600
+            color: var(--primary-text-color)
+          button:
+            padding: 0
+            background: none
+      - layout: name
+        name: >
+          {% set n = expand('[[lights_group]]') | selectattr('state','eq','on') | list | count %}
+          {% if n > 0 %}● {{ n }} On ›{% else %}● Off ›{% endif %}
+        tap_action:
+          action: navigate
+          navigation_path: '[[popup_hash]]'
+        styles:
+          name:
+            font-size: 11px
+            font-weight: 600
+            letter-spacing: 0.3px
+            color: >
+              {% set n = expand('[[lights_group]]') | selectattr('state','eq','on') | list | count %}
+              {% if n > 0 %}rgba(134, 239, 172, 0.85){% else %}rgba(255,255,255,0.45){% endif %}
+          button:
+            padding: 3px 8px
+            background: >
+              {% set n = expand('[[lights_group]]') | selectattr('state','eq','on') | list | count %}
+              {% if n > 0 %}rgba(134, 239, 172, 0.1){% else %}rgba(255,255,255,0.10){% endif %}
+            border-radius: 999px
+
+# ── lighting_scenes_section_2 ──────────────────────────────────────────
+lighting_scenes_section_2:
+  default:
+    - title: Lighting
+    - scene_1_name: ''
+    - scene_2_name: ''
+    - scene_off_name: 'Off'
+  variables:
+    title: ''
+    room: ''
+    scene_1_entity: ''
+    scene_1_name: ''
+    scene_2_entity: ''
+    scene_2_name: ''
+    scene_off_entity: ''
+    scene_off_name: ''
+    lights_group: ''
+    popup_hash: ''
+  card:
+    type: vertical-stack
+    cards:
+      - type: custom:streamline-card
+        template: lighting_title_card
+        variables:
+          title: '[[title]]'
+          lights_group: '[[lights_group]]'
+          popup_hash: '[[popup_hash]]'
+      - type: grid
+        columns: 2
+        square: false
+        cards:
+          - type: custom:streamline-card
+            template: scene_card
+            variables:
+              entity: '[[scene_1_entity]]'
+              name: '[[scene_1_name]]'
+              room: '[[room]]'
+          - type: custom:streamline-card
+            template: scene_card
+            variables:
+              entity: '[[scene_2_entity]]'
+              name: '[[scene_2_name]]'
+              room: '[[room]]'
+      - type: custom:streamline-card
+        template: scene_card
+        variables:
+          entity: '[[scene_off_entity]]'
+          name: '[[scene_off_name]]'
+          room: '[[room]]'
+          default_icon: 'mdi:power'
+          inactive_bg_opacity: '52%'
+          label_color_override: 'color: color-mix(in srgb, var(--primary-text-color) 40%, transparent);'
+          icon_color_override: 'color: color-mix(in srgb, var(--primary-text-color) 30%, transparent) !important;'
+
+# ── lighting_scenes_section_3 ──────────────────────────────────────────
+lighting_scenes_section_3:
+  default:
+    - title: Lighting
+    - scene_1_name: ''
+    - scene_2_name: ''
+    - scene_3_name: ''
+    - scene_off_name: 'Off'
+  variables:
+    title: ''
+    room: ''
+    scene_1_entity: ''
+    scene_1_name: ''
+    scene_2_entity: ''
+    scene_2_name: ''
+    scene_3_entity: ''
+    scene_3_name: ''
+    scene_off_entity: ''
+    scene_off_name: ''
+    lights_group: ''
+    popup_hash: ''
+  card:
+    type: vertical-stack
+    cards:
+      - type: custom:streamline-card
+        template: lighting_title_card
+        variables:
+          title: '[[title]]'
+          lights_group: '[[lights_group]]'
+          popup_hash: '[[popup_hash]]'
+      - type: grid
+        columns: 2
+        square: false
+        cards:
+          - type: custom:streamline-card
+            template: scene_card
+            variables:
+              entity: '[[scene_1_entity]]'
+              name: '[[scene_1_name]]'
+              room: '[[room]]'
+          - type: custom:streamline-card
+            template: scene_card
+            variables:
+              entity: '[[scene_2_entity]]'
+              name: '[[scene_2_name]]'
+              room: '[[room]]'
+          - type: custom:streamline-card
+            template: scene_card
+            variables:
+              entity: '[[scene_3_entity]]'
+              name: '[[scene_3_name]]'
+              room: '[[room]]'
+          - type: custom:streamline-card
+            template: scene_card
+            variables:
+              entity: '[[scene_off_entity]]'
+              name: '[[scene_off_name]]'
+              room: '[[room]]'
+              default_icon: 'mdi:power'
+              inactive_bg_opacity: '52%'
+              label_color_override: 'color: color-mix(in srgb, var(--primary-text-color) 40%, transparent);'
+              icon_color_override: 'color: color-mix(in srgb, var(--primary-text-color) 30%, transparent) !important;'
+
+# ── behaviour_status_label ──────────────────────────────────────────
+behaviour_status_label:
+  card:
+    type: custom:paper-buttons-row
+    styles:
+      justify-content: flex-start
+      margin: 12px 14px 0 14px
+    buttons:
+      - layout: name
+        name: Status
+        styles:
+          name:
+            font-size: 10px
+            font-weight: 600
+            letter-spacing: 1.5px
+            text-transform: uppercase
+            color: rgba(255,255,255,0.28)
+          button:
+            padding: 0
+            background: none
+
+# ── behaviour_section_header ──────────────────────────────────────────
+behaviour_section_header:
+  default:
+    - margin_top: 28px
+  variables:
+    title: ''
+    margin_top: ''
+  card:
+    type: custom:paper-buttons-row
+    styles:
+      justify-content: flex-start
+      align-items: center
+      margin: '[[margin_top]] 12px 0 12px'
+    buttons:
+      - layout: name
+        name: '[[title]]'
+        styles:
+          name:
+            font-size: 20px
+            font-weight: 600
+            color: var(--primary-text-color)
+          button:
+            padding: 0
+            background: none
+
+# ── behaviour_toggle_row ──────────────────────────────────────────
+behaviour_toggle_row:
+  variables:
+    toggle_entity: ''
+    name: ''
+    icon_on: m3of:tune
+    icon_off: m3of:tune
+  card:
+    type: custom:mushroom-template-card
+    entity: '[[toggle_entity]]'
+    primary: '[[name]]'
+    icon: >
+      {% if is_state('[[toggle_entity]]', 'on') %}[[icon_on]]{% else %}[[icon_off]]{% endif %}
+    icon_color: >
+      {% if is_state('[[toggle_entity]]', 'on') %}var(--md-sys-color-primary){% else %}rgba(255,255,255,0.45){% endif %}
+    layout: horizontal
+    tap_action:
+      action: toggle
+    hold_action:
+      action: more-info
+    card_mod:
+      style:
+        .: |
+          ha-card {
+            border-radius: 8px;
+            border: none;
+            background: {% if is_state('[[toggle_entity]]', 'on') %}color-mix(in srgb, var(--md-sys-color-primary) 10%, var(--md-sys-color-surface-container-high)){% else %}var(--md-sys-color-surface-container-high){% endif %};
+            box-shadow: none;
+            padding: 0;
+            --icon-size: 18px;
+            --shape-color: transparent;
+            --shape-border-radius: 0px;
+            --spacing: 10px;
+          }
+          ha-card:active {
+            transform: scale(0.99);
+          }
+        ha-tile-icon$: |
+          .container::before {
+            background: transparent !important;
+          }
+        mushroom-state-item$: |
+          .container {
+            padding: 10px 14px;
+            gap: 12px;
+          }
+        mushroom-primary-info$: |
+          .primary {
+            font-size: 14px;
+            font-weight: 600;
+          }
+
+# ── lighting_automation_section_sleep_hold ──────────────────────────────────────────
+lighting_automation_section_sleep_hold:
+  default:
+    - sleep_mode_entity: sensor.house_active_mode
+    - sleep_state: sleep
+  variables:
+    toggle_entity: ''
+    sleep_mode_entity: ''
+    sleep_state: ''
+  card:
+    type: vertical-stack
+    cards:
+      - type: custom:streamline-card
+        template: behaviour_section_header
+        variables:
+          title: Lighting
+      - type: grid
+        columns: 1
+        square: false
+        cards:
+          - type: custom:streamline-card
+            template: behaviour_toggle_row
+            variables:
+              toggle_entity: '[[toggle_entity]]'
+              name: Automatic lights
+              icon_on: m3of:lightbulb
+              icon_off: m3of:light-off
+      - type: custom:mushroom-chips-card
+        alignment: start
+        card_mod:
+          style: |
+            ha-card {
+              --chip-background: rgba(255,255,255,0.05);
+              --chip-border-radius: 6px;
+              --color: rgba(255,255,255,0.38);
+            }
+        chips:
+          - type: conditional
+            conditions:
+              - condition: state
+                entity: '[[sleep_mode_entity]]'
+                state: '[[sleep_state]]'
+            chip:
+              type: template
+              entity: '[[sleep_mode_entity]]'
+              icon: m3of:bedtime
+              content: Sleep mode – held
+              tap_action:
+                action: more-info
+                entity: '[[sleep_mode_entity]]'
+
+# ── heating_mode_section ──────────────────────────────────────────
+heating_mode_section:
+  variables:
+    room: ''
+    climate_entity: ''
+    temp_sensor: ''
+    humidity_entity: ''
+  card:
+    type: vertical-stack
+    cards:
+      - type: custom:paper-buttons-row
+        styles:
+          justify-content: flex-start
+          gap: 8px
+          align-items: center
+          margin: 28px 12px 0 12px
+        buttons:
+          - layout: name
+            name: Heating
+            styles:
+              name:
+                font-size: 20px
+                font-weight: 600
+                color: var(--primary-text-color)
+              button:
+                padding: 0
+                background: none
+          - layout: name
+            name: >
+              {% if is_state('input_boolean.house_heating_enabled', 'off') %}● House off
+              {% elif is_state('input_boolean.[[room]]_automation_heating_enabled', 'off') %}● Room off
+              {% elif state_attr('[[climate_entity]]', 'hvac_action') == 'heating' %}● Active
+              {% else %}● Idle{% endif %}
+            styles:
+              name:
+                font-size: 11px
+                font-weight: 600
+                letter-spacing: 0.3px
+                color: >
+                  {% if is_state('input_boolean.house_heating_enabled', 'off') %}rgba(255,255,255,0.28)
+                  {% elif is_state('input_boolean.[[room]]_automation_heating_enabled', 'off') %}rgba(251, 191, 36, 0.85)
+                  {% elif state_attr('[[climate_entity]]', 'hvac_action') == 'heating' %}rgba(134, 239, 172, 0.85)
+                  {% else %}rgba(255,255,255,0.28){% endif %}
+              button:
+                padding: 3px 8px
+                background: >
+                  {% if is_state('input_boolean.house_heating_enabled', 'off') %}rgba(255,255,255,0.05)
+                  {% elif is_state('input_boolean.[[room]]_automation_heating_enabled', 'off') %}rgba(251, 191, 36, 0.10)
+                  {% elif state_attr('[[climate_entity]]', 'hvac_action') == 'heating' %}rgba(134, 239, 172, 0.1)
+                  {% else %}rgba(255,255,255,0.05){% endif %}
+                border-radius: 999px
+      - type: custom:button-card
+        show_name: false
+        show_state: false
+        show_icon: false
+        custom_fields:
+          temp: >
+            [[[
+              const sensor = '[[temp_sensor]]';
+              const t = sensor
+                ? parseFloat(states[sensor]?.state)
+                : parseFloat(entity?.attributes?.current_temperature);
+              return !isNaN(t) ? `${t.toFixed(1)}°` : '—';
+            ]]]
+          sub: >
+            [[[
+              const hum = parseFloat(states['[[humidity_entity]]']?.state);
+              const houseOff = states['input_boolean.house_heating_enabled']?.state === 'off';
+              const roomOff = states['input_boolean.[[room]]_automation_heating_enabled']?.state === 'off';
+              const target = entity?.attributes?.temperature;
+
+              const sensor = '[[temp_sensor]]';
+              const current = sensor
+                ? parseFloat(states[sensor]?.state)
+                : parseFloat(entity?.attributes?.current_temperature);
+
+              const effectiveTarget = houseOff ? 5.0 : target;
+              let arrow = '→';
+              if (!isNaN(current) && effectiveTarget != null) {
+                if (current < effectiveTarget - 0.5) arrow = '↑';
+                else if (current > effectiveTarget + 0.5) arrow = '↓';
+              }
+
+              const parts = [];
+              if (houseOff) {
+                parts.push(`${arrow} 5°C frost protect`);
+              } else if (!roomOff && target != null) {
+                parts.push(`${arrow} ${target}°C target`);
+              }
+              if (!isNaN(hum)) parts.push(`${Math.round(hum)}% humidity`);
+              return parts.join(' · ') || '';
+            ]]]
+        entity: '[[climate_entity]]'
+        styles:
+          card:
+            - background: transparent
+            - box-shadow: none
+            - border: none
+            - padding: 4px 12px 0 12px
+            - cursor: default
+          grid:
+            - grid-template-areas: '"temp" "sub"'
+            - grid-template-rows: auto auto
+            - justify-items: start
+          custom_fields:
+            temp:
+              - font-size: 54px
+              - font-weight: 700
+              - color: var(--primary-text-color)
+              - line-height: '1'
+              - letter-spacing: -2px
+            sub:
+              - font-size: 13px
+              - color: rgba(255,255,255,0.45)
+              - margin-top: 6px
+      - type: custom:apexcharts-card
+        graph_span: 24h
+        header:
+          show: false
+        card_mod:
+          style: |
+            ha-card {
+              background: transparent !important;
+              box-shadow: none !important;
+              border: none !important;
+              padding: 0;
+              margin: 4px 12px 0 12px;
+            }
+        apex_config:
+          chart:
+            height: 80
+            sparkline:
+              enabled: true
+          stroke:
+            curve: smooth
+            width: 2
+        series:
+          - entity: '[[temp_sensor]]'
+            color: 'rgba(184,154,85,0.9)'
+            type: area
+            opacity: 0.15
+            stroke_width: 2
+            show:
+              legend_value: false
+      - type: grid
+        columns: 2
+        square: false
+        cards:
+          - type: custom:mushroom-template-card
+            entity: sensor.[[room]]_active_heating
+            primary: Comfort
+            secondary: >
+              {{ states('input_number.global_temperature_comfort') | int }}°C
+            icon: m3of:mode-heat
+            icon_color: >
+              {% if states('sensor.[[room]]_active_heating') == 'comfort' %}rgba(249,115,22,0.90){% else %}rgba(255,255,255,0.45){% endif %}
+            layout: horizontal
+            tap_action:
+              action: call-service
+              service: input_select.select_option
+              target:
+                entity_id: input_select.[[room]]_active_heating_mode
+              data:
+                option: comfort
+            hold_action:
+              action: more-info
+            card_mod:
+              style:
+                .: |
+                  ha-card {
+                    {% set active = states('sensor.[[room]]_active_heating') == 'comfort' %}
+                    border-radius: 8px;
+                    border: none;
+                    background: {% if active %}color-mix(in srgb, #f97316 12%, var(--ha-card-background, var(--card-background-color))){% else %}color-mix(in srgb, var(--ha-card-background, var(--card-background-color)) 78%, transparent){% endif %};
+                    box-shadow: none;
+                    padding: 0;
+                    --icon-size: 18px;
+                    --shape-color: transparent;
+                    --shape-border-radius: 0px;
+                    --spacing: 10px;
+                  }
+                  ha-card:active { transform: scale(0.99); }
+                ha-tile-icon$: |
+                  .container::before { background: transparent !important; }
+                mushroom-state-item$: |
+                  .container { padding: 10px 14px; gap: 12px; }
+                mushroom-primary-info$: |
+                  .primary { font-size: 14px; font-weight: 600; }
+                mushroom-secondary-info$: |
+                  .secondary { font-size: 12px; opacity: 0.55; }
+          - type: custom:mushroom-template-card
+            entity: sensor.[[room]]_active_heating
+            primary: Day
+            secondary: >
+              {{ states('input_number.global_temperature_baseline_day') | int }}°C
+            icon: m3of:light-mode
+            icon_color: >
+              {% if states('sensor.[[room]]_active_heating') == 'baseline_day' %}rgba(251,146,60,0.90){% else %}rgba(255,255,255,0.45){% endif %}
+            layout: horizontal
+            tap_action:
+              action: call-service
+              service: input_select.select_option
+              target:
+                entity_id: input_select.[[room]]_active_heating_mode
+              data:
+                option: baseline_day
+            hold_action:
+              action: more-info
+            card_mod:
+              style:
+                .: |
+                  ha-card {
+                    {% set active = states('sensor.[[room]]_active_heating') == 'baseline_day' %}
+                    border-radius: 8px;
+                    border: none;
+                    background: {% if active %}color-mix(in srgb, #fb923c 12%, var(--ha-card-background, var(--card-background-color))){% else %}color-mix(in srgb, var(--ha-card-background, var(--card-background-color)) 78%, transparent){% endif %};
+                    box-shadow: none;
+                    padding: 0;
+                    --icon-size: 18px;
+                    --shape-color: transparent;
+                    --shape-border-radius: 0px;
+                    --spacing: 10px;
+                  }
+                  ha-card:active { transform: scale(0.99); }
+                ha-tile-icon$: |
+                  .container::before { background: transparent !important; }
+                mushroom-state-item$: |
+                  .container { padding: 10px 14px; gap: 12px; }
+                mushroom-primary-info$: |
+                  .primary { font-size: 14px; font-weight: 600; }
+                mushroom-secondary-info$: |
+                  .secondary { font-size: 12px; opacity: 0.55; }
+          - type: custom:mushroom-template-card
+            entity: sensor.[[room]]_active_heating
+            primary: Night
+            secondary: >
+              {{ states('input_number.global_temperature_baseline_night') | int }}°C
+            icon: m3of:bedtime
+            icon_color: >
+              {% if states('sensor.[[room]]_active_heating') == 'baseline_night' %}rgba(125,211,252,0.90){% else %}rgba(255,255,255,0.45){% endif %}
+            layout: horizontal
+            tap_action:
+              action: call-service
+              service: input_select.select_option
+              target:
+                entity_id: input_select.[[room]]_active_heating_mode
+              data:
+                option: baseline_night
+            hold_action:
+              action: more-info
+            card_mod:
+              style:
+                .: |
+                  ha-card {
+                    {% set active = states('sensor.[[room]]_active_heating') == 'baseline_night' %}
+                    border-radius: 8px;
+                    border: none;
+                    background: {% if active %}color-mix(in srgb, #7dd3fc 12%, var(--ha-card-background, var(--card-background-color))){% else %}color-mix(in srgb, var(--ha-card-background, var(--card-background-color)) 78%, transparent){% endif %};
+                    box-shadow: none;
+                    padding: 0;
+                    --icon-size: 18px;
+                    --shape-color: transparent;
+                    --shape-border-radius: 0px;
+                    --spacing: 10px;
+                  }
+                  ha-card:active { transform: scale(0.99); }
+                ha-tile-icon$: |
+                  .container::before { background: transparent !important; }
+                mushroom-state-item$: |
+                  .container { padding: 10px 14px; gap: 12px; }
+                mushroom-primary-info$: |
+                  .primary { font-size: 14px; font-weight: 600; }
+                mushroom-secondary-info$: |
+                  .secondary { font-size: 12px; opacity: 0.55; }
+          - type: custom:mushroom-template-card
+            entity: sensor.[[room]]_active_heating
+            primary: Frost
+            secondary: >
+              {{ states('input_number.global_temperature_minimum') | int }}°C
+            icon: m3of:ac-unit
+            icon_color: >
+              {% if states('sensor.[[room]]_active_heating') == 'minimum' %}rgba(96,165,250,0.90){% else %}rgba(255,255,255,0.45){% endif %}
+            layout: horizontal
+            tap_action:
+              action: call-service
+              service: input_select.select_option
+              target:
+                entity_id: input_select.[[room]]_active_heating_mode
+              data:
+                option: minimum
+            hold_action:
+              action: more-info
+            card_mod:
+              style:
+                .: |
+                  ha-card {
+                    {% set active = states('sensor.[[room]]_active_heating') == 'minimum' %}
+                    border-radius: 8px;
+                    border: none;
+                    background: {% if active %}color-mix(in srgb, #60a5fa 12%, var(--ha-card-background, var(--card-background-color))){% else %}color-mix(in srgb, var(--ha-card-background, var(--card-background-color)) 78%, transparent){% endif %};
+                    box-shadow: none;
+                    padding: 0;
+                    --icon-size: 18px;
+                    --shape-color: transparent;
+                    --shape-border-radius: 0px;
+                    --spacing: 10px;
+                  }
+                  ha-card:active { transform: scale(0.99); }
+                ha-tile-icon$: |
+                  .container::before { background: transparent !important; }
+                mushroom-state-item$: |
+                  .container { padding: 10px 14px; gap: 12px; }
+                mushroom-primary-info$: |
+                  .primary { font-size: 14px; font-weight: 600; }
+                mushroom-secondary-info$: |
+                  .secondary { font-size: 12px; opacity: 0.55; }
+# ── presence_section ──────────────────────────────────────────
+presence_section:
+  default:
+    - held_row_opacity: 0.86
+    - held_row_brightness: 0.96
+    - reason_1_entity: ''
+    - reason_1_state: ''
+    - reason_1_icon: ''
+    - reason_1_label: ''
+    - reason_2_entity: ''
+    - reason_2_state: ''
+    - reason_2_icon: ''
+    - reason_2_label: ''
+    - reason_3_entity: ''
+    - reason_3_state: ''
+    - reason_3_icon: ''
+    - reason_3_label: ''
+    - reason_4_entity: ''
+    - reason_4_state: ''
+    - reason_4_icon: ''
+    - reason_4_label: ''
+    - reason_5_entity: ''
+    - reason_5_state: ''
+    - reason_5_icon: ''
+    - reason_5_label: ''
+    - reason_6_entity: ''
+    - reason_6_state: ''
+    - reason_6_icon: ''
+    - reason_6_label: ''
+  variables:
+    occupied_entity: ''
+    pir_entity: ''
+    motion_enabled_entity: ''
+    override_entity: ''
+    contained_entity: ''
+    held_row_opacity: ''
+    held_row_brightness: ''
+    reason_1_entity: ''
+    reason_1_state: ''
+    reason_1_icon: ''
+    reason_1_label: ''
+    reason_2_entity: ''
+    reason_2_state: ''
+    reason_2_icon: ''
+    reason_2_label: ''
+    reason_3_entity: ''
+    reason_3_state: ''
+    reason_3_icon: ''
+    reason_3_label: ''
+    reason_4_entity: ''
+    reason_4_state: ''
+    reason_4_icon: ''
+    reason_4_label: ''
+    reason_5_entity: ''
+    reason_5_state: ''
+    reason_5_icon: ''
+    reason_5_label: ''
+    reason_6_entity: ''
+    reason_6_state: ''
+    reason_6_icon: ''
+    reason_6_label: ''
+  card:
+    type: vertical-stack
+    cards:
+      - type: custom:streamline-card
+        template: behaviour_section_header
+        variables:
+          title: Presence
+          margin_top: 0px
+      - type: grid
+        columns: 1
+        square: false
+        cards:
+          - type: custom:streamline-card
+            template: behaviour_toggle_row
+            variables:
+              toggle_entity: '[[motion_enabled_entity]]'
+              name: Motion sensor
+              icon_on: m3of:sensors
+              icon_off: m3of:sensors-off
+          - type: custom:streamline-card
+            template: behaviour_toggle_row
+            variables:
+              toggle_entity: '[[override_entity]]'
+              name: Presence override
+              icon_on: m3of:person
+              icon_off: m3of:person-off
+      - type: custom:streamline-card
+        template: behaviour_status_label
+      - type: custom:mushroom-chips-card
+        alignment: start
+        chips:
+          - type: template
+            entity: '[[occupied_entity]]'
+            icon: m3of:person
+            content: >
+              {% if is_state('[[occupied_entity]]','on') %}Occupied{% else %}Clear{% endif %}
+            tap_action:
+              action: more-info
+              entity: '[[occupied_entity]]'
+          - type: template
+            entity: '[[pir_entity]]'
+            icon: m3of:directions-walk
+            content: >
+              {% if is_state('[[pir_entity]]','on') %}Motion{% else %}No motion{% endif %}
+            tap_action:
+              action: more-info
+              entity: '[[pir_entity]]'
+          - type: conditional
+            conditions:
+              - condition: template
+                value_template: |
+                  {{ '[[contained_entity]]' != '' }}
+            chip:
+              type: conditional
+              conditions:
+                - condition: state
+                  entity: '[[contained_entity]]'
+                  state: 'on'
+              chip:
+                type: template
+                entity: '[[contained_entity]]'
+                icon: m3of:meeting-room
+                content: Contained
+                tap_action:
+                  action: more-info
+                  entity: '[[contained_entity]]'
+        card_mod:
+          style: |
+            ha-card {
+              --chip-background: rgba(255,255,255,0.05);
+              --chip-border-radius: 6px;
+              --color: rgba(255,255,255,0.38);
+              margin-top: 0.2em;
+            }
+      - type: conditional
+        conditions:
+          - condition: or
+            conditions:
+              - condition: state
+                entity: '[[reason_1_entity]]'
+                state: '[[reason_1_state]]'
+              - condition: state
+                entity: '[[reason_2_entity]]'
+                state: '[[reason_2_state]]'
+              - condition: state
+                entity: '[[reason_3_entity]]'
+                state: '[[reason_3_state]]'
+              - condition: state
+                entity: '[[reason_4_entity]]'
+                state: '[[reason_4_state]]'
+              - condition: state
+                entity: '[[reason_5_entity]]'
+                state: '[[reason_5_state]]'
+              - condition: state
+                entity: '[[reason_6_entity]]'
+                state: '[[reason_6_state]]'
+        card:
+          type: custom:mushroom-chips-card
+          alignment: start
+          card_mod:
+            style: |
+              ha-card {
+                --chip-background: rgba(255,255,255,0.05);
+                --chip-border-radius: 6px;
+                --color: rgba(255,255,255,0.38);
+              }
+          chips:
+            - type: template
+              icon: m3of:pause-circle
+              content: Presence held
+              tap_action:
+                action: none
+            - type: conditional
+              conditions:
+                - condition: state
+                  entity: '[[reason_1_entity]]'
+                  state: '[[reason_1_state]]'
+              chip:
+                type: template
+                entity: '[[reason_1_entity]]'
+                icon: '[[reason_1_icon]]'
+                content: '[[reason_1_label]]'
+                tap_action:
+                  action: more-info
+            - type: conditional
+              conditions:
+                - condition: state
+                  entity: '[[reason_2_entity]]'
+                  state: '[[reason_2_state]]'
+              chip:
+                type: template
+                entity: '[[reason_2_entity]]'
+                icon: '[[reason_2_icon]]'
+                content: '[[reason_2_label]]'
+                tap_action:
+                  action: more-info
+            - type: conditional
+              conditions:
+                - condition: state
+                  entity: '[[reason_3_entity]]'
+                  state: '[[reason_3_state]]'
+              chip:
+                type: template
+                entity: '[[reason_3_entity]]'
+                icon: '[[reason_3_icon]]'
+                content: '[[reason_3_label]]'
+                tap_action:
+                  action: more-info
+            - type: conditional
+              conditions:
+                - condition: state
+                  entity: '[[reason_4_entity]]'
+                  state: '[[reason_4_state]]'
+              chip:
+                type: template
+                entity: '[[reason_4_entity]]'
+                icon: '[[reason_4_icon]]'
+                content: '[[reason_4_label]]'
+                tap_action:
+                  action: more-info
+            - type: conditional
+              conditions:
+                - condition: state
+                  entity: '[[reason_5_entity]]'
+                  state: '[[reason_5_state]]'
+              chip:
+                type: template
+                entity: '[[reason_5_entity]]'
+                icon: '[[reason_5_icon]]'
+                content: '[[reason_5_label]]'
+                tap_action:
+                  action: more-info
+            - type: conditional
+              conditions:
+                - condition: state
+                  entity: '[[reason_6_entity]]'
+                  state: '[[reason_6_state]]'
+              chip:
+                type: template
+                entity: '[[reason_6_entity]]'
+                icon: '[[reason_6_icon]]'
+                content: '[[reason_6_label]]'
+                tap_action:
+                  action: more-info
+
+# ── room_header_stack ──────────────────────────────────────────
+room_header_stack:
+  variables:
+    navigation_path: /mobile-dashboard
+    title: ''
+    room_motion_sensor: ''
+    room_climate_entity: ''
+    room_temp_sensor: ''
+    popup_hash: ''
+  card:
+    type: vertical-stack
+    cards:
+      - type: custom:streamline-card
+        template: room_title_card
+        variables:
+          title: '[[title]]'
+          room_motion_sensor: '[[room_motion_sensor]]'
+          popup_hash: '[[popup_hash]]'
+      - type: custom:streamline-card
+        template: room_description_card
+        variables:
+          room_climate_entity: '[[room_climate_entity]]'
+          room_temp_sensor: '[[room_temp_sensor]]'
+
+# ── room_tabs_scaffold ──────────────────────────────────────────
+room_tabs_scaffold:
+  default:
+    - active_background: transparent
+    - active_text_color: var(--primary-text-color)
+    - text_color: rgba(255,255,255,0.45)
+  variables:
+    room_tab_cards: []
+    climate_tab_cards: []
+  card:
+    type: custom:mod-card
+    card_mod:
+      style:
+        simple-tabs$: |
+          .tabs-container {
+            display: block !important;
+          }
+          .tabs {
+            display: flex !important;
+            width: 100% !important;
+            border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+          }
+          .tab-button {
+            flex: 1 !important;
+            text-align: center;
+            border: none !important;
+            outline: none !important;
+            border-radius: 0 !important;
+            border-bottom: 2px solid transparent !important;
+            margin-bottom: -2px;
+            padding: 10px 8px;
+          }
+          .tab-button.active {
+            border-bottom: 2px solid var(--primary-text-color) !important;
+          }
+    card:
+      type: custom:simple-tabs
+      pre-load: true
+      active-background: '[[active_background]]'
+      active-text-color: '[[active_text_color]]'
+      text-color: '[[text_color]]'
+      tabs:
+        - title: Room
+          icon: m3of:home
+          card:
+            type: vertical-stack
+            cards: '[[room_tab_cards]]'
+        - title: Climate
+          icon: m3of:heat-pump
+          card:
+            type: vertical-stack
+            cards: '[[climate_tab_cards]]'
+# ── lights_popup_section ──────────────────────────────────────────
+lights_popup_section:
+  default:
+    - title: Individual Lights
+    - icon: m3of:lightbulb
+    - off_label: 'Off'
+  variables:
+    popup_hash: ''
+    off_scene: ''
+    title: ''
+    icon: ''
+    off_label: ''
+    popup_cards: []
+  card:
+    type: custom:bubble-card
+    card_type: pop-up
+    name: '[[title]]'
+    icon: '[[icon]]'
+    hash: '[[popup_hash]]'
+    show_header: false
+    cards:
+      - type: custom:paper-buttons-row
+        styles:
+          justify-content: flex-start
+          margin: 20px 12px 8px 12px
+        buttons:
+          - layout: name
+            name: '[[title]]'
+            styles:
+              name:
+                font-size: 22px
+                font-weight: 700
+                letter-spacing: -0.3px
+                color: var(--primary-text-color)
+              button:
+                padding: 0
+                background: none
+      - type: custom:mushroom-template-card
+        primary: '[[off_label]]'
+        icon: mdi:power
+        layout: horizontal
+        tap_action:
+          action: call-service
+          service: scene.turn_on
+          target:
+            entity_id: '[[off_scene]]'
+        card_mod:
+          style: |
+            ha-card {
+              border-radius: 8px;
+              border: none;
+              background: var(--md-sys-color-surface-container-high);
+              box-shadow: none;
+              --icon-size: 18px;
+              --shape-color: transparent;
+              --shape-border-radius: 0px;
+              --spacing: 10px;
+            }
+      - type: vertical-stack
+        cards: '[[popup_cards]]'
+# ── heating_automation_section ──────────────────────────────────────────
+heating_automation_section:
+  default:
+    - heating_hold_label: Heating held
+  variables:
+    toggle_entity: ''
+    heating_hold_entity: ''
+    heating_hold_label: ''
+  card:
+    type: vertical-stack
+    cards:
+      - type: custom:streamline-card
+        template: behaviour_section_header
+        variables:
+          title: Heating
+      - type: grid
+        columns: 1
+        square: false
+        cards:
+          - type: custom:streamline-card
+            template: behaviour_toggle_row
+            variables:
+              toggle_entity: '[[toggle_entity]]'
+              name: Automatic heating
+              icon_on: m3of:mode-heat
+              icon_off: m3of:mode-heat
+      - type: custom:mushroom-chips-card
+        alignment: start
+        card_mod:
+          style: |
+            ha-card {
+              --chip-background: rgba(255,255,255,0.05);
+              --chip-border-radius: 6px;
+              --color: rgba(255,255,255,0.38);
+            }
+        chips:
+          - type: conditional
+            conditions:
+              - condition: state
+                entity: '[[heating_hold_entity]]'
+                state: 'on'
+            chip:
+              type: template
+              icon: m3of:pause-circle
+              content: '[[heating_hold_label]]'
+              tap_action:
+                action: none
+      - type: custom:auto-entities
+        card:
+          type: custom:mushroom-chips-card
+          alignment: start
+        card_mod:
+          style: |
+            ha-card {
+              --chip-background: rgba(255,255,255,0.05);
+              --chip-border-radius: 6px;
+              --color: rgba(255,255,255,0.38);
+            }
+        card_param: chips
+        filter:
+          include:
+            - group: '[[heating_hold_entity]]'
+              state: 'on'
+              options:
+                type: template
+                entity: this.entity_id
+                icon: >
+                  {% set dc = state_attr(config.entity,'device_class') %}
+                  {{ 'm3of:door-open' if dc == 'door' else 'm3of:window-open' }}
+                content: |
+                  {{ states[config.entity].name }}
+                tap_action:
+                  action: more-info
+                  entity: this.entity_id
+          exclude: []
+        show_empty: false
+
+# ── section_title ──────────────────────────────────────────
+section_title:
+  default:
+    - font_size: '20px'
+    - compact: 'false'
+  variables:
+    title: ''
+    font_size: ''
+    compact: ''
+  card:
+    type: custom:mushroom-title-card
+    title: '[[title]]'
+    card_mod:
+      style: |
+        ha-card {
+          --title-font-size: [[font_size]] !important;
+          background: none;
+          box-shadow: none;
+          border: 0;
+          {% if '[[compact]]' == 'true' %}padding: 8px 0 2px 0 !important;{% endif %}
+        }
+# ── room_title_card ──────────────────────────────────────────
+room_title_card:
+  variables:
+    - title: ''
+    - room_motion_sensor: ''
+    - popup_hash: ''
+  card:
+    type: custom:paper-buttons-row
+    styles:
+      justify-content: flex-start
+      gap: 10px
+      align-items: center
+      margin: 0 12px 0 12px
+    buttons:
+      - layout: name
+        name: '[[title]]'
+        styles:
+          name:
+            font-size: 30px
+            font-weight: 700
+            color: var(--primary-text-color)
+          button:
+            padding: 0
+            background: none
+      - layout: name
+        name: >
+          {% if is_state('[[room_motion_sensor]]', 'on') %}● Occupied{% else %}● Vacant{% endif %}
+        styles:
+          name:
+            font-size: 11px
+            font-weight: 600
+            letter-spacing: 0.3px
+            color: >
+              {% if is_state('[[room_motion_sensor]]', 'on') %}rgba(134, 239, 172, 0.85){% else %}rgba(255,255,255,0.28){% endif %}
+          button:
+            padding: 3px 8px
+            background: >
+              {% if is_state('[[room_motion_sensor]]', 'on') %}rgba(134, 239, 172, 0.1){% else %}rgba(255,255,255,0.05){% endif %}
+            border-radius: 999px
+      - layout: name
+        name: ''
+        styles:
+          button:
+            flex: '1'
+            background: none
+            pointer-events: none
+      - layout: icon
+        icon: m3of:tune
+        tap_action:
+          action: navigate
+          navigation_path: '[[popup_hash]]'
+        styles:
+          icon:
+            color: color-mix(in srgb, var(--primary-text-color) 45%, transparent)
+            width: 22px
+            height: 22px
+          button:
+            background: none
+            padding: 0
+            margin-right: 4px
+
+# ── room_description_card ──────────────────────────────────────────
+room_description_card:
+  default:
+    - room_climate_entity: ''
+    - room_temp_sensor: ''
+  variables:
+    - name: room_climate_entity
+      selector:
+        entity:
+          domain: climate
+    - name: room_temp_sensor
+      selector:
+        entity:
+          domain: sensor
+  card:
+    type: custom:mushroom-chips-card
+    alignment: start
+    chips:
+      - type: template
+        icon: >
+          {% set a = state_attr('[[room_climate_entity]]', 'hvac_action') %}
+          {{ 'm3of:mode-heat' if a == 'heating' else 'm3of:thermometer' }}
+        content: >
+          {% set ts = states('[[room_temp_sensor]]') %}
+          {% set t = ts | float(none) if ts not in ['unknown','unavailable',''] else state_attr('[[room_climate_entity]]','current_temperature') %}
+          {% if t is not none %}{{ t | float | round(1) }}°{% else %}—{% endif %}
+        tap_action:
+          action: more-info
+          entity: '[[room_climate_entity]]'
+        card_mod:
+          style: |
+            ha-card {
+              {% set a = state_attr('[[room_climate_entity]]', 'hvac_action') %}
+              {% if a == 'heating' %}
+              --color: var(--md-sys-color-error);
+              {% else %}
+              --color: color-mix(in srgb, var(--primary-text-color) 70%, transparent);
+              {% endif %}
+              --chip-background: transparent;
+              --chip-border-radius: 4px;
+              box-shadow: none;
+            }
+            ha-card mushroom-chip span {
+              font-size: 26px;
+              font-weight: 300;
+              letter-spacing: -0.5px;
+            }
+    card_mod:
+      style: |
+        ha-card { --chip-font-size: 26px; margin: 0 0 0 6px; }
+
+# ── media_player_card ──────────────────────────────────────────
+media_player_card:
+  variables:
+    entity: ''
+    name: ''
+    icon: mdi:speaker-wireless
+  card:
+    type: custom:mushroom-template-card
+    entity: '[[entity]]'
+    primary: '[[name]]'
+    secondary: >
+      {% set title = state_attr('[[entity]]', 'media_title') %}
+      {% set artist = state_attr('[[entity]]', 'media_artist') %}
+      {% if artist and title %}{{ title }} · {{ artist }}
+      {% elif title %}{{ title }}
+      {% else %}{% endif %}
+    icon: '[[icon]]'
+    layout: horizontal
+    tap_action:
+      action: more-info
+    card_mod:
+      style:
+        .: |
+          ha-card {
+            border-radius: 8px;
+            border: none;
+          }
+          ha-state-icon {
+            color: {{ 'var(--md-sys-color-primary)' if is_state('[[entity]]', ['playing','paused','on']) else 'rgba(255,255,255,0.45)' }};
+          }
+        ha-tile-icon$: |
+          .container::before {
+            background: transparent !important;
+          }
+        mushroom-state-item$: |
+          .container {
+            padding: 10px 14px;
+            gap: 12px;
+          }
+        mushroom-secondary-info$: |
+          .secondary {
+            font-size: 12px;
+            opacity: 0.65;
+          }
+
+# ── spacer_card ──────────────────────────────────────────
+spacer_card:
+  variables:
+    padding: ''
+  card:
+    type: custom:button-card
+    show_name: false
+    show_icon: false
+    tap_action:
+      action: none
+    styles:
+      card:
+        - background: none
+        - box-shadow: none
+        - padding: '[[padding]]'
+
+# ── scene_card ──────────────────────────────────────────
+scene_card:
+  default:
+    - default_icon: 'mdi:palette'
+    - inactive_bg_opacity: '78%'
+    - label_color_override: ''
+    - icon_color_override: ''
+  variables:
+    entity: ''
+    name: ''
+    room: ''
+    default_icon: ''
+    inactive_bg_opacity: ''
+    label_color_override: ''
+    icon_color_override: ''
+  card:
+    type: custom:mushroom-template-card
+    entity: '[[entity]]'
+    primary: '[[name]]'
+    icon: >
+      {% set icon = state_attr('[[entity]]', 'icon') %}
+      {{ icon if icon else '[[default_icon]]' }}
+    icon_color: >
+      {% set active = states('sensor.[[room]]_active_scene') == '[[entity]]'[6:] %}
+      {% if active %}var(--md-sys-color-primary){% else %}rgba(255,255,255,0.45){% endif %}
+    layout: horizontal
+    tap_action:
+      action: call-service
+      service: scene.turn_on
+      target:
+        entity_id: '[[entity]]'
+    hold_action:
+      action: more-info
+      entity: '[[entity]]'
+    card_mod:
+      style:
+        .: |
+          ha-card {
+            {% set active = states('sensor.[[room]]_active_scene') == '[[entity]]'[6:] %}
+            border-radius: 8px;
+            border: none;
+            background: {% if active %}color-mix(in srgb, var(--md-sys-color-primary) 10%, var(--ha-card-background, var(--card-background-color))){% else %}color-mix(in srgb, var(--ha-card-background, var(--card-background-color)) [[inactive_bg_opacity]], transparent){% endif %};
+            box-shadow: none;
+            padding: 0;
+            --icon-size: 18px;
+            --shape-color: transparent;
+            --shape-border-radius: 0px;
+            --spacing: 10px;
+          }
+          ha-card:active {
+            transform: scale(0.99);
+          }
+        ha-tile-icon$: |
+          .container::before {
+            background: transparent !important;
+          }
+        mushroom-state-item$: |
+          .container {
+            padding: 10px 14px;
+            gap: 12px;
+          }
+        mushroom-primary-info$: |
+          .primary {
+            font-size: 14px;
+            font-weight: 600;
+            [[label_color_override]]
+          }
+        ha-state-icon$: |
+          ha-svg-icon {
+            [[icon_color_override]]
+          }
+
+# ── spacer_card ──────────────────────────────────────────
+spacer_card:
+  variables:
+    padding: ''
+  card:
+    type: custom:button-card
+    show_name: false
+    show_icon: false
+    tap_action:
+      action: none
+    styles:
+      card:
+        - background: none
+        - box-shadow: none
+        - padding: '[[padding]]'
+# ── house_settings_popup ──────────────────────────────────────────
+house_settings_popup:
+  card:
+    type: custom:bubble-card
+    card_type: pop-up
+    hash: '#house_settings'
+    show_header: false
+    cards:
+      - type: custom:paper-buttons-row
+        styles:
+          justify-content: flex-start
+          margin: 20px 12px 8px 12px
+        buttons:
+          - layout: name
+            name: House settings
+            styles:
+              name:
+                font-size: 22px
+                font-weight: 700
+                letter-spacing: -0.3px
+                color: var(--primary-text-color)
+              button:
+                padding: 0
+                background: none
+      - type: custom:streamline-card
+        template: section_title
+        variables:
+          font_size: '18px'
+          compact: 'true'
+          title: House mode
+      - type: tile
+        entity: input_select.house_active_mode_modifier
+        name: Mode modifier
+        icon: m3of:manage-accounts
+      - type: custom:streamline-card
+        template: section_title
+        variables:
+          font_size: '18px'
+          compact: 'true'
+          title: Working from home
+      - type: grid
+        columns: 2
+        square: false
+        cards:
+          - type: custom:mushroom-template-card
+            entity: input_boolean.wfh_adam
+            primary: Adam
+            icon: >
+              {{ 'm3of:person' if is_state('input_boolean.wfh_adam', 'on') else 'm3of:person-off' }}
+            icon_color: >
+              {% if is_state('input_boolean.wfh_adam', 'on') %}var(--md-sys-color-primary){% else %}rgba(255,255,255,0.45){% endif %}
+            layout: horizontal
+            tap_action:
+              action: toggle
+            hold_action:
+              action: more-info
+            card_mod:
+              style:
+                .: |
+                  ha-card {
+                    border-radius: 8px;
+                    border: none;
+                    background: {% if is_state('input_boolean.wfh_adam', 'on') %}color-mix(in srgb, var(--md-sys-color-primary) 10%, var(--md-sys-color-surface-container-high)){% else %}var(--md-sys-color-surface-container-high){% endif %};
+                    box-shadow: none;
+                    padding: 0;
+                    --icon-size: 18px;
+                    --shape-color: transparent;
+                    --shape-border-radius: 0px;
+                    --spacing: 10px;
+                  }
+                  ha-card:active { transform: scale(0.99); }
+                ha-tile-icon$: |
+                  .container::before { background: transparent !important; }
+                mushroom-state-item$: |
+                  .container { padding: 10px 14px; gap: 12px; }
+                mushroom-primary-info$: |
+                  .primary { font-size: 14px; font-weight: 600; }
+          - type: custom:mushroom-template-card
+            entity: input_boolean.wfh_sarah
+            primary: Sarah
+            icon: >
+              {{ 'm3of:person' if is_state('input_boolean.wfh_sarah', 'on') else 'm3of:person-off' }}
+            icon_color: >
+              {% if is_state('input_boolean.wfh_sarah', 'on') %}var(--md-sys-color-primary){% else %}rgba(255,255,255,0.45){% endif %}
+            layout: horizontal
+            tap_action:
+              action: toggle
+            hold_action:
+              action: more-info
+            card_mod:
+              style:
+                .: |
+                  ha-card {
+                    border-radius: 8px;
+                    border: none;
+                    background: {% if is_state('input_boolean.wfh_sarah', 'on') %}color-mix(in srgb, var(--md-sys-color-primary) 10%, var(--md-sys-color-surface-container-high)){% else %}var(--md-sys-color-surface-container-high){% endif %};
+                    box-shadow: none;
+                    padding: 0;
+                    --icon-size: 18px;
+                    --shape-color: transparent;
+                    --shape-border-radius: 0px;
+                    --spacing: 10px;
+                  }
+                  ha-card:active { transform: scale(0.99); }
+                ha-tile-icon$: |
+                  .container::before { background: transparent !important; }
+                mushroom-state-item$: |
+                  .container { padding: 10px 14px; gap: 12px; }
+                mushroom-primary-info$: |
+                  .primary { font-size: 14px; font-weight: 600; }
+

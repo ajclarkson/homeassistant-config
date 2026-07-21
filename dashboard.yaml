@@ -1,0 +1,16 @@
+streamline_templates: !include streamline_templates.yaml
+
+views:
+  - !include views/home.yaml
+  - !include views/climate.yaml
+  - !include views/energy.yaml
+  - !include views/parlour.yaml
+  - !include views/kitchen.yaml
+  - !include views/hallway.yaml
+  - !include views/bathroom.yaml
+  - !include views/bedroom.yaml
+  - !include views/home-office.yaml
+  - !include views/foreign-office.yaml
+  - !include views/back-garden.yaml
+  - !include views/cameras.yaml
+  - !include views/mo.yaml

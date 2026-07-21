@@ -1,0 +1,48 @@
+title: Back Garden
+path: back-garden
+type: sections
+max_columns: 1
+sections:
+  - type: grid
+    cards:
+      - type: custom:streamline-card
+        template: section_title
+        variables:
+          title: Back Garden
+      - type: custom:streamline-card
+        template: section_title
+        variables:
+          title: Lighting
+      - type: grid
+        columns: 2
+        square: false
+        cards:
+          - type: custom:streamline-card
+            template: scene_card
+            variables:
+              entity: scene.back_garden_all
+              name: 'On'
+          - type: custom:streamline-card
+            template: scene_card
+            variables:
+              entity: scene.back_garden_off
+              name: 'Off'
+              default_icon: 'mdi:power'
+              inactive_bg_opacity: '52%'
+              label_color_override: 'color: color-mix(in srgb, var(--primary-text-color) 40%, transparent);'
+              icon_color_override: 'color: color-mix(in srgb, var(--primary-text-color) 30%, transparent) !important;'
+      - type: custom:streamline-card
+        template: lighting_automation_section_sleep_hold
+        variables:
+          toggle_entity: input_boolean.back_garden_automation_lights_enabled
+  - type: grid
+    cards:
+      - type: custom:streamline-card
+        template: rooms_popup
+      - type: custom:streamline-card
+        template: navbar_spacer
+      - type: custom:streamline-card
+        template: floating_navbar
+        variables:
+          active: rooms
+

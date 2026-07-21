@@ -1,0 +1,168 @@
+title: Mo
+path: mo
+icon: mdi:cat
+type: sections
+max_columns: 1
+sections:
+  - type: grid
+    cards:
+      - type: custom:paper-buttons-row
+        styles:
+          justify-content: flex-start
+          gap: 10px
+          align-items: center
+          margin: 0 12px 0 12px
+        buttons:
+          - layout: name
+            name: Mo
+            styles:
+              name:
+                font-size: 30px
+                font-weight: 700
+                color: var(--primary-text-color)
+              button:
+                padding: 0
+                background: none
+          - layout: name
+            name: ''
+            styles:
+              button:
+                flex: '1'
+                background: none
+                pointer-events: none
+          - layout: icon
+            icon: m3of:tune
+            tap_action:
+              action: navigate
+              navigation_path: '#mo-settings'
+            styles:
+              icon:
+                color: color-mix(in srgb, var(--primary-text-color) 45%, transparent)
+                width: 22px
+                height: 22px
+              button:
+                background: none
+                padding: 0
+                margin-right: 4px
+
+      - type: grid
+        columns: 2
+        square: false
+        cards:
+          - type: custom:mushroom-template-card
+            primary: Last ate
+            secondary: >
+              {% set eating = state_attr('sensor.mo_timeline', 'eating') %}
+              {% if eating and eating | length > 0 %}
+                {% set dt = as_datetime((eating[0].ts / 1000) | int) | as_local %}
+                {% set diff = (now().date() - dt.date()).days %}
+                {% if diff == 0 %}Today, {{ dt.strftime('%H:%M') }}
+                {% elif diff == 1 %}Yesterday, {{ dt.strftime('%H:%M') }}
+                {% else %}{{ dt.strftime('%a %d %b, %H:%M') }}{% endif %}
+              {% else %}
+                Unknown
+              {% endif %}
+            icon: mdi:bowl-mix
+            icon_color: primary
+            layout: horizontal
+            tap_action:
+              action: none
+            card_mod:
+              style: |
+                ha-card {
+                  border-radius: 8px;
+                  border: none;
+                  background: var(--md-sys-color-surface-container-high);
+                  box-shadow: none;
+                  --icon-size: 18px;
+                  --shape-color: transparent;
+                  --shape-border-radius: 0px;
+                  --spacing: 10px;
+                }
+                mushroom-state-item$ .container { padding: 10px 14px; gap: 12px; }
+                mushroom-primary-info$ .primary { font-size: 14px; font-weight: 600; }
+                mushroom-secondary-info$ .secondary { font-size: 12px; opacity: 0.55; }
+
+          - type: custom:mushroom-template-card
+            primary: Last seen
+            secondary: >
+              {% set spotted = state_attr('sensor.mo_timeline', 'spotted') %}
+              {% if spotted and spotted | length > 0 %}
+                {% set dt = as_datetime((spotted[0].ts / 1000) | int) | as_local %}
+                {% set diff = (now().date() - dt.date()).days %}
+                {% if diff == 0 %}Today, {{ dt.strftime('%H:%M') }}
+                {% elif diff == 1 %}Yesterday, {{ dt.strftime('%H:%M') }}
+                {% else %}{{ dt.strftime('%a %d %b, %H:%M') }}{% endif %}
+              {% else %}
+                Unknown
+              {% endif %}
+            icon: mdi:map-marker
+            icon_color: primary
+            layout: horizontal
+            tap_action:
+              action: none
+            card_mod:
+              style: |
+                ha-card {
+                  border-radius: 8px;
+                  border: none;
+                  background: var(--md-sys-color-surface-container-high);
+                  box-shadow: none;
+                  --icon-size: 18px;
+                  --shape-color: transparent;
+                  --shape-border-radius: 0px;
+                  --spacing: 10px;
+                }
+                mushroom-state-item$ .container { padding: 10px 14px; gap: 12px; }
+                mushroom-primary-info$ .primary { font-size: 14px; font-weight: 600; }
+                mushroom-secondary-info$ .secondary { font-size: 12px; opacity: 0.55; }
+
+      - type: custom:mo-timeline-card
+
+  - type: grid
+    cards:
+      - type: custom:streamline-card
+        template: rooms_popup
+      - type: custom:bubble-card
+        card_type: pop-up
+        hash: '#mo-settings'
+        show_header: false
+        cards:
+          - type: custom:paper-buttons-row
+            styles:
+              justify-content: flex-start
+              margin: 20px 12px 8px 12px
+            buttons:
+              - layout: name
+                name: Mo Settings
+                styles:
+                  name:
+                    font-size: 22px
+                    font-weight: 700
+                    letter-spacing: -0.3px
+                    color: var(--primary-text-color)
+                  button:
+                    padding: 0
+                    background: none
+          - type: grid
+            columns: 1
+            square: false
+            cards:
+              - type: custom:streamline-card
+                template: behaviour_toggle_row
+                variables:
+                  toggle_entity: input_boolean.mo_notifications_spotted_enabled
+                  name: Spotted notifications
+                  icon_on: mdi:cat
+                  icon_off: mdi:cat
+              - type: custom:streamline-card
+                template: behaviour_toggle_row
+                variables:
+                  toggle_entity: input_boolean.mo_notifications_eating_enabled
+                  name: Eating notifications
+                  icon_on: mdi:bowl-mix
+                  icon_off: mdi:bowl-mix
+      - type: custom:streamline-card
+        template: navbar_spacer
+      - type: custom:streamline-card
+        template: floating_navbar

@@ -1,0 +1,176 @@
+title: Parlour
+type: sections
+max_columns: 1
+path: parlour
+sections:
+  - type: grid
+    cards:
+      - type: custom:streamline-card
+        template: room_header_stack
+        variables:
+          navigation_path: /mobile-dashboard
+          title: Parlour
+          room_motion_sensor: binary_sensor.parlour_occupied
+          room_climate_entity: climate.parlour_trv
+          room_temp_sensor: sensor.parlour_sensor_climate_temperature
+          popup_hash: '#parlour-settings'
+      - type: custom:streamline-card
+        template: spacer_card
+        variables:
+          padding: 16px
+      - type: custom:streamline-card
+        template: room_tabs_scaffold
+        variables:
+          room_tab_cards:
+            - type: custom:streamline-card
+              template: lighting_scenes_section_3
+              variables:
+                title: Lighting
+                scene_1_entity: scene.parlour_all
+                scene_1_name: All
+                scene_2_entity: scene.parlour_dining
+                scene_2_name: Dining
+                scene_3_entity: scene.parlour_lamps
+                scene_3_name: Lamps
+                scene_off_entity: scene.parlour_off
+                scene_off_name: 'Off'
+                lights_group: group.parlour_lights
+                popup_hash: '#parlour-lights'
+                room: parlour
+            - type: vertical-stack
+              cards:
+                - type: custom:streamline-card
+                  template: media_title_card
+                  variables:
+                    title: Media
+                    player_1_entity: media_player.parlour
+                    player_2_entity: media_player.parlour_tv
+                - type: grid
+                  columns: 1
+                  square: false
+                  cards:
+                    - type: custom:streamline-card
+                      template: media_player_card
+                      variables:
+                        entity: media_player.parlour
+                        name: Soundbar
+                        icon: mdi:speaker-wireless
+                    - type: custom:streamline-card
+                      template: media_player_card
+                      variables:
+                        entity: media_player.parlour_tv
+                        name: Bravia TV
+                        icon: mdi:television
+          climate_tab_cards:
+            - type: custom:streamline-card
+              template: heating_mode_section
+              variables:
+                room: parlour
+                climate_entity: climate.parlour_trv
+                temp_sensor: sensor.parlour_sensor_climate_temperature
+                humidity_entity: sensor.parlour_sensor_climate_humidity
+  - type: grid
+    cards:
+      - type: custom:streamline-card
+        template: lights_popup_scaffold
+        variables:
+          popup_hash: '#parlour-lights'
+          off_scene: scene.parlour_off
+          off_label: All off
+          title: Individual Lights
+          icon: m3of:lightbulb
+          popup_cards:
+            - type: custom:streamline-card
+              template: popup_light_section
+              variables:
+                title: Accent Lighting
+                columns: 2
+                cards:
+                  - type: custom:streamline-card
+                    template: popup_switch_button
+                    variables:
+                      entity: switch.parlour_plug_table_lamp
+                      name: Table Lamp
+                  - type: custom:streamline-card
+                    template: popup_light_slider
+                    variables:
+                      entity: light.parlour_light_floor_lamp
+                      name: Floor Lamp
+            - type: custom:streamline-card
+              template: popup_light_section
+              variables:
+                title: Overhead Lighting
+                columns: 2
+                cards:
+                  - type: custom:streamline-card
+                    template: popup_light_slider
+                    variables:
+                      entity: light.parlour_light_ceiling_dining
+                      name: Dining Ceiling
+                  - type: custom:streamline-card
+                    template: popup_light_slider
+                    variables:
+                      entity: light.parlour_light_ceiling_sofa
+                      name: Sofa Ceiling
+  - type: custom:streamline-card
+    template: rooms_popup
+  - type: custom:bubble-card
+    card_type: pop-up
+    hash: '#parlour-settings'
+    show_header: false
+    cards:
+      - type: custom:paper-buttons-row
+        styles:
+          justify-content: flex-start
+          margin: 20px 12px 8px 12px
+        buttons:
+          - layout: name
+            name: Parlour Settings
+            styles:
+              name:
+                font-size: 22px
+                font-weight: 700
+                letter-spacing: -0.3px
+                color: var(--primary-text-color)
+              button:
+                padding: 0
+                background: none
+      - type: custom:streamline-card
+        template: presence_section
+        variables:
+          occupied_entity: binary_sensor.parlour_occupied
+          pir_entity: binary_sensor.parlour_sensor_motion_occupancy
+          motion_enabled_entity: input_boolean.parlour_sensor_motion_enabled
+          override_entity: input_boolean.parlour_automation_presence_override
+          contained_entity: binary_sensor.parlour_occupied_contained
+          reason_1_entity: input_boolean.parlour_automation_presence_override
+          reason_1_state: 'on'
+          reason_1_icon: m3of:person
+          reason_1_label: Override active
+          reason_2_entity: binary_sensor.parlour_occupied_contained
+          reason_2_state: 'on'
+          reason_2_icon: m3of:meeting-room
+          reason_2_label: Doors closed
+          reason_3_entity: binary_sensor.parlour_sensor_sofa_occupancy
+          reason_3_state: 'on'
+          reason_3_icon: m3of:weekend
+          reason_3_label: Sofa occupied
+          reason_4_entity: media_player.parlour
+          reason_4_state: playing
+          reason_4_icon: m3of:music-note
+          reason_4_label: Sonos playing
+      - type: custom:streamline-card
+        template: lighting_automation_section_sleep_hold
+        variables:
+          toggle_entity: input_boolean.parlour_automation_lights_enabled
+      - type: custom:streamline-card
+        template: heating_automation_section
+        variables:
+          toggle_entity: input_boolean.parlour_automation_heating_enabled
+          heating_hold_entity: binary_sensor.parlour_external_openings
+  - type: custom:streamline-card
+    template: navbar_spacer
+  - type: custom:streamline-card
+    template: floating_navbar
+    variables:
+      active: rooms

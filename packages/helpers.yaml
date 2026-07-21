@@ -1,0 +1,315 @@
+input_boolean:
+    # Motion Sensor Helpers
+    parlour_sensor_motion_enabled:
+        name: Parlour Motion Sensor Enabled
+    hallway_downstairs_sensor_motion_enabled:
+        name: Hallway Downstairs Motion Sensor Enabled
+    hallway_upstairs_sensor_motion_enabled:
+        name: Hallway Upstairs Motion Sensor Enabled
+    kitchen_sensor_motion_enabled:
+        name: Kitchen Motion Sensor Enabled
+    bedroom_sensor_motion_enabled:
+        name: Bedroom Motion Sensor Enabled
+    bathroom_sensor_motion_enabled:
+        name: Bathroom Motion Sensor Enabled
+    home_office_sensor_motion_enabled:
+        name: Home Office Motion Sensor Enabled
+    foreign_office_sensor_motion_enabled:
+        name: Foreign Office Motion Sensor Enabled
+
+    # Manual Presence Markers
+    parlour_automation_presence_override:
+        name: Parlour Presence Override
+    hallway_downstairs_automation_presence_override:
+        name: Hallway Downstairs Presence Override
+    hallway_upstairs_automation_presence_override:
+        name: Hallway Upstairs Presence Override
+    kitchen_automation_presence_override:
+        name: Kitchen Presence Override
+    bedroom_automation_presence_override:
+        name: Bedroom Presence Override
+    bathroom_automation_presence_override:
+        name: Bathroom Presence Override
+    home_office_automation_presence_override:
+        name: Home Office Presence Override
+    foreign_office_automation_presence_override:
+        name: Foreign Office Presence Override
+
+    # Test Sensors for Validation
+    test_location_sensor_motion_enabled:
+        name: Test Location Motion Sensor Enabled
+    test_location_entity_1:
+        name: Test Location Entity 1
+    test_location_entity_2:
+        name: Test Location Entity 2
+
+    # Light Automation Helpers
+    parlour_automation_lights_enabled:
+        name: Parlour Lights Automation Enabled
+    hallway_downstairs_automation_lights_enabled:
+        name: Hallway Downstairs Lights Automation Enabled
+    hallway_upstairs_automation_lights_enabled:
+        name: Hallway Upstairs Lights Automation Enabled
+    kitchen_automation_lights_enabled:
+        name: Kitchen Lights Automation Enabled
+    bedroom_automation_lights_enabled:
+        name: Bedroom Lights Automation Enabled
+    bathroom_automation_lights_enabled:
+        name: Bathroom Lights Automation Enabled
+    home_office_automation_lights_enabled:
+        name: Home Office Lights Automation Enabled
+    foreign_office_automation_lights_enabled:
+        name: Foreign Office Lights Automation Enabled
+    back_garden_automation_lights_enabled:
+        name: Back Garden Lights Automation Enabled
+
+    # Heating Automation Helpers
+    parlour_automation_heating_enabled:
+        name: Parlour Heating Automation Enabled
+    hallway_downstairs_automation_heating_enabled:
+        name: Hallway Downstairs Heating Automation Enabled
+    kitchen_automation_heating_enabled:
+        name: Kitchen Heating Automation Enabled
+    bedroom_automation_heating_enabled:
+        name: Bedroom Heating Automation Enabled
+    bathroom_automation_heating_enabled:
+        name: Bathroom Heating Automation Enabled
+    home_office_automation_heating_enabled:
+        name: Home Office Heating Automation Enabled
+    foreign_office_automation_heating_enabled:
+        name: Foreign Office Heating Automation Enabled
+    foreign_office_automation_heating_independent:
+        name: Foreign Office Heating Independent (not governed by house_heating_enabled)
+    patio_door_heating_suspended:
+        name: Patio Door Heating Suspended (restored on close)
+
+    # Sonos Automation Helpers
+    kitchen_automation_sonos_enabled:
+        name: Kitchen Sonos Automation Enabled
+    home_office_automation_sonos_enabled:
+        name: Home Office Sonos Automation Enabled
+
+    # WFH Helpers
+    wfh_adam:
+        name: WFH Adam
+    wfh_sarah:
+        name: WFH Sarah
+
+    # Heating Helpers
+    house_heating_enabled:
+        name: House Heating Enabled
+
+    # Mo Notification Helpers
+    mo_notifications_spotted_enabled:
+        name: Mo Notifications Spotted Enabled
+    mo_notifications_eating_enabled:
+        name: Mo Notifications Eating Enabled
+
+input_number:
+    # Heating Temperatures
+    global_temperature_minimum:
+        name: Global Minimum Temperature
+        min: 0
+        max: 25
+        step: 0.5
+    global_temperature_baseline_night:
+        name: Global Baseline Night Temperature
+        min: 0
+        max: 25
+        step: 0.5
+    global_temperature_baseline_day:
+        name: Global Baseline Day Temperature
+        min: 0
+        max: 25
+        step: 0.5
+    global_temperature_comfort:
+        name: Global Comfort Temperature
+        min: 0
+        max: 25
+        step: 0.5
+
+    # Lux Settings Per Room
+    parlour_automation_lux_threshold_dark:
+        name: Parlour Lux Threshold Dark
+        min: 0
+        max: 500
+        step: 1
+        mode: box
+    hallway_downstairs_automation_lux_threshold_dark:
+        name: Hallway Downstairs Lux Threshold Dark
+        min: 0
+        max: 500
+        step: 1
+        mode: box
+    hallway_upstairs_automation_lux_threshold_dark:
+        name: Hallway Upstairs Lux Threshold Dark
+        min: 0
+        max: 500
+        step: 1
+        mode: box
+    kitchen_automation_lux_threshold_dark:
+        name: Kitchen Lux Threshold Dark
+        min: 0
+        max: 500
+        step: 1
+        mode: box
+    bedroom_automation_lux_threshold_dark:
+        name: Bedroom Lux Threshold Dark
+        min: 0
+        max: 500
+        step: 1
+        mode: box
+    bathroom_automation_lux_threshold_dark:
+        name: Bathroom Lux Threshold Dark
+        min: 0
+        max: 500
+        step: 1
+        mode: box
+    home_office_automation_lux_threshold_dark:
+        name: Home Office Lux Threshold Dark
+        min: 0
+        max: 500
+        step: 1
+        mode: box
+    foreign_office_automation_lux_threshold_dark:
+        name: Foreign Office Lux Threshold Dark
+        min: 0
+        max: 500
+        step: 1
+        mode: box
+
+    # Weather Forecast Helpers
+    weather_forecast_outside_high_today:
+      name: Weather Forecast Outside High Today
+      min: -20
+      max: 50
+      step: 0.1
+
+    weather_forecast_outside_low_today:
+      name: Weather Forecast Outside Low Today
+      min: -20
+      max: 50
+      step: 0.1
+
+    # Window Thermal Management
+    bedroom_automation_window_frame_threshold:
+        name: Bedroom Window Frame Threshold
+        min: 20
+        max: 60
+        step: 0.5
+        unit_of_measurement: "°C"
+    bedroom_automation_window_open_delta:
+        name: Bedroom Window Open Delta
+        min: 0.5
+        max: 10
+        step: 0.5
+        unit_of_measurement: "°C"
+    bedroom_automation_window_open_hour:
+        name: Bedroom Window Open Hour
+        min: 12
+        max: 22
+        step: 1
+
+    # Foreign Office Door Ventilation
+    foreign_office_automation_door_open_delta:
+        name: Foreign Office Door Open Delta
+        min: 0.5
+        max: 10
+        step: 0.5
+        unit_of_measurement: "°C"
+    foreign_office_automation_door_notification_cooldown_mins:
+        name: Foreign Office Door Notification Cooldown
+        min: 15
+        max: 240
+        step: 15
+        unit_of_measurement: "min"
+
+input_select:
+    house_active_mode_modifier:
+        name: House Active Mode Modifier
+        options:
+            - none
+            - guest
+            - sitter
+
+    parlour_active_heating_mode:
+        name: Parlour Active Heating Mode
+        options:
+            - comfort
+            - baseline_day
+            - baseline_night
+            - minimum
+
+    kitchen_active_heating_mode:
+        name: Kitchen Active Heating Mode
+        options:
+            - comfort
+            - baseline_day
+            - baseline_night
+            - minimum
+
+    hallway_downstairs_active_heating_mode:
+        name: Hallway Downstairs Active Heating Mode
+        options:
+            - comfort
+            - baseline_day
+            - baseline_night
+            - minimum
+
+    bedroom_active_heating_mode:
+        name: Bedroom Active Heating Mode
+        options:
+            - comfort
+            - baseline_day
+            - baseline_night
+            - minimum
+
+    bathroom_active_heating_mode:
+        name: Bathroom Active Heating Mode
+        options:
+            - comfort
+            - baseline_day
+            - baseline_night
+            - minimum
+
+    home_office_active_heating_mode:
+        name: Home Office Active Heating Mode
+        options:
+            - comfort
+            - baseline_day
+            - baseline_night
+            - minimum
+
+    foreign_office_active_heating_mode:
+        name: Foreign Office Active Heating Mode
+        options:
+            - comfort
+            - baseline_day
+            - baseline_night
+            - minimum
+
+input_text:
+    outdoor_temp_7day_history:
+        name: Outdoor Temp 7-Day History
+        max: 255
+    window_notification_close_bedroom:
+        name: Window Notification - Close Bedroom (last sent date)
+        max: 10
+    window_notification_close_home_office:
+        name: Window Notification - Close Home Office (last sent date)
+        max: 10
+    window_notification_close_both:
+        name: Window Notification - Close Both (last sent date)
+        max: 10
+    window_notification_open_both:
+        name: Window Notification - Open Both (last sent date)
+        max: 10
+    window_thermal_hot_event:
+        name: Window Thermal - Hot Event (last date thermal conditions were met)
+        max: 10
+    foreign_office_notification_door_open_last:
+        name: Foreign Office Door Notification - Open (last sent timestamp)
+        max: 25
+    foreign_office_notification_door_close_last:
+        name: Foreign Office Door Notification - Close (last sent timestamp)
+        max: 25

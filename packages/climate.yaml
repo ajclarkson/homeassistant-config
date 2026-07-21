@@ -1,0 +1,13 @@
+climate:
+    - platform: generic_thermostat
+      unique_id: climate.foreign_office
+      name: Foreign Office
+      heater: switch.foreign_office_plug_heater
+      target_sensor: sensor.foreign_office_sensor_climate_temperature
+      min_temp: 0
+      max_temp: 30
+      ac_mode: false
+      min_cycle_duration:
+          seconds: 60
+      away_temp: 5
+      target_temp: 17.5

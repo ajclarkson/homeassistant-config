@@ -1,0 +1,140 @@
+title: Climate
+path: climate
+type: sections
+max_columns: 1
+sections:
+  - type: grid
+    cards:
+      - type: custom:paper-buttons-row
+        styles:
+          justify-content: flex-start
+          gap: 10px
+          align-items: center
+          margin: 0 12px 0 12px
+        buttons:
+          - layout: name
+            name: Climate
+            styles:
+              name:
+                font-size: 30px
+                font-weight: 700
+                color: var(--primary-text-color)
+              button:
+                padding: 0
+                background: none
+          - layout: name
+            name: >
+              {% if is_state('input_boolean.house_heating_enabled', 'off') %}● Disabled{% elif is_state('binary_sensor.house_heating_boiler_firing', 'on') %}● Heating{% else %}● Idle{% endif %}
+            styles:
+              name:
+                font-size: 11px
+                font-weight: 600
+                letter-spacing: 0.3px
+                color: >
+                  {% if is_state('input_boolean.house_heating_enabled', 'off') %}color-mix(in srgb, var(--md-sys-color-error) 80%, white){% elif is_state('binary_sensor.house_heating_boiler_firing', 'on') %}color-mix(in srgb, var(--md-sys-color-primary) 85%, white){% else %}rgba(255,255,255,0.28){% endif %}
+              button:
+                padding: 3px 8px
+                background: >
+                  {% if is_state('input_boolean.house_heating_enabled', 'off') %}color-mix(in srgb, var(--md-sys-color-error) 10%, transparent){% elif is_state('binary_sensor.house_heating_boiler_firing', 'on') %}color-mix(in srgb, var(--md-sys-color-primary) 14%, transparent){% else %}rgba(255,255,255,0.05){% endif %}
+                border-radius: 999px
+          - layout: name
+            name: ''
+            styles:
+              button:
+                flex: '1'
+                background: none
+                pointer-events: none
+          - layout: icon
+            icon: m3of:tune
+            tap_action:
+              action: navigate
+              navigation_path: '#climate_settings'
+            styles:
+              icon:
+                color: color-mix(in srgb, var(--primary-text-color) 45%, transparent)
+                width: 22px
+                height: 22px
+              button:
+                background: none
+                padding: 0
+                margin-right: 4px
+      - type: custom:streamline-card
+        template: spacer_card
+        variables:
+          padding: 8px
+      - type: custom:streamline-card
+        template: climate_ambient_summary
+      - type: custom:streamline-card
+        template: climate_row_card
+        variables:
+          name: Parlour
+          icon: m3of:weekend
+          navigation_path: /mobile-dashboard/parlour
+          climate_entity: climate.parlour_trv
+          temp_entity: sensor.parlour_sensor_climate_temperature
+          humidity_entity: sensor.parlour_sensor_climate_humidity
+      - type: custom:streamline-card
+        template: climate_row_card
+        variables:
+          name: Kitchen
+          icon: m3of:kitchen
+          navigation_path: /mobile-dashboard/kitchen
+          climate_entity: climate.kitchen_trv
+          temp_entity: sensor.kitchen_sensor_climate_temperature
+          humidity_entity: sensor.kitchen_sensor_climate_humidity
+      - type: custom:streamline-card
+        template: climate_row_card
+        variables:
+          name: Hallway
+          icon: m3of:stairs
+          navigation_path: /mobile-dashboard/hallway
+          climate_entity: climate.hallway_trv
+          temp_entity: sensor.hallway_downstairs_sensor_motion_temperature
+          humidity_entity: sensor.hallway_upstairs_sensor_climate_humidity
+      - type: custom:streamline-card
+        template: climate_row_card
+        variables:
+          name: Bedroom
+          icon: m3of:bed
+          navigation_path: /mobile-dashboard/bedroom
+          climate_entity: climate.bedroom_trv
+          temp_entity: sensor.bedroom_sensor_climate_temperature
+          humidity_entity: sensor.bedroom_sensor_climate_humidity
+      - type: custom:streamline-card
+        template: climate_row_card
+        variables:
+          name: Bathroom
+          icon: m3of:shower
+          navigation_path: /mobile-dashboard/bathroom
+          climate_entity: climate.bathroom_trv
+          temp_entity: sensor.bathroom_sensor_climate_temperature
+          humidity_entity: sensor.bathroom_sensor_climate_humidity
+      - type: custom:streamline-card
+        template: climate_row_card
+        variables:
+          name: Home Office
+          icon: m3of:desk
+          navigation_path: /mobile-dashboard/home-office
+          climate_entity: climate.home_office_trv
+          temp_entity: sensor.home_office_sensor_climate_temperature
+          humidity_entity: sensor.home_office_sensor_climate_humidity
+      - type: custom:streamline-card
+        template: climate_row_card
+        variables:
+          name: Foreign Office
+          icon: m3of:desk
+          navigation_path: /mobile-dashboard/foreign-office
+          climate_entity: climate.foreign_office
+          humidity_entity: sensor.foreign_office_sensor_climate_humidity
+  - type: grid
+    cards:
+      - type: custom:streamline-card
+        template: rooms_popup
+      - type: custom:streamline-card
+        template: navbar_spacer
+      - type: custom:streamline-card
+        template: floating_navbar
+        variables:
+          active: climate
+      - type: custom:streamline-card
+        template: climate_settings_popup

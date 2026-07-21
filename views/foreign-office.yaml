@@ -1,0 +1,130 @@
+title: Foreign Office
+type: sections
+max_columns: 1
+path: foreign-office
+sections:
+  - type: grid
+    cards:
+      - type: custom:streamline-card
+        template: room_header_stack
+        variables:
+          navigation_path: /mobile-dashboard
+          title: Foreign Office
+          room_motion_sensor: binary_sensor.foreign_office_occupied
+          room_climate_entity: climate.foreign_office
+          popup_hash: '#foreign-office-settings'
+      - type: custom:streamline-card
+        template: spacer_card
+        variables:
+          padding: 16px
+      - type: custom:streamline-card
+        template: room_tabs_scaffold
+        variables:
+          room_tab_cards:
+            - type: vertical-stack
+              cards:
+                - type: custom:streamline-card
+                  template: lighting_title_card
+                  variables:
+                    title: Lighting
+                    lights_group: group.foreign_office_lights
+                    popup_hash: '#foreign-office-lights'
+                - type: grid
+                  columns: 2
+                  square: false
+                  cards:
+                    - type: custom:streamline-card
+                      template: scene_card
+                      variables:
+                        entity: scene.foreign_office_all
+                        name: All
+                        room: foreign_office
+                    - type: custom:streamline-card
+                      template: scene_card
+                      variables:
+                        entity: scene.foreign_office_off
+                        name: 'Off'
+                        room: foreign_office
+                        default_icon: 'mdi:power'
+                        inactive_bg_opacity: '52%'
+                        label_color_override: 'color: color-mix(in srgb, var(--primary-text-color) 40%, transparent);'
+                        icon_color_override: 'color: color-mix(in srgb, var(--primary-text-color) 30%, transparent) !important;'
+          climate_tab_cards:
+            - type: custom:streamline-card
+              template: heating_mode_section
+              variables:
+                room: foreign_office
+                climate_entity: climate.foreign_office
+                humidity_entity: sensor.foreign_office_sensor_climate_humidity
+  - type: grid
+    cards:
+      - type: custom:streamline-card
+        template: lights_popup_scaffold
+        variables:
+          popup_hash: '#foreign-office-lights'
+          off_scene: scene.foreign_office_off
+          off_label: All off
+          title: Individual Lights
+          icon: m3of:lightbulb
+          popup_cards:
+            - type: custom:streamline-card
+              template: popup_light_section
+              variables:
+                title: Main Light
+                columns: 1
+                cards:
+                  - type: custom:streamline-card
+                    template: popup_light_slider
+                    variables:
+                      entity: light.dig_uno_v3
+                      name: Main
+  - type: custom:streamline-card
+    template: rooms_popup
+  - type: custom:bubble-card
+    card_type: pop-up
+    hash: '#foreign-office-settings'
+    show_header: false
+    cards:
+      - type: custom:paper-buttons-row
+        styles:
+          justify-content: flex-start
+          margin: 20px 12px 8px 12px
+        buttons:
+          - layout: name
+            name: Foreign Office Settings
+            styles:
+              name:
+                font-size: 22px
+                font-weight: 700
+                letter-spacing: -0.3px
+                color: var(--primary-text-color)
+              button:
+                padding: 0
+                background: none
+      - type: custom:streamline-card
+        template: presence_section
+        variables:
+          occupied_entity: binary_sensor.foreign_office_occupied
+          pir_entity: binary_sensor.foreign_office_sensor_motion_occupancy
+          motion_enabled_entity: input_boolean.foreign_office_sensor_motion_enabled
+          override_entity: input_boolean.foreign_office_automation_presence_override
+          contained_entity: binary_sensor.foreign_office_occupied_contained
+          reason_1_entity: binary_sensor.foreign_office_occupied_contained
+          reason_1_state: 'on'
+          reason_1_icon: m3of:meeting-room
+          reason_1_label: Doors closed
+      - type: custom:streamline-card
+        template: lighting_automation_section_sleep_hold
+        variables:
+          toggle_entity: input_boolean.foreign_office_automation_lights_enabled
+      - type: custom:streamline-card
+        template: heating_automation_section
+        variables:
+          toggle_entity: input_boolean.foreign_office_automation_heating_enabled
+          heating_hold_entity: binary_sensor.foreign_office_external_openings
+  - type: custom:streamline-card
+    template: navbar_spacer
+  - type: custom:streamline-card
+    template: floating_navbar
+    variables:
+      active: rooms

@@ -1,0 +1,572 @@
+template:
+  # Octopus Agile Helpers
+  - sensor:
+      - name: "Bin Collection Min Days"
+        unique_id: bin_collection_min_days
+        state: >
+          {{ [
+            states('sensor.st_albans_collect_domestic_food_days_until_collection') | int(99),
+            states('sensor.st_albans_collect_domestic_paid_garden_days_until_collection') | int(99),
+            states('sensor.st_albans_collect_domestic_recycling_days_until_collection') | int(99),
+            states('sensor.st_albans_collect_domestic_refuse_days_until_collection') | int(99)
+          ] | min }}
+        unit_of_measurement: days
+        icon: mdi:delete-clock
+
+      - name: "Cheapest 2h Waking Start"
+        icon: mdi:clock-start
+        state: >
+          {% set t = state_attr('binary_sensor.octopus_energy_target_cheapest_2h_waking_hours','next_time') %}
+          {% if t %}
+            {{ as_local(as_datetime(t)).strftime('%H:%M') }}
+          {% else %}
+            unknown
+          {% endif %}
+
+      - name: "Cheapest 2h Waking End"
+        icon: mdi:clock-end
+        state: >
+          {% set t = state_attr('binary_sensor.octopus_energy_target_cheapest_2h_waking_hours','next_time') %}
+          {% set dur = state_attr('binary_sensor.octopus_energy_target_cheapest_2h_waking_hours','next_duration_in_hours') | float(0) %}
+          {% if t and dur > 0 %}
+            {{ (as_local(as_datetime(t)) + timedelta(hours=dur)).strftime('%H:%M') }}
+          {% else %}
+            unknown
+          {% endif %}
+
+      - name: "Cheapest 2h Waking Avg Rate"
+        icon: mdi:currency-gbp
+        unit_of_measurement: "p/kWh"
+        state: >
+          {% set v = state_attr('binary_sensor.octopus_energy_target_cheapest_2h_waking_hours','next_average_value') | float(none) %}
+          {% if v is not none %}
+            {{ (v * 100) | round(2) }}
+          {% else %}
+            unknown
+          {% endif %}
+
+      - name: "Octopus Today Negative Windows"
+        unique_id: octopus_today_negative_windows
+        icon: mdi:lightning-bolt
+        state: >
+          {% set src = 'sensor.target_timeframes_octopus_energy_24e8140196_1012483035417_data_source_last_updated' %}
+          {% set slots = state_attr(src, 'data') or [] %}
+          {% set today = now().strftime('%Y-%m-%d') %}
+          {% set q = namespace(items=[]) %}
+          {% for slot in slots | sort(attribute='start') %}
+            {% set sl = as_local(slot.start) %}
+            {% if sl.strftime('%Y-%m-%d') == today and slot.value | float(0) < 0 %}
+              {% set q.items = q.items + [slot] %}
+            {% endif %}
+          {% endfor %}
+          {% if q.items | length == 0 %}
+            —
+          {% else %}
+            {% set ns = namespace(windows=[], ws=none, we=none, wr=[]) %}
+            {% for slot in q.items %}
+              {% set s = as_local(slot.start) %}
+              {% set e = as_local(slot.end) %}
+              {% if ns.ws is none %}
+                {% set ns.ws = s %}{% set ns.we = e %}{% set ns.wr = [slot.value | float] %}
+              {% elif s == ns.we %}
+                {% set ns.we = e %}{% set ns.wr = ns.wr + [slot.value | float] %}
+              {% else %}
+                {% set avg = (ns.wr | sum / ns.wr | length * 100) | round(1) %}
+                {% set ns.windows = ns.windows + [ns.ws.strftime('%H:%M') ~ '–' ~ ns.we.strftime('%H:%M') ~ ' (' ~ avg ~ 'p)'] %}
+                {% set ns.ws = s %}{% set ns.we = e %}{% set ns.wr = [slot.value | float] %}
+              {% endif %}
+            {% endfor %}
+            {% set avg = (ns.wr | sum / ns.wr | length * 100) | round(1) %}
+            {% set ns.windows = ns.windows + [ns.ws.strftime('%H:%M') ~ '–' ~ ns.we.strftime('%H:%M') ~ ' (' ~ avg ~ 'p)'] %}
+            {{ ns.windows | join(' · ') }}
+          {% endif %}
+
+      - name: "Octopus Today Cheap Windows"
+        unique_id: octopus_today_cheap_windows
+        icon: mdi:tag-outline
+        state: >
+          {% set src = 'sensor.target_timeframes_octopus_energy_24e8140196_1012483035417_data_source_last_updated' %}
+          {% set slots = state_attr(src, 'data') or [] %}
+          {% set today = now().strftime('%Y-%m-%d') %}
+          {% set q = namespace(items=[]) %}
+          {% for slot in slots | sort(attribute='start') %}
+            {% set sl = as_local(slot.start) %}
+            {% set v = slot.value | float(99) %}
+            {% if sl.strftime('%Y-%m-%d') == today and v >= 0 and v < 0.10 %}
+              {% set q.items = q.items + [slot] %}
+            {% endif %}
+          {% endfor %}
+          {% if q.items | length == 0 %}
+            —
+          {% else %}
+            {% set ns = namespace(windows=[], ws=none, we=none, wr=[]) %}
+            {% for slot in q.items %}
+              {% set s = as_local(slot.start) %}
+              {% set e = as_local(slot.end) %}
+              {% if ns.ws is none %}
+                {% set ns.ws = s %}{% set ns.we = e %}{% set ns.wr = [slot.value | float] %}
+              {% elif s == ns.we %}
+                {% set ns.we = e %}{% set ns.wr = ns.wr + [slot.value | float] %}
+              {% else %}
+                {% set avg = (ns.wr | sum / ns.wr | length * 100) | round(1) %}
+                {% set ns.windows = ns.windows + [ns.ws.strftime('%H:%M') ~ '–' ~ ns.we.strftime('%H:%M') ~ ' (' ~ avg ~ 'p)'] %}
+                {% set ns.ws = s %}{% set ns.we = e %}{% set ns.wr = [slot.value | float] %}
+              {% endif %}
+            {% endfor %}
+            {% set avg = (ns.wr | sum / ns.wr | length * 100) | round(1) %}
+            {% set ns.windows = ns.windows + [ns.ws.strftime('%H:%M') ~ '–' ~ ns.we.strftime('%H:%M') ~ ' (' ~ avg ~ 'p)'] %}
+            {{ ns.windows | join(' · ') }}
+          {% endif %}
+
+      - name: "Octopus Tomorrow Negative Windows"
+        unique_id: octopus_tomorrow_negative_windows
+        icon: mdi:lightning-bolt
+        state: >
+          {% set src = 'sensor.target_timeframes_octopus_energy_24e8140196_1012483035417_data_source_last_updated' %}
+          {% set slots = state_attr(src, 'data') or [] %}
+          {% set tomorrow = (now() + timedelta(days=1)).strftime('%Y-%m-%d') %}
+          {% set q = namespace(items=[]) %}
+          {% for slot in slots | sort(attribute='start') %}
+            {% set sl = as_local(slot.start) %}
+            {% if sl.strftime('%Y-%m-%d') == tomorrow and slot.value | float(0) < 0 %}
+              {% set q.items = q.items + [slot] %}
+            {% endif %}
+          {% endfor %}
+          {% if q.items | length == 0 %}
+            —
+          {% else %}
+            {% set ns = namespace(windows=[], ws=none, we=none, wr=[]) %}
+            {% for slot in q.items %}
+              {% set s = as_local(slot.start) %}
+              {% set e = as_local(slot.end) %}
+              {% if ns.ws is none %}
+                {% set ns.ws = s %}{% set ns.we = e %}{% set ns.wr = [slot.value | float] %}
+              {% elif s == ns.we %}
+                {% set ns.we = e %}{% set ns.wr = ns.wr + [slot.value | float] %}
+              {% else %}
+                {% set avg = (ns.wr | sum / ns.wr | length * 100) | round(1) %}
+                {% set ns.windows = ns.windows + [ns.ws.strftime('%H:%M') ~ '–' ~ ns.we.strftime('%H:%M') ~ ' (' ~ avg ~ 'p)'] %}
+                {% set ns.ws = s %}{% set ns.we = e %}{% set ns.wr = [slot.value | float] %}
+              {% endif %}
+            {% endfor %}
+            {% set avg = (ns.wr | sum / ns.wr | length * 100) | round(1) %}
+            {% set ns.windows = ns.windows + [ns.ws.strftime('%H:%M') ~ '–' ~ ns.we.strftime('%H:%M') ~ ' (' ~ avg ~ 'p)'] %}
+            {{ ns.windows | join(' · ') }}
+          {% endif %}
+
+      - name: "Octopus Tomorrow Cheap Windows"
+        unique_id: octopus_tomorrow_cheap_windows
+        icon: mdi:tag-outline
+        state: >
+          {% set src = 'sensor.target_timeframes_octopus_energy_24e8140196_1012483035417_data_source_last_updated' %}
+          {% set slots = state_attr(src, 'data') or [] %}
+          {% set tomorrow = (now() + timedelta(days=1)).strftime('%Y-%m-%d') %}
+          {% set q = namespace(items=[]) %}
+          {% for slot in slots | sort(attribute='start') %}
+            {% set sl = as_local(slot.start) %}
+            {% set v = slot.value | float(99) %}
+            {% if sl.strftime('%Y-%m-%d') == tomorrow and v >= 0 and v < 0.10 %}
+              {% set q.items = q.items + [slot] %}
+            {% endif %}
+          {% endfor %}
+          {% if q.items | length == 0 %}
+            —
+          {% else %}
+            {% set ns = namespace(windows=[], ws=none, we=none, wr=[]) %}
+            {% for slot in q.items %}
+              {% set s = as_local(slot.start) %}
+              {% set e = as_local(slot.end) %}
+              {% if ns.ws is none %}
+                {% set ns.ws = s %}{% set ns.we = e %}{% set ns.wr = [slot.value | float] %}
+              {% elif s == ns.we %}
+                {% set ns.we = e %}{% set ns.wr = ns.wr + [slot.value | float] %}
+              {% else %}
+                {% set avg = (ns.wr | sum / ns.wr | length * 100) | round(1) %}
+                {% set ns.windows = ns.windows + [ns.ws.strftime('%H:%M') ~ '–' ~ ns.we.strftime('%H:%M') ~ ' (' ~ avg ~ 'p)'] %}
+                {% set ns.ws = s %}{% set ns.we = e %}{% set ns.wr = [slot.value | float] %}
+              {% endif %}
+            {% endfor %}
+            {% set avg = (ns.wr | sum / ns.wr | length * 100) | round(1) %}
+            {% set ns.windows = ns.windows + [ns.ws.strftime('%H:%M') ~ '–' ~ ns.we.strftime('%H:%M') ~ ' (' ~ avg ~ 'p)'] %}
+            {{ ns.windows | join(' · ') }}
+          {% endif %}
+
+  # Sonos Helpers
+  - binary_sensor:
+      - name: "Kitchen grouped with Parlour"
+        unique_id: kitchen_grouped_with_parlour
+        state: >
+          {% set members = state_attr('media_player.kitchen', 'group_members') or [] %}
+          {{ 'media_player.parlour' in members }}
+        icon: >
+          {% if is_state('binary_sensor.kitchen_grouped_with_parlour','on') %}
+            mdi:speaker-multiple
+          {% else %}
+            mdi:speaker
+          {% endif %}
+
+  - binary_sensor:
+      - name: "Home Office grouped with Parlour"
+        unique_id: home_office_grouped_with_parlour
+        state: >
+          {% set members = state_attr('media_player.home_office', 'group_members') or [] %}
+          {{ 'media_player.parlour' in members }}
+        icon: >
+          {% if is_state('binary_sensor.home_office_grouped_with_parlour','on') %}
+            mdi:speaker-multiple
+          {% else %}
+            mdi:speaker
+          {% endif %}
+
+  - binary_sensor:
+      - name: "Speaker of the House grouped with Parlour"
+        unique_id: speaker_of_the_house_grouped_with_parlour
+        state: >
+          {% set members = state_attr('media_player.speaker_of_the_house', 'group_members') or [] %}
+          {{ 'media_player.parlour' in members }}
+        icon: >
+          {% if is_state('binary_sensor.speaker_of_the_house_grouped_with_parlour','on') %}
+            mdi:speaker-multiple
+          {% else %}
+            mdi:speaker
+          {% endif %}
+
+  - binary_sensor:
+      - name: "Octopus Tomorrow Data Available"
+        unique_id: octopus_tomorrow_data_available
+        icon: mdi:clock-check-outline
+        state: >
+          {% set src = 'sensor.target_timeframes_octopus_energy_24e8140196_1012483035417_data_source_last_updated' %}
+          {% set slots = state_attr(src, 'data') or [] %}
+          {% set tomorrow = (now() + timedelta(days=1)).strftime('%Y-%m-%d') %}
+          {% set found = namespace(v=false) %}
+          {% for slot in slots %}
+            {% if as_local(slot.start).strftime('%Y-%m-%d') == tomorrow %}
+              {% set found.v = true %}
+            {% endif %}
+          {% endfor %}
+          {{ found.v }}
+
+  - sensor:
+      - name: House Climate Debug
+        unique_id: house_climate_debug
+        state: ok
+        attributes:
+          climates: >-
+            {{
+              [
+                {
+                  "key": "parlour",
+                  "name": "Parlour",
+                  "icon": "m3of:weekend",
+                  "nav": "/mobile-dashboard/parlour",
+                  "climate": "climate.parlour_trv",
+                  "temp_sensor": "sensor.parlour_sensor_climate_temperature",
+                  "humidity": "sensor.parlour_sensor_climate_humidity",
+                  "exclude_from_house_stats": false
+                },
+                {
+                  "key": "kitchen",
+                  "name": "Kitchen",
+                  "icon": "m3of:kitchen",
+                  "nav": "/mobile-dashboard/kitchen",
+                  "climate": "climate.kitchen_trv",
+                  "temp_sensor": "sensor.kitchen_sensor_climate_temperature",
+                  "humidity": "sensor.kitchen_sensor_climate_humidity",
+                  "exclude_from_house_stats": false
+                },
+                {
+                  "key": "hallway",
+                  "name": "Hallway",
+                  "icon": "m3of:stairs",
+                  "nav": "/mobile-dashboard/hallway",
+                  "climate": "climate.hallway_trv",
+                  "temp_sensor": "sensor.hallway_upstairs_sensor_climate_temperature",
+                  "humidity": "sensor.hallway_upstairs_climate_humidity",
+                  "exclude_from_house_stats": false
+                },
+                {
+                  "key": "bedroom",
+                  "name": "Bedroom",
+                  "icon": "m3of:bed",
+                  "nav": "/mobile-dashboard/bedroom",
+                  "climate": "climate.bedroom_trv",
+                  "temp_sensor": "sensor.bedroom_sensor_climate_temperature",
+                  "humidity": "sensor.bedroom_sensor_climate_humidity",
+                  "exclude_from_house_stats": false
+                },
+                {
+                  "key": "bathroom",
+                  "name": "Bathroom",
+                  "icon": "m3of:shower",
+                  "nav": "/mobile-dashboard/bathroom",
+                  "climate": "climate.bathroom_trv",
+                  "temp_sensor": "sensor.bathroom_sensor_climate_temperature",
+                  "humidity": "sensor.bathroom_sensor_climate_humidity",
+                  "exclude_from_house_stats": false
+                },
+                {
+                  "key": "home_office",
+                  "name": "Home Office",
+                  "icon": "m3of:desk",
+                  "nav": "/mobile-dashboard/home-office",
+                  "climate": "climate.home_office_trv",
+                  "temp_sensor": "sensor.home_office_sensor_climate_temperature",
+                  "humidity": "sensor.home_office_sensor_climate_humidity",
+                  "exclude_from_house_stats": false
+                },
+                {
+                  "key": "foreign_office",
+                  "name": "Foreign Office",
+                  "icon": "m3of:desk",
+                  "nav": "/mobile-dashboard/foreign-office",
+                  "climate": "climate.foreign_office",
+                  "temp_sensor": "sensor.foreign_office_sensor_climate_temperature",
+                  "humidity": "sensor.foreign_office_sensor_climate_humidity",
+                  "exclude_from_house_stats": true
+                }
+              ] | tojson
+            }}
+
+      - name: House Average Temperature
+        unique_id: house_average_temperature
+        unit_of_measurement: "°C"
+        state: >-
+          {% set rooms = (state_attr('sensor.house_climate_debug','climates') | default('[]')) | from_json %}
+          {% set temps = namespace(vals=[]) %}
+          {% for r in rooms %}
+            {% if not (r.exclude_from_house_stats | default(false)) %}
+              {% set t = states(r.temp_sensor) | float(-1) if r.temp_sensor is defined else -1 %}
+              {% if t == -1 %}
+                {% set t = state_attr(r.climate, 'current_temperature') %}
+              {% endif %}
+              {% if t is number and t > -1 %}
+                {% set temps.vals = temps.vals + [t] %}
+              {% endif %}
+            {% endif %}
+          {% endfor %}
+          {% if temps.vals | length == 0 %}
+            unknown
+          {% else %}
+            {{ (temps.vals | sum / (temps.vals | length)) | round(1) }}
+          {% endif %}
+
+      - name: House Heating Rooms
+        unique_id: house_heating_rooms
+        state: >-
+          {% set rooms = (state_attr('sensor.house_climate_debug','climates') | default('[]')) | from_json %}
+          {% set n = namespace(count=0) %}
+          {% for r in rooms %}
+            {% if not (r.exclude_from_house_stats | default(false)) %}
+              {% if state_attr(r.climate, 'hvac_action') == 'heating' %}
+                {% set n.count = n.count + 1 %}
+              {% endif %}
+            {% endif %}
+          {% endfor %}
+          {{ n.count }}
+        attributes:
+          names: >-
+            {% set rooms = (state_attr('sensor.house_climate_debug','climates') | default('[]')) | from_json %}
+            {% set out = namespace(items=[]) %}
+            {% for r in rooms %}
+              {% if not (r.exclude_from_house_stats | default(false)) and state_attr(r.climate, 'hvac_action') == 'heating' %}
+                {% set out.items = out.items + [r.name] %}
+              {% endif %}
+            {% endfor %}
+            {{ out.items | join(', ') }}
+
+      - name: House Warmest Room
+        unique_id: house_warmest_room
+        state: >-
+          {% set rooms = (state_attr('sensor.house_climate_debug','climates') | default('[]')) | from_json %}
+          {% set best = namespace(name='unknown', temp=none) %}
+          {% for r in rooms %}
+            {% if not (r.exclude_from_house_stats | default(false)) %}
+              {% set t = state_attr(r.climate, 'current_temperature') %}
+              {% if t is number and (best.temp is none or t > best.temp) %}
+                {% set best.temp = t %}
+                {% set best.name = r.name %}
+              {% endif %}
+            {% endif %}
+          {% endfor %}
+          {{ best.name }}
+        attributes:
+          temp: >-
+            {% set rooms = (state_attr('sensor.house_climate_debug','climates') | default('[]')) | from_json %}
+            {% set best = namespace(temp=none) %}
+            {% for r in rooms %}
+              {% if not (r.exclude_from_house_stats | default(false)) %}
+                {% set t = state_attr(r.climate, 'current_temperature') %}
+                {% if t is number and (best.temp is none or t > best.temp) %}
+                  {% set best.temp = t %}
+                {% endif %}
+              {% endif %}
+            {% endfor %}
+            {% if best.temp is none %}unknown{% else %}{{ best.temp | round(1) }}{% endif %}
+
+      - name: House Coldest Room
+        unique_id: house_coldest_room
+        state: >-
+          {% set rooms = (state_attr('sensor.house_climate_debug','climates') | default('[]')) | from_json %}
+          {% set best = namespace(name='unknown', temp=none) %}
+          {% for r in rooms %}
+            {% if not (r.exclude_from_house_stats | default(false)) %}
+              {% set t = state_attr(r.climate, 'current_temperature') %}
+              {% if t is number and (best.temp is none or t < best.temp) %}
+                {% set best.temp = t %}
+                {% set best.name = r.name %}
+              {% endif %}
+            {% endif %}
+          {% endfor %}
+          {{ best.name }}
+        attributes:
+          temp: >-
+            {% set rooms = (state_attr('sensor.house_climate_debug','climates') | default('[]')) | from_json %}
+            {% set best = namespace(temp=none) %}
+            {% for r in rooms %}
+              {% if not (r.exclude_from_house_stats | default(false)) %}
+                {% set t = state_attr(r.climate, 'current_temperature') %}
+                {% if t is number and (best.temp is none or t < best.temp) %}
+                  {% set best.temp = t %}
+                {% endif %}
+              {% endif %}
+            {% endfor %}
+            {% if best.temp is none %}unknown{% else %}{{ best.temp | round(1) }}{% endif %}
+
+      - name: House Climate Temps Debug
+        unique_id: house_climate_temps_debug
+        state: ok
+        attributes:
+          temps: >-
+            {% set rooms = (state_attr('sensor.house_climate_debug','climates') | default('[]')) | from_json %}
+            {% set out = namespace(items=[]) %}
+            {% for r in rooms %}
+              {% set t = state_attr(r.climate, 'current_temperature') %}
+              {% set out.items = out.items + [ r.name ~ '=' ~ (t if t is not none else 'none') ] %}
+            {% endfor %}
+            {{ out.items | join(', ') }}
+
+  - sensor:
+      - name: House Comfort Outliers
+        unique_id: house_comfort_outliers
+        state: >-
+          {% set min_ok = 17.0 %}
+          {% set max_ok = 21.5 %}
+          {% set rooms = (state_attr('sensor.house_climate_debug','climates') | default('[]')) | from_json %}
+          {% set cold = namespace(n=0) %}
+          {% set hot  = namespace(n=0) %}
+
+          {% for r in rooms %}
+            {% if not (r.exclude_from_house_stats | default(false)) %}
+              {% set t = state_attr(r.climate, 'current_temperature') %}
+              {% if t is number %}
+                {% if t < min_ok %}{% set cold.n = cold.n + 1 %}{% endif %}
+                {% if t > max_ok %}{% set hot.n  = hot.n  + 1 %}{% endif %}
+              {% endif %}
+            {% endif %}
+          {% endfor %}
+
+          {% if cold.n == 0 and hot.n == 0 %}
+            None
+          {% else %}
+            {{ cold.n }} cold / {{ hot.n }} warm
+          {% endif %}
+        attributes:
+          band_min: 17.0
+          band_max: 21.5
+          too_cold: >-
+            {% set min_ok = 17.0 %}
+            {% set rooms = (state_attr('sensor.house_climate_debug','climates') | default('[]')) | from_json %}
+            {% set out = namespace(items=[]) %}
+            {% for r in rooms %}
+              {% if not (r.exclude_from_house_stats | default(false)) %}
+                {% set t = state_attr(r.climate, 'current_temperature') %}
+                {% if t is number and t < min_ok %}
+                  {% set out.items = out.items + [ {"name": r.name, "temp": (t | round(1)), "nav": r.nav, "key": r.key} ] %}
+                {% endif %}
+              {% endif %}
+            {% endfor %}
+            {{ out.items | tojson }}
+          too_warm: >-
+            {% set max_ok = 21.5 %}
+            {% set rooms = (state_attr('sensor.house_climate_debug','climates') | default('[]')) | from_json %}
+            {% set out = namespace(items=[]) %}
+            {% for r in rooms %}
+              {% if not (r.exclude_from_house_stats | default(false)) %}
+                {% set t = state_attr(r.climate, 'current_temperature') %}
+                {% if t is number and t > max_ok %}
+                  {% set out.items = out.items + [ {"name": r.name, "temp": (t | round(1)), "nav": r.nav, "key": r.key} ] %}
+                {% endif %}
+              {% endif %}
+            {% endfor %}
+            {{ out.items | tojson }}
+          summary: >-
+            {% set min_ok = 17.0 %}
+            {% set max_ok = 21.5 %}
+            {% set rooms = (state_attr('sensor.house_climate_debug','climates') | default('[]')) | from_json %}
+            {% set cold_names = namespace(items=[]) %}
+            {% set hot_names  = namespace(items=[]) %}
+
+            {% for r in rooms %}
+              {% if not (r.exclude_from_house_stats | default(false)) %}
+                {% set t = state_attr(r.climate, 'current_temperature') %}
+                {% if t is number %}
+                  {% if t < min_ok %}{% set cold_names.items = cold_names.items + [r.name] %}{% endif %}
+                  {% if t > max_ok %}{% set hot_names.items  = hot_names.items  + [r.name] %}{% endif %}
+                {% endif %}
+              {% endif %}
+            {% endfor %}
+
+            {% if (cold_names.items | length == 0) and (hot_names.items | length == 0) %}
+              All rooms in comfort band
+            {% else %}
+              {%- if cold_names.items | length > 0 -%}
+                Too cold: {{ cold_names.items | join(', ') }}.
+              {%- endif -%}
+              {%- if hot_names.items | length > 0 -%}
+                {% if cold_names.items | length > 0 %} {% endif -%}
+                Too warm: {{ hot_names.items | join(', ') }}.
+              {%- endif -%}
+            {% endif %}
+
+  - binary_sensor:
+      - name: house_heating_boiler_firing
+        unique_id: house_heating_boiler_firing
+        state: "{{ state_attr('climate.boiler_receiver_heat', 'hvac_action') == 'heating' }}"
+
+  - binary_sensor:
+      - name: House Has Comfort Outliers
+        unique_id: house_has_comfort_outliers
+        state: >-
+          {% set min_ok = 17.0 %}
+          {% set max_ok = 21.5 %}
+          {% set rooms = (state_attr('sensor.house_climate_debug','climates') | default('[]')) | from_json %}
+          {% for r in rooms %}
+            {% if not (r.exclude_from_house_stats | default(false)) %}
+              {% set t = state_attr(r.climate, 'current_temperature') %}
+              {% if t is number and (t < min_ok or t > max_ok) %}
+                {{ true }}
+              {% endif %}
+            {% endif %}
+          {% endfor %}
+          {{ false }}
+
+  - binary_sensor:
+      - name: Home Office Monitor
+        unique_id: home_office_monitor
+        state: "{{ states('sensor.home_office_plug_monitor_power') | float(0) > 5 }}"
+
+  - binary_sensor:
+      - name: Hallway Upstairs Bed Occupied Sync
+        unique_id: hallway_upstairs_bed_occupied_sync
+        state: "{{ is_state('binary_sensor.bedroom_sensor_bed_occupancy', 'on') }}"
+
+  - binary_sensor:
+      - name: Parlour Media Active
+        unique_id: parlour_media_active
+        state: >-
+          {% set tv_active = states('media_player.parlour_tv') not in ['off', 'unavailable', 'unknown'] %}
+          {% set sonos_active = states('media_player.parlour') not in ['off', 'idle', 'unavailable', 'unknown'] %}
+          {% set sonos_source = state_attr('media_player.parlour', 'source') %}
+          {% set sonos_stale = sonos_active and sonos_source == 'TV' and not tv_active %}
+          {{ tv_active or (sonos_active and not sonos_stale) }}

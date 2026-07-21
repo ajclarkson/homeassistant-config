@@ -1,0 +1,158 @@
+title: Cameras
+path: cameras
+icon: mdi:cctv
+type: sections
+max_columns: 1
+sections:
+  - type: grid
+    cards:
+      - type: custom:paper-buttons-row
+        styles:
+          justify-content: flex-start
+          gap: 10px
+          align-items: center
+          margin: 0 12px 0 12px
+        buttons:
+          - layout: name
+            name: Cameras
+            styles:
+              name:
+                font-size: 30px
+                font-weight: 700
+                color: var(--primary-text-color)
+              button:
+                padding: 0
+                background: none
+
+      - type: custom:mushroom-chips-card
+        alignment: start
+        chips:
+          - type: template
+            entity: group.cameras_privacy
+            icon: >
+              {{ 'mdi:eye-off' if is_state('group.cameras_privacy', 'on') else 'mdi:eye' }}
+            content: >
+              {{ 'All cameras off' if is_state('group.cameras_privacy', 'on') else 'All cameras on' }}
+            tap_action:
+              action: call-service
+              service: homeassistant.toggle
+              target:
+                entity_id: group.cameras_privacy
+            card_mod:
+              style: |
+                ha-card {
+                  border-radius: 999px;
+                  backdrop-filter: blur(14px);
+                  box-shadow: none;
+                  background: {% if is_state('group.cameras_privacy', 'on') %}color-mix(in srgb, var(--md-sys-color-primary) 14%, transparent){% else %}color-mix(in srgb, var(--primary-text-color) 8%, transparent){% endif %};
+                }
+
+      - type: custom:camera-events-card
+        camera: parlour
+        entity: camera.parlour
+        privacy: switch.parlour_privacy
+        title: Parlour
+        ptz: true
+
+      - type: custom:camera-events-card
+        camera: kitchen
+        entity: camera.kitchen
+        privacy: switch.kitchen_privacy
+        title: Kitchen
+        ptz: true
+
+      - type: custom:camera-events-card
+        camera: home_office
+        entity: camera.home_office
+        privacy: switch.home_office_privacy
+        title: Home Office
+        ptz: true
+
+  - type: grid
+    cards:
+      - type: custom:bubble-card
+        card_type: pop-up
+        hash: '#parlour-recordings'
+        show_header: false
+        cards:
+          - type: custom:paper-buttons-row
+            styles:
+              justify-content: flex-start
+              margin: 20px 12px 8px 12px
+            buttons:
+              - layout: name
+                name: Parlour recordings
+                styles:
+                  name:
+                    font-size: 22px
+                    font-weight: 700
+                    letter-spacing: -0.3px
+                    color: var(--primary-text-color)
+                  button:
+                    padding: 0
+                    background: none
+          - type: custom:camera-events-card
+            camera: parlour
+            title: Parlour
+            mode: recordings
+
+      - type: custom:bubble-card
+        card_type: pop-up
+        hash: '#kitchen-recordings'
+        show_header: false
+        cards:
+          - type: custom:paper-buttons-row
+            styles:
+              justify-content: flex-start
+              margin: 20px 12px 8px 12px
+            buttons:
+              - layout: name
+                name: Kitchen recordings
+                styles:
+                  name:
+                    font-size: 22px
+                    font-weight: 700
+                    letter-spacing: -0.3px
+                    color: var(--primary-text-color)
+                  button:
+                    padding: 0
+                    background: none
+          - type: custom:camera-events-card
+            camera: kitchen
+            title: Kitchen
+            mode: recordings
+
+      - type: custom:bubble-card
+        card_type: pop-up
+        hash: '#home-office-recordings'
+        show_header: false
+        cards:
+          - type: custom:paper-buttons-row
+            styles:
+              justify-content: flex-start
+              margin: 20px 12px 8px 12px
+            buttons:
+              - layout: name
+                name: Home Office recordings
+                styles:
+                  name:
+                    font-size: 22px
+                    font-weight: 700
+                    letter-spacing: -0.3px
+                    color: var(--primary-text-color)
+                  button:
+                    padding: 0
+                    background: none
+          - type: custom:camera-events-card
+            camera: home_office
+            title: Home Office
+            mode: recordings
+
+      - type: custom:streamline-card
+        template: rooms_popup
+      - type: custom:streamline-card
+        template: navbar_spacer
+      - type: custom:streamline-card
+        template: floating_navbar
+        variables:
+          active: cameras

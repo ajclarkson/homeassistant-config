@@ -1,0 +1,43 @@
+/* Theme overrides — applied on top of Material You generated theme */
+/* See dashboard-polish-guide.md for context */
+
+:host, html, body {
+  /* Deepen the page background */
+  --md-sys-color-background: #080808;
+
+  /* Surface elevation steps — creates depth between page and cards */
+  --md-sys-color-surface:                    #101010;
+  --md-sys-color-surface-container-lowest:   #0c0c0c;
+  --md-sys-color-surface-container-low:      #131313;
+  --md-sys-color-surface-container:          #181818;
+  --md-sys-color-surface-container-high:     #1e1e1e;
+  --md-sys-color-surface-container-highest:  #252525;
+
+  /* Warm amber accent — replaces the near-grey Neutral primary */
+  --md-sys-color-primary:           #b89a55;
+  --md-sys-color-on-primary:        #1c1200;
+  --md-sys-color-primary-container: #2e2200;
+  --md-sys-color-on-primary-container: #dfc078;
+
+  /* Semantic state colours — inactive/active indicators used across templates */
+  --state-inactive-color:       rgba(255,255,255,0.45); /* inactive icon / toggle */
+  --state-inactive-icon-color:  rgba(255,255,255,0.38); /* inactive chip icon */
+  --state-inactive-bg:          rgba(255,255,255,0.05); /* inactive chip / badge background */
+  --state-inactive-badge-color: rgba(255,255,255,0.28); /* inactive status badge text */
+  --state-subtitle-color:       rgba(255,255,255,0.35); /* sub / caption text */
+  --state-active-color:         rgba(134, 239, 172, 0.85); /* active indicator text (playing, occupied, heating) */
+  --state-active-bg:            rgba(134, 239, 172, 0.1);  /* active indicator background */
+  --state-occupied-color:       #4caf50; /* presence / occupied chip */
+
+  /* Shape scale */
+  --tile-radius: 8px;   /* card / tile elements */
+  --chip-radius: 6px;   /* mushroom chips */
+  --pill-radius: 999px; /* status badge pills */
+
+  /* Temperature / percentage status scale (cold → critical) */
+  --temp-scale-cold:     #40916c;
+  --temp-scale-cool:     #95d5b2;
+  --temp-scale-warm:     #ffc14d;
+  --temp-scale-hot:      #f4821f;
+  --temp-scale-critical: #ef5350;
+}

@@ -1,0 +1,307 @@
+mqtt:
+  sensor:
+    - name: "House Active Mode"
+      unique_id: house_active_mode
+      state_topic: "house/mode/active"
+
+    # Active Scene Topics
+    - name: "Parlour Active Scene"
+      unique_id: parlour_active_scene
+      state_topic: "parlour/scene/active"
+    - name: "Hallway Downstairs Active Scene"
+      unique_id: hallway_downstairs_active_scene
+      state_topic: "hallway_downstairs/scene/active"
+    - name: "Hallway Upstairs Active Scene"
+      unique_id: hallway_upstairs_active_scene
+      state_topic: "hallway_upstairs/scene/active"
+    - name: "Kitchen Active Scene"
+      unique_id: kitchen_active_scene
+      state_topic: "kitchen/scene/active"
+    - name: "Bedroom Active Scene"
+      unique_id: bedroom_active_scene
+      state_topic: "bedroom/scene/active"
+    - name: "Bathroom Active Scene"
+      unique_id: bathroom_active_scene
+      state_topic: "bathroom/scene/active"
+    - name: "Home Office Active Scene"
+      unique_id: home_office_active_scene
+      state_topic: "home_office/scene/active"
+    - name: "Foreign Office Active Scene"
+      unique_id: foreign_office_active_scene
+      state_topic: "foreign_office/scene/active"
+    - name: "Back Garden Active Scene"
+      unique_id: back_garden_active_scene
+      state_topic: "back_garden/scene/active"
+
+    # Active Heating Topics
+    - name: "Parlour Active Heating"
+      unique_id: parlour_active_heating
+      state_topic: "parlour/heating/active"
+    - name: "Hallway Downstairs Active Heating"
+      unique_id: hallway_downstairs_active_heating
+      state_topic: "hallway_downstairs/heating/active"
+    - name: "Kitchen Active Heating"
+      unique_id: kitchen_active_heating
+      state_topic: "kitchen/heating/active"
+    - name: "Bedroom Active Heating"
+      unique_id: bedroom_active_heating
+      state_topic: "bedroom/heating/active"
+    - name: "Bathroom Active Heating"
+      unique_id: bathroom_active_heating
+      state_topic: "bathroom/heating/active"
+    - name: "Home Office Active Heating"
+      unique_id: home_office_active_heating
+      state_topic: "home_office/heating/active"
+    - name: "Foreign Office Active Heating"
+      unique_id: foreign_office_active_heating
+      state_topic: "foreign_office/heating/active"
+
+    # Occupied Decision Helpers (per room)
+    - name: "Parlour Occupied Decision"
+      unique_id: parlour_occupied_decision
+      state_topic: "parlour/occupied/decision"
+      value_template: "{{ value_json.decision }}"
+      json_attributes_topic: "parlour/occupied/decision"
+
+    - name: "Kitchen Occupied Decision"
+      unique_id: kitchen_occupied_decision
+      state_topic: "kitchen/occupied/decision"
+      value_template: "{{ value_json.decision }}"
+      json_attributes_topic: "kitchen/occupied/decision"
+
+    - name: "Hallway Downstairs Occupied Decision"
+      unique_id: hallway_downstairs_occupied_decision
+      state_topic: "hallway_downstairs/occupied/decision"
+      value_template: "{{ value_json.decision }}"
+      json_attributes_topic: "hallway_downstairs/occupied/decision"
+
+    - name: "Hallway Upstairs Occupied Decision"
+      unique_id: hallway_upstairs_occupied_decision
+      state_topic: "hallway_upstairs/occupied/decision"
+      value_template: "{{ value_json.decision }}"
+      json_attributes_topic: "hallway_upstairs/occupied/decision"
+
+    - name: "Bedroom Occupied Decision"
+      unique_id: bedroom_occupied_decision
+      state_topic: "bedroom/occupied/decision"
+      value_template: "{{ value_json.decision }}"
+      json_attributes_topic: "bedroom/occupied/decision"
+
+    - name: "Bathroom Occupied Decision"
+      unique_id: bathroom_occupied_decision
+      state_topic: "bathroom/occupied/decision"
+      value_template: "{{ value_json.decision }}"
+      json_attributes_topic: "bathroom/occupied/decision"
+
+    - name: "Home Office Occupied Decision"
+      unique_id: home_office_occupied_decision
+      state_topic: "home_office/occupied/decision"
+      value_template: "{{ value_json.decision }}"
+      json_attributes_topic: "home_office/occupied/decision"
+
+    - name: "Foreign Office Occupied Decision"
+      unique_id: foreign_office_occupied_decision
+      state_topic: "foreign_office/occupied/decision"
+      value_template: "{{ value_json.decision }}"
+      json_attributes_topic: "foreign_office/occupied/decision"
+
+    # Lighting Decision Helpers (per room)
+    - name: "Parlour Lighting Decision"
+      unique_id: parlour_lighting_decision
+      state_topic: "parlour/lighting/decision"
+      value_template: "{{ value_json.decision }}"
+      json_attributes_topic: "parlour/lighting/decision"
+
+    - name: "Kitchen Lighting Decision"
+      unique_id: kitchen_lighting_decision
+      state_topic: "kitchen/lighting/decision"
+      value_template: "{{ value_json.decision }}"
+      json_attributes_topic: "kitchen/lighting/decision"
+
+    - name: "Hallway Downstairs Lighting Decision"
+      unique_id: hallway_downstairs_lighting_decision
+      state_topic: "hallway_downstairs/lighting/decision"
+      value_template: "{{ value_json.decision }}"
+      json_attributes_topic: "hallway_downstairs/lighting/decision"
+
+    - name: "Hallway Upstairs Lighting Decision"
+      unique_id: hallway_upstairs_lighting_decision
+      state_topic: "hallway_upstairs/lighting/decision"
+      value_template: "{{ value_json.decision }}"
+      json_attributes_topic: "hallway_upstairs/lighting/decision"
+
+    - name: "Bedroom Lighting Decision"
+      unique_id: bedroom_lighting_decision
+      state_topic: "bedroom/lighting/decision"
+      value_template: "{{ value_json.decision }}"
+      json_attributes_topic: "bedroom/lighting/decision"
+
+    - name: "Bathroom Lighting Decision"
+      unique_id: bathroom_lighting_decision
+      state_topic: "bathroom/lighting/decision"
+      value_template: "{{ value_json.decision }}"
+      json_attributes_topic: "bathroom/lighting/decision"
+
+    - name: "Home Office Lighting Decision"
+      unique_id: home_office_lighting_decision
+      state_topic: "home_office/lighting/decision"
+      value_template: "{{ value_json.decision }}"
+      json_attributes_topic: "home_office/lighting/decision"
+
+    - name: "Foreign Office Lighting Decision"
+      unique_id: foreign_office_lighting_decision
+      state_topic: "foreign_office/lighting/decision"
+      value_template: "{{ value_json.decision }}"
+      json_attributes_topic: "foreign_office/lighting/decision"
+
+    # Hildebrand Glow — smart meter live data
+    - name: "Glow Electricity Power"
+      unique_id: glow_electricity_power
+      state_topic: "glow/F008D1ECE254/SENSOR/electricitymeter"
+      value_template: "{{ value_json.electricitymeter.power.value }}"
+      unit_of_measurement: "kW"
+      device_class: power
+      state_class: measurement
+
+    - name: "Glow Electricity Today"
+      unique_id: glow_electricity_today
+      state_topic: "glow/F008D1ECE254/SENSOR/electricitymeter"
+      value_template: "{{ value_json.electricitymeter.energy.import.day }}"
+      unit_of_measurement: "kWh"
+      device_class: energy
+      state_class: total_increasing
+
+    - name: "Glow Electricity Week"
+      unique_id: glow_electricity_week
+      state_topic: "glow/F008D1ECE254/SENSOR/electricitymeter"
+      value_template: "{{ value_json.electricitymeter.energy.import.week }}"
+      unit_of_measurement: "kWh"
+      device_class: energy
+      state_class: total_increasing
+
+    - name: "Glow Electricity Month"
+      unique_id: glow_electricity_month
+      state_topic: "glow/F008D1ECE254/SENSOR/electricitymeter"
+      value_template: "{{ value_json.electricitymeter.energy.import.month }}"
+      unit_of_measurement: "kWh"
+      device_class: energy
+      state_class: total_increasing
+
+    - name: "Glow Gas Today"
+      unique_id: glow_gas_today
+      state_topic: "glow/F008D1ECE254/SENSOR/gasmeter"
+      value_template: "{{ value_json.gasmeter.energy.import.day }}"
+      unit_of_measurement: "kWh"
+      device_class: energy
+      state_class: total_increasing
+
+    - name: "Glow Gas Week"
+      unique_id: glow_gas_week
+      state_topic: "glow/F008D1ECE254/SENSOR/gasmeter"
+      value_template: "{{ value_json.gasmeter.energy.import.week }}"
+      unit_of_measurement: "kWh"
+      device_class: energy
+      state_class: total_increasing
+
+    - name: "Glow Gas Month"
+      unique_id: glow_gas_month
+      state_topic: "glow/F008D1ECE254/SENSOR/gasmeter"
+      value_template: "{{ value_json.gasmeter.energy.import.month }}"
+      unit_of_measurement: "kWh"
+      device_class: energy
+      state_class: total_increasing
+
+  binary_sensor:
+    # Occupancy Topics
+    - name: "Parlour Occupied"
+      unique_id: parlour_occupied
+      state_topic: "parlour/occupied/state"
+    - name: "Hallway Downstairs Occupied"
+      unique_id: hallway_downstairs_occupied
+      state_topic: "hallway_downstairs/occupied/state"
+    - name: "Hallway Upstairs Occupied"
+      unique_id: hallway_upstairs_occupied
+      state_topic: "hallway_upstairs/occupied/state"
+    - name: "Kitchen Occupied"
+      unique_id: kitchen_occupied
+      state_topic: "kitchen/occupied/state"
+    - name: "Bedroom Occupied"
+      unique_id: bedroom_occupied
+      state_topic: "bedroom/occupied/state"
+    - name: "Bathroom Occupied"
+      unique_id: bathroom_occupied
+      state_topic: "bathroom/occupied/state"
+    - name: "Home Office Occupied"
+      unique_id: home_office_occupied
+      state_topic: "home_office/occupied/state"
+    - name: "Foreign Office Occupied"
+      unique_id: foreign_office_occupied
+      state_topic: "foreign_office/occupied/state"
+
+    # Room contained trackers
+    - name: "Parlour Occupied Contained"
+      unique_id: "parlour_occupied_contained"
+      state_topic: "parlour/occupied/contained/state"
+    - name: "Hallway Downstairs Occupied Contained"
+      unique_id: "hallway_downstairs_occupied_contained"
+      state_topic: "hallway_downstairs/occupied/contained/state"
+    - name: "Hallway Upstairs Occupied Contained"
+      unique_id: "hallway_upstairs_occupied_contained"
+      state_topic: "hallway_upstairs/occupied/contained/state"
+    - name: "Kitchen Occupied Contained"
+      unique_id: "kitchen_occupied_contained"
+      state_topic: "kitchen/occupied/contained/state"
+    - name: "Bedroom Occupied Contained"
+      unique_id: "bedroom_occupied_contained"
+      state_topic: "bedroom/occupied/contained/state"
+    - name: "Bathroom Occupied Contained"
+      unique_id: "bathroom_occupied_contained"
+      state_topic: "bathroom/occupied/contained/state"
+    - name: "Home Office Occupied Contained"
+      unique_id: "home_office_occupied_contained"
+      state_topic: "home_office/occupied/contained/state"
+    - name: "Foreign Office Occupied Contained"
+      unique_id: "foreign_office_occupied_contained"
+      state_topic: "foreign_office/occupied/contained/state"
+
+    # Recent Auto Off Light Trackers
+    - name: "Parlour Lighting Recent Auto Off"
+      unique_id: "parlour_lighting_recent_auto_off"
+      state_topic: "parlour/lighting/recent_auto_off"
+    - name: "Hallway Downstairs Lighting Recent Auto Off"
+      unique_id: "hallway_downstairs_recent_auto_off"
+      state_topic: "hallway_downstairs/lighting/recent_auto_off"
+    - name: "Hallway Upstairs Lighting Recent Auto Off"
+      unique_id: "hallway_upstairs_lighting_recent_auto_off"
+      state_topic: "hallway_upstairs/lighting/recent_auto_off"
+    - name: "Kitchen Lighting Recent Auto Off"
+      unique_id: "kitchen_lighting_recent_auto_off"
+      state_topic: "kitchen/lighting/recent_auto_off"
+    - name: "Bedroom Lighting Recent Auto Off"
+      unique_id: "bedroom_lighting_recent_auto_off"
+      state_topic: "bedroom/lighting/recent_auto_off"
+    - name: "Bathroom Lighting Recent Auto Off"
+      unique_id: "bathroom_lighting_recent_auto_off"
+      state_topic: "bathroom/lighting/recent_auto_off"
+    - name: "Home Office Lighting Recent Auto Off"
+      unique_id: "home_office_lighting_recent_auto_off"
+      state_topic: "home_office/lighting/recent_auto_off"
+    - name: "Foreign Office Lighting Recent Auto Off"
+      unique_id: "foreign_office_lighting_recent_auto_off"
+      state_topic: "foreign_office/lighting/recent_auto_off"
+
+    # Latch Devices
+    - name: "Parlour Piano"
+      unique_id: parlour_piano
+      state_topic: "parlour/piano/state"
+    - name: "Bathroom Shower"
+      unique_id: bathroom_shower
+      state_topic: "bathroom/shower/state"
+
+    # Test Sensors for Validation
+    - name: "Test Location Occupied"
+      unique_id: test_location_occupied
+      state_topic: "test_location/occupied/state"
+    - name: "Test Location Sensor Motion Occupancy"
+      unique_id: test_location_sensor_motion_occupancy
+      state_topic: "test_location/motion/state"

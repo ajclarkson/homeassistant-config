@@ -1,0 +1,50 @@
+binary_sensor:
+    - platform: group
+      name: "Parlour External Openings"
+      unique_id: parlour_external_openings
+      device_class: opening
+      entities:
+        - binary_sensor.parlour_sensor_door_patio_contact
+    - platform: group
+      name: "Kitchen External Openings"
+      unique_id: kitchen_external_openings
+      device_class: opening
+      entities:
+        - binary_sensor.kitchen_sensor_window_contact
+
+    - platform: group
+      name: "Hallway External Openings"
+      unique_id: hallway_external_openings
+      device_class: opening
+      entities:
+        - binary_sensor.hallway_downstairs_sensor_door_front_contact
+
+    - platform: group
+      name: "Bedroom External Openings"
+      unique_id: bedroom_external_openings
+      device_class: opening
+      entities:
+        - binary_sensor.bedroom_sensor_window_left_contact
+        - binary_sensor.bedroom_sensor_window_right_contact
+
+    - platform: group
+      name: "Bathroom External Openings"
+      unique_id: bathroom_external_openings
+      device_class: opening
+      entities:
+        - binary_sensor.bathroom_sensor_window_contact
+
+    - platform: group
+      name: "Home Office External Openings"
+      unique_id: home_office_external_openings
+      device_class: opening
+      entities:
+        - binary_sensor.home_office_sensor_window_left_contact
+        - binary_sensor.home_office_sensor_window_right_contact
+
+    - platform: group
+      name: "Foreign Office External Openings"
+      unique_id: foreign_office_external_openings
+      device_class: opening
+      entities:
+        - binary_sensor.foreign_office_sensor_door_contact

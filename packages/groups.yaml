@@ -1,0 +1,64 @@
+group:
+    parlour_lights:
+        name: Parlour Lights
+        entities:
+          - switch.parlour_plug_table_lamp
+          - light.parlour_light_floor_lamp
+          - light.parlour_light_ceiling_dining
+          - light.parlour_light_ceiling_sofa
+    hallway_downstairs_lights:
+        name: Hallway Downstairs Lights
+        entities:
+          - light.hallway_downstairs_light_ceiling
+    hallway_upstairs_lights:
+       name: Hallway Upstairs Lights
+       entities:
+          - light.hallway_upstairs_light_ceiling
+    kitchen_lights:
+       name: Kitchen Lights
+       entities:
+          - light.kitchen_light_ceiling
+          - light.kitchen_light_cooker
+          - switch.kitchen_light_cabinets
+    bedroom_lights:
+       name: Bedroom Lights
+       entities:
+          - light.bedroom_light_adam_lamp
+          - light.bedroom_light_sarah_lamp
+          - light.bedroom_light_ceiling
+    bathroom_lights:
+       name: Bathroom Lights
+       entities:
+          - light.bathroom_light_ceiling
+    home_office_lights:
+       name: Home Office Lights
+       entities:
+          - light.home_office_light_desk_lamp
+          - light.home_office_light_floor_lamp
+          - light.home_office_light_ceiling
+    foreign_office_lights:
+       name: Foreign Office Lights
+       entities:
+          - light.dig_uno_v3
+    cameras_privacy:
+       name: Cameras Privacy
+       entities:
+          - switch.parlour_privacy
+          - switch.kitchen_privacy
+          - switch.home_office_privacy
+
+light:
+  - platform: group
+    name: Kitchen Ceiling
+    unique_id: kitchen_light_ceiling
+    entities:
+      - light.kitchen_light_ceiling_1
+      - light.kitchen_light_ceiling_2
+      - light.kitchen_light_ceiling_3
+
+  - platform: group
+    name: Kitchen Cooker
+    unique_id: kitchen_light_cooker
+    entities:
+      - light.kitchen_light_cooker_1
+      - light.kitchen_light_cooker_2
