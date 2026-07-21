@@ -682,3 +682,10 @@ template:
           {% set sonos_source = state_attr('media_player.parlour', 'source') %}
           {% set sonos_stale = sonos_active and sonos_source == 'TV' and not tv_active %}
           {{ tv_active or (sonos_active and not sonos_stale) }}
+
+  - binary_sensor:
+      - name: Parlour Sofa Occupied
+        unique_id: parlour_sofa_occupied
+        state: "{{ is_state('binary_sensor.parlour_sensor_sofa_occupancy', 'on') }}"
+        delay_off:
+          minutes: 2
