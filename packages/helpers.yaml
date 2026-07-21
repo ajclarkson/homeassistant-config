@@ -232,57 +232,64 @@ input_select:
             - guest
             - sitter
 
-    parlour_active_heating_mode:
-        name: Parlour Active Heating Mode
+    parlour_heating_manual_mode:
+        name: Parlour Heating Manual Mode
         options:
+            - auto
             - comfort
             - baseline_day
             - baseline_night
             - minimum
 
-    kitchen_active_heating_mode:
-        name: Kitchen Active Heating Mode
+    kitchen_heating_manual_mode:
+        name: Kitchen Heating Manual Mode
         options:
+            - auto
             - comfort
             - baseline_day
             - baseline_night
             - minimum
 
-    hallway_downstairs_active_heating_mode:
-        name: Hallway Downstairs Active Heating Mode
+    hallway_downstairs_heating_manual_mode:
+        name: Hallway Downstairs Heating Manual Mode
         options:
+            - auto
             - comfort
             - baseline_day
             - baseline_night
             - minimum
 
-    bedroom_active_heating_mode:
-        name: Bedroom Active Heating Mode
+    bedroom_heating_manual_mode:
+        name: Bedroom Heating Manual Mode
         options:
+            - auto
             - comfort
             - baseline_day
             - baseline_night
             - minimum
 
-    bathroom_active_heating_mode:
-        name: Bathroom Active Heating Mode
+    bathroom_heating_manual_mode:
+        name: Bathroom Heating Manual Mode
         options:
+            - auto
             - comfort
             - baseline_day
             - baseline_night
             - minimum
 
-    home_office_active_heating_mode:
-        name: Home Office Active Heating Mode
+    home_office_heating_manual_mode:
+        name: Home Office Heating Manual Mode
         options:
+            - auto
             - comfort
             - baseline_day
             - baseline_night
             - minimum
 
-    foreign_office_active_heating_mode:
-        name: Foreign Office Active Heating Mode
+    foreign_office_heating_manual_mode:
+        name: Foreign Office Heating Manual Mode
         options:
+            - auto
             - comfort
             - baseline_day
             - baseline_night

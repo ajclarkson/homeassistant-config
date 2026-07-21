@@ -1540,7 +1540,7 @@ heating_mode_section:
               action: call-service
               service: input_select.select_option
               target:
-                entity_id: input_select.[[room]]_active_heating_mode
+                entity_id: input_select.[[room]]_heating_manual_mode
               data:
                 option: comfort
             hold_action:
@@ -1582,7 +1582,7 @@ heating_mode_section:
               action: call-service
               service: input_select.select_option
               target:
-                entity_id: input_select.[[room]]_active_heating_mode
+                entity_id: input_select.[[room]]_heating_manual_mode
               data:
                 option: baseline_day
             hold_action:
@@ -1624,7 +1624,7 @@ heating_mode_section:
               action: call-service
               service: input_select.select_option
               target:
-                entity_id: input_select.[[room]]_active_heating_mode
+                entity_id: input_select.[[room]]_heating_manual_mode
               data:
                 option: baseline_night
             hold_action:
@@ -1666,7 +1666,7 @@ heating_mode_section:
               action: call-service
               service: input_select.select_option
               target:
-                entity_id: input_select.[[room]]_active_heating_mode
+                entity_id: input_select.[[room]]_heating_manual_mode
               data:
                 option: minimum
             hold_action:
