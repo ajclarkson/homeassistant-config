@@ -320,3 +320,17 @@ input_text:
     foreign_office_notification_door_close_last:
         name: Foreign Office Door Notification - Close (last sent timestamp)
         max: 25
+
+    # Mo / Frigate Notification Cooldowns
+    mo_cooldown_eating:
+        name: Mo Notification Cooldown - Eating (last sent timestamp)
+        max: 25
+    mo_cooldown_spotted_parlour:
+        name: Mo Notification Cooldown - Spotted Parlour (last sent timestamp)
+        max: 25
+    mo_cooldown_spotted_kitchen:
+        name: Mo Notification Cooldown - Spotted Kitchen (last sent timestamp)
+        max: 25
+    mo_cooldown_spotted_home_office:
+        name: Mo Notification Cooldown - Spotted Home Office (last sent timestamp)
+        max: 25
