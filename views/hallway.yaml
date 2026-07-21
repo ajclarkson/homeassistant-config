@@ -173,4 +173,4 @@ sections:
               title: Heating automation
               toggle_entity: >-
                 input_boolean.hallway_downstairs_automation_heating_enabled
-              heating_hold_entity: binary_sensor.hallway_external_openings
+              heating_hold_entity: binary_sensor.hallway_downstairs_external_openings

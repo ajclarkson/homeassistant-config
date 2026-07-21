@@ -27,6 +27,29 @@ mqtt:
       unique_id: foreign_office_active_heating
       state_topic: "foreign_office/heating/active"
 
+    # Heating Source Topics (why the active mode was chosen)
+    - name: "Parlour Heating Source"
+      unique_id: parlour_heating_source
+      state_topic: "parlour/heating/source"
+    - name: "Hallway Downstairs Heating Source"
+      unique_id: hallway_downstairs_heating_source
+      state_topic: "hallway_downstairs/heating/source"
+    - name: "Kitchen Heating Source"
+      unique_id: kitchen_heating_source
+      state_topic: "kitchen/heating/source"
+    - name: "Bedroom Heating Source"
+      unique_id: bedroom_heating_source
+      state_topic: "bedroom/heating/source"
+    - name: "Bathroom Heating Source"
+      unique_id: bathroom_heating_source
+      state_topic: "bathroom/heating/source"
+    - name: "Home Office Heating Source"
+      unique_id: home_office_heating_source
+      state_topic: "home_office/heating/source"
+    - name: "Foreign Office Heating Source"
+      unique_id: foreign_office_heating_source
+      state_topic: "foreign_office/heating/source"
+
     # Occupied Decision Helpers (per room)
     - name: "Parlour Occupied Decision"
       unique_id: parlour_occupied_decision

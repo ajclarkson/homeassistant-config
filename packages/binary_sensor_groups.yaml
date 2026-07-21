@@ -13,8 +13,8 @@ binary_sensor:
         - binary_sensor.kitchen_sensor_window_contact
 
     - platform: group
-      name: "Hallway External Openings"
-      unique_id: hallway_external_openings
+      name: "Hallway Downstairs External Openings"
+      unique_id: hallway_downstairs_external_openings
       device_class: opening
       entities:
         - binary_sensor.hallway_downstairs_sensor_door_front_contact
