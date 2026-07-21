@@ -1,77 +1,115 @@
 template:
   # Active Scene Sensors
-  # Trigger-based: fire when any scene in the room is activated, record the scene name.
-  - trigger:
-      - platform: state
-        entity_id: "scene.parlour_*"
-    sensor:
+  # Stateless templates: find the most recently activated scene per room by last_changed.
+  # New scenes are picked up automatically as long as they follow the scene.{room}_ prefix.
+  - sensor:
       - name: "Parlour Active Scene"
         unique_id: parlour_active_scene
-        state: "{{ trigger.entity_id | replace('scene.', '') }}"
+        state: >
+          {% set ns = namespace(latest='', t=as_datetime('1970-01-01T00:00:00+00:00')) %}
+          {% for s in states.scene %}
+            {% if s.entity_id.startswith('scene.parlour_') and s.last_changed > ns.t %}
+              {% set ns.t = s.last_changed %}
+              {% set ns.latest = s.entity_id | replace('scene.', '') %}
+            {% endif %}
+          {% endfor %}
+          {{ ns.latest }}
 
-  - trigger:
-      - platform: state
-        entity_id: "scene.hallway_downstairs_*"
-    sensor:
       - name: "Hallway Downstairs Active Scene"
         unique_id: hallway_downstairs_active_scene
-        state: "{{ trigger.entity_id | replace('scene.', '') }}"
+        state: >
+          {% set ns = namespace(latest='', t=as_datetime('1970-01-01T00:00:00+00:00')) %}
+          {% for s in states.scene %}
+            {% if s.entity_id.startswith('scene.hallway_downstairs_') and s.last_changed > ns.t %}
+              {% set ns.t = s.last_changed %}
+              {% set ns.latest = s.entity_id | replace('scene.', '') %}
+            {% endif %}
+          {% endfor %}
+          {{ ns.latest }}
 
-  - trigger:
-      - platform: state
-        entity_id: "scene.hallway_upstairs_*"
-    sensor:
       - name: "Hallway Upstairs Active Scene"
         unique_id: hallway_upstairs_active_scene
-        state: "{{ trigger.entity_id | replace('scene.', '') }}"
+        state: >
+          {% set ns = namespace(latest='', t=as_datetime('1970-01-01T00:00:00+00:00')) %}
+          {% for s in states.scene %}
+            {% if s.entity_id.startswith('scene.hallway_upstairs_') and s.last_changed > ns.t %}
+              {% set ns.t = s.last_changed %}
+              {% set ns.latest = s.entity_id | replace('scene.', '') %}
+            {% endif %}
+          {% endfor %}
+          {{ ns.latest }}
 
-  - trigger:
-      - platform: state
-        entity_id: "scene.kitchen_*"
-    sensor:
       - name: "Kitchen Active Scene"
         unique_id: kitchen_active_scene
-        state: "{{ trigger.entity_id | replace('scene.', '') }}"
+        state: >
+          {% set ns = namespace(latest='', t=as_datetime('1970-01-01T00:00:00+00:00')) %}
+          {% for s in states.scene %}
+            {% if s.entity_id.startswith('scene.kitchen_') and s.last_changed > ns.t %}
+              {% set ns.t = s.last_changed %}
+              {% set ns.latest = s.entity_id | replace('scene.', '') %}
+            {% endif %}
+          {% endfor %}
+          {{ ns.latest }}
 
-  - trigger:
-      - platform: state
-        entity_id: "scene.bedroom_*"
-    sensor:
       - name: "Bedroom Active Scene"
         unique_id: bedroom_active_scene
-        state: "{{ trigger.entity_id | replace('scene.', '') }}"
+        state: >
+          {% set ns = namespace(latest='', t=as_datetime('1970-01-01T00:00:00+00:00')) %}
+          {% for s in states.scene %}
+            {% if s.entity_id.startswith('scene.bedroom_') and s.last_changed > ns.t %}
+              {% set ns.t = s.last_changed %}
+              {% set ns.latest = s.entity_id | replace('scene.', '') %}
+            {% endif %}
+          {% endfor %}
+          {{ ns.latest }}
 
-  - trigger:
-      - platform: state
-        entity_id: "scene.bathroom_*"
-    sensor:
       - name: "Bathroom Active Scene"
         unique_id: bathroom_active_scene
-        state: "{{ trigger.entity_id | replace('scene.', '') }}"
+        state: >
+          {% set ns = namespace(latest='', t=as_datetime('1970-01-01T00:00:00+00:00')) %}
+          {% for s in states.scene %}
+            {% if s.entity_id.startswith('scene.bathroom_') and s.last_changed > ns.t %}
+              {% set ns.t = s.last_changed %}
+              {% set ns.latest = s.entity_id | replace('scene.', '') %}
+            {% endif %}
+          {% endfor %}
+          {{ ns.latest }}
 
-  - trigger:
-      - platform: state
-        entity_id: "scene.home_office_*"
-    sensor:
       - name: "Home Office Active Scene"
         unique_id: home_office_active_scene
-        state: "{{ trigger.entity_id | replace('scene.', '') }}"
+        state: >
+          {% set ns = namespace(latest='', t=as_datetime('1970-01-01T00:00:00+00:00')) %}
+          {% for s in states.scene %}
+            {% if s.entity_id.startswith('scene.home_office_') and s.last_changed > ns.t %}
+              {% set ns.t = s.last_changed %}
+              {% set ns.latest = s.entity_id | replace('scene.', '') %}
+            {% endif %}
+          {% endfor %}
+          {{ ns.latest }}
 
-  - trigger:
-      - platform: state
-        entity_id: "scene.foreign_office_*"
-    sensor:
       - name: "Foreign Office Active Scene"
         unique_id: foreign_office_active_scene
-        state: "{{ trigger.entity_id | replace('scene.', '') }}"
+        state: >
+          {% set ns = namespace(latest='', t=as_datetime('1970-01-01T00:00:00+00:00')) %}
+          {% for s in states.scene %}
+            {% if s.entity_id.startswith('scene.foreign_office_') and s.last_changed > ns.t %}
+              {% set ns.t = s.last_changed %}
+              {% set ns.latest = s.entity_id | replace('scene.', '') %}
+            {% endif %}
+          {% endfor %}
+          {{ ns.latest }}
 
-  - trigger:
-      - platform: state
-        entity_id: "scene.back_garden_*"
-    sensor:
       - name: "Back Garden Active Scene"
         unique_id: back_garden_active_scene
-        state: "{{ trigger.entity_id | replace('scene.', '') }}"
+        state: >
+          {% set ns = namespace(latest='', t=as_datetime('1970-01-01T00:00:00+00:00')) %}
+          {% for s in states.scene %}
+            {% if s.entity_id.startswith('scene.back_garden_') and s.last_changed > ns.t %}
+              {% set ns.t = s.last_changed %}
+              {% set ns.latest = s.entity_id | replace('scene.', '') %}
+            {% endif %}
+          {% endfor %}
+          {{ ns.latest }}
 
   # Octopus Agile Helpers
   - sensor:
