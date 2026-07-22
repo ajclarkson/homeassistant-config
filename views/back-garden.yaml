@@ -22,11 +22,13 @@ sections:
             variables:
               entity: scene.back_garden_all
               name: 'On'
+              room: back_garden
           - type: custom:streamline-card
             template: scene_card
             variables:
               entity: scene.back_garden_off
               name: 'Off'
+              room: back_garden
               default_icon: 'mdi:power'
               inactive_bg_opacity: '52%'
               label_color_override: 'color: color-mix(in srgb, var(--primary-text-color) 40%, transparent);'

@@ -187,12 +187,7 @@ sections:
                 [[[
                   const raw = entity?.state ?? '';
                   const cond = raw.replace(/_/g, ' ');
-                  const cap = cond.charAt(0).toUpperCase() + cond.slice(1);
-                  const hi = parseFloat(states['input_number.weather_forecast_outside_high_today']?.state);
-                  const lo = parseFloat(states['input_number.weather_forecast_outside_low_today']?.state);
-                  const hiStr = isNaN(hi) ? '—' : `${Math.round(hi)}°`;
-                  const loStr = isNaN(lo) ? '—' : `${Math.round(lo)}°`;
-                  return `${cap} · H ${hiStr} · L ${loStr}`;
+                  return cond.charAt(0).toUpperCase() + cond.slice(1);
                 ]]]
             styles:
               card:

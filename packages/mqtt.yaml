@@ -165,14 +165,6 @@ mqtt:
       device_class: energy
       state_class: total_increasing
 
-    - name: "Glow Electricity Week"
-      unique_id: glow_electricity_week
-      state_topic: "glow/F008D1ECE254/SENSOR/electricitymeter"
-      value_template: "{{ value_json.electricitymeter.energy.import.week }}"
-      unit_of_measurement: "kWh"
-      device_class: energy
-      state_class: total_increasing
-
     - name: "Glow Electricity Month"
       unique_id: glow_electricity_month
       state_topic: "glow/F008D1ECE254/SENSOR/electricitymeter"
@@ -185,14 +177,6 @@ mqtt:
       unique_id: glow_gas_today
       state_topic: "glow/F008D1ECE254/SENSOR/gasmeter"
       value_template: "{{ value_json.gasmeter.energy.import.day }}"
-      unit_of_measurement: "kWh"
-      device_class: energy
-      state_class: total_increasing
-
-    - name: "Glow Gas Week"
-      unique_id: glow_gas_week
-      state_topic: "glow/F008D1ECE254/SENSOR/gasmeter"
-      value_template: "{{ value_json.gasmeter.energy.import.week }}"
       unit_of_measurement: "kWh"
       device_class: energy
       state_class: total_increasing
@@ -284,11 +268,4 @@ mqtt:
       unique_id: "foreign_office_lighting_recent_auto_off"
       state_topic: "foreign_office/lighting/recent_auto_off"
 
-    # Latch Devices
-    - name: "Parlour Piano"
-      unique_id: parlour_piano
-      state_topic: "parlour/piano/state"
-    - name: "Bathroom Shower"
-      unique_id: bathroom_shower
-      state_topic: "bathroom/shower/state"
 

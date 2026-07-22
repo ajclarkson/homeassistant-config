@@ -70,8 +70,6 @@ input_boolean:
         name: Home Office Heating Automation Enabled
     foreign_office_automation_heating_enabled:
         name: Foreign Office Heating Automation Enabled
-    foreign_office_automation_heating_independent:
-        name: Foreign Office Heating Independent (not governed by house_heating_enabled)
     patio_door_heating_suspended:
         name: Patio Door Heating Suspended (restored on close)
 
