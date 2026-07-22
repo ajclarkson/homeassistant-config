@@ -405,24 +405,6 @@ sonos_follow_section:
               tap_action:
                 action: more-info
                 entity: '[[room_player]]'
-# ── navbar_spacer ──────────────────────────────────────────
-navbar_spacer:
-  default:
-    height: 110px
-  variables:
-    height: ''
-  card:
-    type: custom:button-card
-    show_name: false
-    show_icon: false
-    tap_action:
-      action: none
-    styles:
-      card:
-        - background: none
-        - box-shadow: none
-        - height: '[[height]]'
-
 # ── popup_header ──────────────────────────────────────────
 popup_header:
   variables:
@@ -890,8 +872,16 @@ page_footer:
   card:
     type: vertical-stack
     cards:
-      - type: custom:streamline-card
-        template: navbar_spacer
+      - type: custom:button-card
+        show_name: false
+        show_icon: false
+        tap_action:
+          action: none
+        styles:
+          card:
+            - background: none
+            - box-shadow: none
+            - height: 110px
       - type: custom:streamline-card
         template: floating_navbar
         variables:
@@ -1721,14 +1711,6 @@ presence_section:
     - reason_4_state: ''
     - reason_4_icon: ''
     - reason_4_label: ''
-    - reason_5_entity: ''
-    - reason_5_state: ''
-    - reason_5_icon: ''
-    - reason_5_label: ''
-    - reason_6_entity: ''
-    - reason_6_state: ''
-    - reason_6_icon: ''
-    - reason_6_label: ''
   variables:
     occupied_entity: ''
     pir_entity: ''
@@ -1754,14 +1736,6 @@ presence_section:
     reason_4_state: ''
     reason_4_icon: ''
     reason_4_label: ''
-    reason_5_entity: ''
-    reason_5_state: ''
-    reason_5_icon: ''
-    reason_5_label: ''
-    reason_6_entity: ''
-    reason_6_state: ''
-    reason_6_icon: ''
-    reason_6_label: ''
   card:
     type: vertical-stack
     cards:
@@ -1852,12 +1826,6 @@ presence_section:
               - condition: state
                 entity: '[[reason_4_entity]]'
                 state: '[[reason_4_state]]'
-              - condition: state
-                entity: '[[reason_5_entity]]'
-                state: '[[reason_5_state]]'
-              - condition: state
-                entity: '[[reason_6_entity]]'
-                state: '[[reason_6_state]]'
         card:
           type: custom:mushroom-chips-card
           alignment: start
@@ -1920,30 +1888,6 @@ presence_section:
                 entity: '[[reason_4_entity]]'
                 icon: '[[reason_4_icon]]'
                 content: '[[reason_4_label]]'
-                tap_action:
-                  action: more-info
-            - type: conditional
-              conditions:
-                - condition: state
-                  entity: '[[reason_5_entity]]'
-                  state: '[[reason_5_state]]'
-              chip:
-                type: template
-                entity: '[[reason_5_entity]]'
-                icon: '[[reason_5_icon]]'
-                content: '[[reason_5_label]]'
-                tap_action:
-                  action: more-info
-            - type: conditional
-              conditions:
-                - condition: state
-                  entity: '[[reason_6_entity]]'
-                  state: '[[reason_6_state]]'
-              chip:
-                type: template
-                entity: '[[reason_6_entity]]'
-                icon: '[[reason_6_icon]]'
-                content: '[[reason_6_label]]'
                 tap_action:
                   action: more-info
 
