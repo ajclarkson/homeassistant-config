@@ -509,7 +509,7 @@ rooms_popup:
             template: rooms_popup_tile
             variables:
               name: Foreign Office
-              icon: m3of:laptop-chromebook
+              icon: m3of:desk
               navigation_path: /mobile-dashboard/foreign-office
               occupancy_entity: binary_sensor.foreign_office_occupied
           - type: custom:streamline-card
@@ -1333,17 +1333,19 @@ lighting_automation_section_sleep_hold:
   default:
     - sleep_mode_entity: sensor.house_active_mode
     - sleep_state: sleep
+    - title: Lighting
   variables:
     toggle_entity: ''
     sleep_mode_entity: ''
     sleep_state: ''
+    title: ''
   card:
     type: vertical-stack
     cards:
       - type: custom:streamline-card
         template: behaviour_section_header
         variables:
-          title: Lighting
+          title: '[[title]]'
       - type: grid
         columns: 1
         square: false
@@ -1700,6 +1702,7 @@ presence_section:
   default:
     - held_row_opacity: 0.86
     - held_row_brightness: 0.96
+    - title: Presence
     - reason_1_entity: ''
     - reason_1_state: ''
     - reason_1_icon: ''
@@ -1732,6 +1735,7 @@ presence_section:
     contained_entity: ''
     held_row_opacity: ''
     held_row_brightness: ''
+    title: ''
     reason_1_entity: ''
     reason_1_state: ''
     reason_1_icon: ''
@@ -1762,7 +1766,7 @@ presence_section:
       - type: custom:streamline-card
         template: behaviour_section_header
         variables:
-          title: Presence
+          title: '[[title]]'
           margin_top: 0px
       - type: grid
         columns: 1
@@ -2081,17 +2085,19 @@ lights_popup_section:
 heating_automation_section:
   default:
     - heating_hold_label: Heating held
+    - title: Heating
   variables:
     toggle_entity: ''
     heating_hold_entity: ''
     heating_hold_label: ''
+    title: ''
   card:
     type: vertical-stack
     cards:
       - type: custom:streamline-card
         template: behaviour_section_header
         variables:
-          title: Heating
+          title: '[[title]]'
       - type: grid
         columns: 1
         square: false
