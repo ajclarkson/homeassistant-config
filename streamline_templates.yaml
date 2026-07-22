@@ -2368,6 +2368,166 @@ scene_card:
             [[icon_color_override]]
           }
 
+# ── rate_card ──────────────────────────────────────────
+rate_card:
+  variables:
+    entity: ''
+    label: ''
+  card:
+    type: custom:button-card
+    entity: '[[entity]]'
+    show_icon: false
+    show_name: false
+    show_state: false
+    tap_action:
+      action: more-info
+    custom_fields:
+      label: '[[label]]'
+      value: >
+        [[[
+          const r = parseFloat(entity?.state);
+          return isNaN(r) ? '—' : `${(r * 100).toFixed(1)}p`;
+        ]]]
+      sub: >
+        [[[
+          const fmt = s => new Date(s).toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit'});
+          const s = entity?.attributes?.start;
+          const e = entity?.attributes?.end;
+          return (s && e) ? `${fmt(s)} – ${fmt(e)}` : '';
+        ]]]
+    styles:
+      card:
+        - background: >
+            [[[
+              const p = parseFloat(entity?.state) * 100;
+              if (p < 0)   return 'color-mix(in srgb, #40916c 14%, var(--md-sys-color-surface-container-low))';
+              if (p < 10)  return 'color-mix(in srgb, #95d5b2 12%, var(--md-sys-color-surface-container-low))';
+              if (p < 20)  return 'color-mix(in srgb, #ffc14d 12%, var(--md-sys-color-surface-container-low))';
+              if (p <= 30) return 'color-mix(in srgb, #f4821f 12%, var(--md-sys-color-surface-container-low))';
+              return 'color-mix(in srgb, #ef5350 14%, var(--md-sys-color-surface-container-low))';
+            ]]]
+        - border-radius: 16px
+        - border: none
+        - box-shadow: none
+        - padding: 16px
+        - height: 100px
+        - cursor: default
+      grid:
+        - grid-template-areas: '"label" "value" "sub"'
+        - grid-template-rows: auto 1fr auto
+        - justify-items: start
+        - align-items: start
+      custom_fields:
+        label:
+          - font-size: 10px
+          - font-weight: 700
+          - letter-spacing: 0.8px
+          - text-transform: uppercase
+          - color: rgba(255,255,255,0.38)
+          - text-align: left
+          - width: 100%
+        value:
+          - font-size: 32px
+          - font-weight: 700
+          - letter-spacing: -1px
+          - line-height: '1'
+          - margin-top: 6px
+          - text-align: left
+          - width: 100%
+          - color: >
+              [[[
+                const p = parseFloat(entity?.state) * 100;
+                if (p < 0)   return '#40916c';
+                if (p < 10)  return '#95d5b2';
+                if (p < 20)  return '#ffc14d';
+                if (p <= 30) return '#f4821f';
+                return '#ef5350';
+              ]]]
+        sub:
+          - font-size: 10px
+          - color: rgba(255,255,255,0.35)
+          - text-align: left
+          - width: 100%
+          - margin-top: 4px
+
+# ── bin_card ──────────────────────────────────────────
+bin_card:
+  variables:
+    entity: ''
+    label: ''
+    date_entity: ''
+  card:
+    type: custom:button-card
+    entity: '[[entity]]'
+    show_icon: false
+    show_name: false
+    show_state: false
+    tap_action:
+      action: more-info
+    custom_fields:
+      label: '[[label]]'
+      value: >
+        [[[
+          const d = parseInt(entity?.state);
+          if (isNaN(d) || d < 0 || d >= 99) return '—';
+          if (d === 0) return 'Today';
+          if (d === 1) return 'Tomorrow';
+          return `${d}d`;
+        ]]]
+      sub: >
+        [[[
+          const s = states['[[date_entity]]']?.state;
+          return (s && s !== 'unknown' && s !== 'unavailable') ? s : '';
+        ]]]
+    styles:
+      card:
+        - background: >
+            [[[
+              const d = parseInt(entity?.state);
+              return (!isNaN(d) && d >= 0 && d <= 1)
+                ? 'color-mix(in srgb, #ff9800 10%, var(--md-sys-color-surface-container-low))'
+                : 'var(--md-sys-color-surface-container-low)';
+            ]]]
+        - border-radius: 16px
+        - border: none
+        - box-shadow: none
+        - padding: 16px
+        - height: 90px
+        - cursor: default
+      grid:
+        - grid-template-areas: '"label" "value" "sub"'
+        - grid-template-rows: auto 1fr auto
+        - justify-items: start
+        - align-items: start
+      custom_fields:
+        label:
+          - font-size: 10px
+          - font-weight: 700
+          - letter-spacing: 0.8px
+          - text-transform: uppercase
+          - color: rgba(255,255,255,0.38)
+          - text-align: left
+          - width: 100%
+        value:
+          - font-size: 24px
+          - font-weight: 700
+          - letter-spacing: -0.5px
+          - line-height: '1'
+          - margin-top: 4px
+          - text-align: left
+          - width: 100%
+          - color: >
+              [[[
+                const d = parseInt(entity?.state);
+                return (!isNaN(d) && d >= 0 && d <= 1) ? '#ff9800' : 'var(--primary-text-color)';
+              ]]]
+        sub:
+          - font-size: 10px
+          - color: rgba(255,255,255,0.35)
+          - text-align: left
+          - width: 100%
+          - margin-top: 2px
+
 # ── house_settings_popup ──────────────────────────────────────────
 house_settings_popup:
   card:
