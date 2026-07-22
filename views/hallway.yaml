@@ -11,7 +11,7 @@ sections:
           navigation_path: /mobile-dashboard
           title: Hallway
           room_motion_sensor: binary_sensor.hallway_downstairs_occupied
-          room_climate_entity: climate.hallway_trv
+          room_climate_entity: climate.hallway_downstairs_trv
           room_temp_sensor: sensor.hallway_downstairs_sensor_climate_temperature
           popup_hash: '#hallway-settings'
       - type: custom:streamline-card
@@ -53,7 +53,7 @@ sections:
               template: heating_mode_section
               variables:
                 room: hallway_downstairs
-                climate_entity: climate.hallway_trv
+                climate_entity: climate.hallway_downstairs_trv
                 temp_sensor: sensor.hallway_downstairs_sensor_climate_temperature
                 humidity_entity: sensor.hallway_downstairs_sensor_climate_humidity
   - type: grid

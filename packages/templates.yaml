@@ -392,7 +392,7 @@ template:
                   "name": "Hallway",
                   "icon": "m3of:stairs",
                   "nav": "/mobile-dashboard/hallway",
-                  "climate": "climate.hallway_trv",
+                  "climate": "climate.hallway_downstairs_trv",
                   "temp_sensor": "sensor.hallway_downstairs_sensor_climate_temperature",
                   "humidity": "sensor.hallway_downstairs_sensor_climate_humidity",
                   "exclude_from_house_stats": false
