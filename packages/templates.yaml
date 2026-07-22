@@ -669,9 +669,16 @@ template:
         state: "{{ states('sensor.home_office_plug_monitor_power') | float(0) > 5 }}"
 
   - binary_sensor:
+      - name: Bedroom Bed Occupied
+        unique_id: bedroom_bed_occupied
+        state: "{{ is_state('binary_sensor.bedroom_sensor_bed_occupancy', 'on') }}"
+        delay_off:
+          minutes: 3
+
+  - binary_sensor:
       - name: Hallway Upstairs Bed Occupied Sync
         unique_id: hallway_upstairs_bed_occupied_sync
-        state: "{{ is_state('binary_sensor.bedroom_sensor_bed_occupancy', 'on') }}"
+        state: "{{ is_state('binary_sensor.bedroom_bed_occupied', 'on') }}"
 
   - binary_sensor:
       - name: Parlour Media Active
