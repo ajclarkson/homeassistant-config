@@ -1,0 +1,13 @@
+name: homeassistant-config
+root: ~/workspace/homeassistant-config
+
+windows:
+  - editor:
+      layout: even-horizontal
+      panes:
+        - nvim .
+        - claude
+
+  - terminal:
+      panes:
+        - fish
