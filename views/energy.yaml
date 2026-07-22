@@ -34,12 +34,12 @@ sections:
                 letter-spacing: 0.3px
                 color: >
                   {% set r = states('sensor.octopus_energy_electricity_24e8140196_1012483035417_current_rate') | float(0) * 100 %}
-                  {% if r < 0 %}#40916c{% elif r < 10 %}#95d5b2{% elif r < 20 %}#ffc14d{% else %}#f4821f{% endif %}
+                  {% if r < 0 %}#40916c{% elif r < 10 %}#95d5b2{% elif r < 20 %}#ffc14d{% elif r <= 30 %}#f4821f{% else %}#ef5350{% endif %}
               button:
                 padding: 3px 8px
                 background: >
                   {% set r = states('sensor.octopus_energy_electricity_24e8140196_1012483035417_current_rate') | float(0) * 100 %}
-                  {% if r < 0 %}color-mix(in srgb, #40916c 12%, transparent){% elif r < 10 %}color-mix(in srgb, #95d5b2 10%, transparent){% elif r < 20 %}color-mix(in srgb, #ffc14d 10%, transparent){% else %}color-mix(in srgb, #f4821f 10%, transparent){% endif %}
+                  {% if r < 0 %}color-mix(in srgb, #40916c 12%, transparent){% elif r < 10 %}color-mix(in srgb, #95d5b2 10%, transparent){% elif r < 20 %}color-mix(in srgb, #ffc14d 10%, transparent){% elif r <= 30 %}color-mix(in srgb, #f4821f 10%, transparent){% else %}color-mix(in srgb, #ef5350 10%, transparent){% endif %}
                 border-radius: 999px
       - type: custom:streamline-card
         template: spacer_card

@@ -111,8 +111,6 @@ sections:
         template: floating_navbar
         variables:
           active: rooms
-      - type: custom:streamline-card
-        template: rooms_popup
       - type: custom:bubble-card
         card_type: pop-up
         hash: '#kitchen-settings'
