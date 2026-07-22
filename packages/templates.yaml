@@ -444,7 +444,7 @@ template:
         unique_id: house_average_temperature
         unit_of_measurement: "°C"
         state: >-
-          {% set rooms = (state_attr('sensor.house_climate_debug','climates') | default('[]')) | from_json %}
+          {% set rooms = (state_attr('sensor.house_climate_debug','climates') | default('[]', true)) | from_json %}
           {% set temps = namespace(vals=[]) %}
           {% for r in rooms %}
             {% if not (r.exclude_from_house_stats | default(false)) %}
@@ -466,7 +466,7 @@ template:
       - name: House Heating Rooms
         unique_id: house_heating_rooms
         state: >-
-          {% set rooms = (state_attr('sensor.house_climate_debug','climates') | default('[]')) | from_json %}
+          {% set rooms = (state_attr('sensor.house_climate_debug','climates') | default('[]', true)) | from_json %}
           {% set n = namespace(count=0) %}
           {% for r in rooms %}
             {% if not (r.exclude_from_house_stats | default(false)) %}
@@ -478,7 +478,7 @@ template:
           {{ n.count }}
         attributes:
           names: >-
-            {% set rooms = (state_attr('sensor.house_climate_debug','climates') | default('[]')) | from_json %}
+            {% set rooms = (state_attr('sensor.house_climate_debug','climates') | default('[]', true)) | from_json %}
             {% set out = namespace(items=[]) %}
             {% for r in rooms %}
               {% if not (r.exclude_from_house_stats | default(false)) and state_attr(r.climate, 'hvac_action') == 'heating' %}
@@ -490,7 +490,7 @@ template:
       - name: House Warmest Room
         unique_id: house_warmest_room
         state: >-
-          {% set rooms = (state_attr('sensor.house_climate_debug','climates') | default('[]')) | from_json %}
+          {% set rooms = (state_attr('sensor.house_climate_debug','climates') | default('[]', true)) | from_json %}
           {% set best = namespace(name='unknown', temp=none) %}
           {% for r in rooms %}
             {% if not (r.exclude_from_house_stats | default(false)) %}
@@ -504,7 +504,7 @@ template:
           {{ best.name }}
         attributes:
           temp: >-
-            {% set rooms = (state_attr('sensor.house_climate_debug','climates') | default('[]')) | from_json %}
+            {% set rooms = (state_attr('sensor.house_climate_debug','climates') | default('[]', true)) | from_json %}
             {% set best = namespace(temp=none) %}
             {% for r in rooms %}
               {% if not (r.exclude_from_house_stats | default(false)) %}
@@ -519,7 +519,7 @@ template:
       - name: House Coldest Room
         unique_id: house_coldest_room
         state: >-
-          {% set rooms = (state_attr('sensor.house_climate_debug','climates') | default('[]')) | from_json %}
+          {% set rooms = (state_attr('sensor.house_climate_debug','climates') | default('[]', true)) | from_json %}
           {% set best = namespace(name='unknown', temp=none) %}
           {% for r in rooms %}
             {% if not (r.exclude_from_house_stats | default(false)) %}
@@ -533,7 +533,7 @@ template:
           {{ best.name }}
         attributes:
           temp: >-
-            {% set rooms = (state_attr('sensor.house_climate_debug','climates') | default('[]')) | from_json %}
+            {% set rooms = (state_attr('sensor.house_climate_debug','climates') | default('[]', true)) | from_json %}
             {% set best = namespace(temp=none) %}
             {% for r in rooms %}
               {% if not (r.exclude_from_house_stats | default(false)) %}
@@ -550,7 +550,7 @@ template:
         state: ok
         attributes:
           temps: >-
-            {% set rooms = (state_attr('sensor.house_climate_debug','climates') | default('[]')) | from_json %}
+            {% set rooms = (state_attr('sensor.house_climate_debug','climates') | default('[]', true)) | from_json %}
             {% set out = namespace(items=[]) %}
             {% for r in rooms %}
               {% set t = state_attr(r.climate, 'current_temperature') %}
@@ -564,7 +564,7 @@ template:
         state: >-
           {% set min_ok = 17.0 %}
           {% set max_ok = 21.5 %}
-          {% set rooms = (state_attr('sensor.house_climate_debug','climates') | default('[]')) | from_json %}
+          {% set rooms = (state_attr('sensor.house_climate_debug','climates') | default('[]', true)) | from_json %}
           {% set cold = namespace(n=0) %}
           {% set hot  = namespace(n=0) %}
 
@@ -588,7 +588,7 @@ template:
           band_max: 21.5
           too_cold: >-
             {% set min_ok = 17.0 %}
-            {% set rooms = (state_attr('sensor.house_climate_debug','climates') | default('[]')) | from_json %}
+            {% set rooms = (state_attr('sensor.house_climate_debug','climates') | default('[]', true)) | from_json %}
             {% set out = namespace(items=[]) %}
             {% for r in rooms %}
               {% if not (r.exclude_from_house_stats | default(false)) %}
@@ -601,7 +601,7 @@ template:
             {{ out.items | tojson }}
           too_warm: >-
             {% set max_ok = 21.5 %}
-            {% set rooms = (state_attr('sensor.house_climate_debug','climates') | default('[]')) | from_json %}
+            {% set rooms = (state_attr('sensor.house_climate_debug','climates') | default('[]', true)) | from_json %}
             {% set out = namespace(items=[]) %}
             {% for r in rooms %}
               {% if not (r.exclude_from_house_stats | default(false)) %}
@@ -615,7 +615,7 @@ template:
           summary: >-
             {% set min_ok = 17.0 %}
             {% set max_ok = 21.5 %}
-            {% set rooms = (state_attr('sensor.house_climate_debug','climates') | default('[]')) | from_json %}
+            {% set rooms = (state_attr('sensor.house_climate_debug','climates') | default('[]', true)) | from_json %}
             {% set cold_names = namespace(items=[]) %}
             {% set hot_names  = namespace(items=[]) %}
 
@@ -652,7 +652,7 @@ template:
         state: >-
           {% set min_ok = 17.0 %}
           {% set max_ok = 21.5 %}
-          {% set rooms = (state_attr('sensor.house_climate_debug','climates') | default('[]')) | from_json %}
+          {% set rooms = (state_attr('sensor.house_climate_debug','climates') | default('[]', true)) | from_json %}
           {% for r in rooms %}
             {% if not (r.exclude_from_house_stats | default(false)) %}
               {% set t = state_attr(r.climate, 'current_temperature') %}
