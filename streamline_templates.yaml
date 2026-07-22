@@ -7,22 +7,10 @@ climate_settings_popup:
     hash: '#climate_settings'
     show_header: false
     cards:
-      - type: custom:paper-buttons-row
-        styles:
-          justify-content: flex-start
-          margin: 20px 12px 8px 12px
-        buttons:
-          - layout: name
-            name: Heating settings
-            styles:
-              name:
-                font-size: 22px
-                font-weight: 700
-                letter-spacing: -0.3px
-                color: var(--primary-text-color)
-              button:
-                padding: 0
-                background: none
+      - type: custom:streamline-card
+        template: popup_header
+        variables:
+          title: Heating settings
       - type: grid
         columns: 1
         square: false
@@ -435,6 +423,28 @@ navbar_spacer:
         - box-shadow: none
         - height: '[[height]]'
 
+# ── popup_header ──────────────────────────────────────────
+popup_header:
+  variables:
+    title: ''
+  card:
+    type: custom:paper-buttons-row
+    styles:
+      justify-content: flex-start
+      margin: 20px 12px 8px 12px
+    buttons:
+      - layout: name
+        name: '[[title]]'
+        styles:
+          name:
+            font-size: 22px
+            font-weight: 700
+            letter-spacing: -0.3px
+            color: var(--primary-text-color)
+          button:
+            padding: 0
+            background: none
+
 # ── rooms_popup ──────────────────────────────────────────
 rooms_popup:
   card:
@@ -443,22 +453,10 @@ rooms_popup:
     hash: '#rooms'
     show_header: false
     cards:
-      - type: custom:paper-buttons-row
-        styles:
-          justify-content: flex-start
-          margin: 20px 12px 8px 12px
-        buttons:
-          - layout: name
-            name: Rooms
-            styles:
-              name:
-                font-size: 22px
-                font-weight: 700
-                letter-spacing: -0.3px
-                color: var(--primary-text-color)
-              button:
-                padding: 0
-                background: none
+      - type: custom:streamline-card
+        template: popup_header
+        variables:
+          title: Rooms
       - type: grid
         columns: 2
         square: false
@@ -883,6 +881,22 @@ floating_navbar:
                       ? 'rgba(255,255,255,1.0)'
                       : 'color-mix(in srgb, var(--primary-text-color) 38%, transparent)';
                   ]]]
+# ── page_footer ──────────────────────────────────────────
+page_footer:
+  default:
+    - active: home
+  variables:
+    active: ''
+  card:
+    type: vertical-stack
+    cards:
+      - type: custom:streamline-card
+        template: navbar_spacer
+      - type: custom:streamline-card
+        template: floating_navbar
+        variables:
+          active: '[[active]]'
+
 # ── lights_popup_scaffold ──────────────────────────────────────────
 lights_popup_scaffold:
   default:
@@ -906,22 +920,10 @@ lights_popup_scaffold:
     hash: '[[popup_hash]]'
     show_header: false
     cards:
-      - type: custom:paper-buttons-row
-        styles:
-          justify-content: flex-start
-          margin: 20px 12px 8px 12px
-        buttons:
-          - layout: name
-            name: '[[title]]'
-            styles:
-              name:
-                font-size: 22px
-                font-weight: 700
-                letter-spacing: -0.3px
-                color: var(--primary-text-color)
-              button:
-                padding: 0
-                background: none
+      - type: custom:streamline-card
+        template: popup_header
+        variables:
+          title: '[[title]]'
       - type: custom:mushroom-template-card
         primary: '[[off_label]]'
         icon: '[[chip_icon]]'
@@ -2021,66 +2023,6 @@ room_tabs_scaffold:
           card:
             type: vertical-stack
             cards: '[[climate_tab_cards]]'
-# ── lights_popup_section ──────────────────────────────────────────
-lights_popup_section:
-  default:
-    - title: Individual Lights
-    - icon: m3of:lightbulb
-    - off_label: 'Off'
-  variables:
-    popup_hash: ''
-    off_scene: ''
-    title: ''
-    icon: ''
-    off_label: ''
-    popup_cards: []
-  card:
-    type: custom:bubble-card
-    card_type: pop-up
-    name: '[[title]]'
-    icon: '[[icon]]'
-    hash: '[[popup_hash]]'
-    show_header: false
-    cards:
-      - type: custom:paper-buttons-row
-        styles:
-          justify-content: flex-start
-          margin: 20px 12px 8px 12px
-        buttons:
-          - layout: name
-            name: '[[title]]'
-            styles:
-              name:
-                font-size: 22px
-                font-weight: 700
-                letter-spacing: -0.3px
-                color: var(--primary-text-color)
-              button:
-                padding: 0
-                background: none
-      - type: custom:mushroom-template-card
-        primary: '[[off_label]]'
-        icon: mdi:power
-        layout: horizontal
-        tap_action:
-          action: call-service
-          service: scene.turn_on
-          target:
-            entity_id: '[[off_scene]]'
-        card_mod:
-          style: |
-            ha-card {
-              border-radius: 8px;
-              border: none;
-              background: var(--md-sys-color-surface-container-high);
-              box-shadow: none;
-              --icon-size: 18px;
-              --shape-color: transparent;
-              --shape-border-radius: 0px;
-              --spacing: 10px;
-            }
-      - type: vertical-stack
-        cards: '[[popup_cards]]'
 # ── heating_automation_section ──────────────────────────────────────────
 heating_automation_section:
   default:
@@ -2434,22 +2376,10 @@ house_settings_popup:
     hash: '#house_settings'
     show_header: false
     cards:
-      - type: custom:paper-buttons-row
-        styles:
-          justify-content: flex-start
-          margin: 20px 12px 8px 12px
-        buttons:
-          - layout: name
-            name: House settings
-            styles:
-              name:
-                font-size: 22px
-                font-weight: 700
-                letter-spacing: -0.3px
-                color: var(--primary-text-color)
-              button:
-                padding: 0
-                background: none
+      - type: custom:streamline-card
+        template: popup_header
+        variables:
+          title: House settings
       - type: custom:streamline-card
         template: section_title
         variables:

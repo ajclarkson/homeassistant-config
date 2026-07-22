@@ -855,8 +855,6 @@ sections:
   - type: custom:streamline-card
     template: rooms_popup
   - type: custom:streamline-card
-    template: navbar_spacer
-  - type: custom:streamline-card
-    template: floating_navbar
+    template: page_footer
     variables:
       active: home
