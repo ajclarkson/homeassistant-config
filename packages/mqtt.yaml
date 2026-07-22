@@ -292,10 +292,3 @@ mqtt:
       unique_id: bathroom_shower
       state_topic: "bathroom/shower/state"
 
-    # Test Sensors for Validation
-    - name: "Test Location Occupied"
-      unique_id: test_location_occupied
-      state_topic: "test_location/occupied/state"
-    - name: "Test Location Sensor Motion Occupancy"
-      unique_id: test_location_sensor_motion_occupancy
-      state_topic: "test_location/motion/state"

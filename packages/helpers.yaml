@@ -35,14 +35,6 @@ input_boolean:
     foreign_office_automation_presence_override:
         name: Foreign Office Presence Override
 
-    # Test Sensors for Validation
-    test_location_sensor_motion_enabled:
-        name: Test Location Motion Sensor Enabled
-    test_location_entity_1:
-        name: Test Location Entity 1
-    test_location_entity_2:
-        name: Test Location Entity 2
-
     # Light Automation Helpers
     parlour_automation_lights_enabled:
         name: Parlour Lights Automation Enabled
