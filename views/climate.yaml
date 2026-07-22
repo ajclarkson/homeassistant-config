@@ -89,8 +89,8 @@ sections:
           icon: m3of:stairs
           navigation_path: /mobile-dashboard/hallway
           climate_entity: climate.hallway_trv
-          temp_entity: sensor.hallway_downstairs_sensor_motion_temperature
-          humidity_entity: sensor.hallway_upstairs_sensor_climate_humidity
+          temp_entity: sensor.hallway_downstairs_sensor_climate_temperature
+          humidity_entity: sensor.hallway_downstairs_sensor_climate_humidity
       - type: custom:streamline-card
         template: climate_row_card
         variables:
