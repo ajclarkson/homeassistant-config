@@ -72,22 +72,10 @@ sections:
     hash: '#bathroom-settings'
     show_header: false
     cards:
-      - type: custom:paper-buttons-row
-        styles:
-          justify-content: flex-start
-          margin: 20px 12px 8px 12px
-        buttons:
-          - layout: name
-            name: Bathroom Settings
-            styles:
-              name:
-                font-size: 22px
-                font-weight: 700
-                letter-spacing: -0.3px
-                color: var(--primary-text-color)
-              button:
-                padding: 0
-                background: none
+      - type: custom:streamline-card
+        template: popup_header
+        variables:
+          title: Bathroom Settings
       - type: custom:streamline-card
         template: presence_section
         variables:
@@ -110,8 +98,6 @@ sections:
           toggle_entity: input_boolean.bathroom_automation_heating_enabled
           heating_hold_entity: binary_sensor.bathroom_external_openings
   - type: custom:streamline-card
-    template: navbar_spacer
-  - type: custom:streamline-card
-    template: floating_navbar
+    template: page_footer
     variables:
       active: rooms

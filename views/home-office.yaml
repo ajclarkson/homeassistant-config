@@ -64,7 +64,7 @@ sections:
       - type: custom:streamline-card
         template: rooms_popup
       - type: custom:streamline-card
-        template: lights_popup_section
+        template: lights_popup_scaffold
         variables:
           popup_hash: '#home-office-lights'
           off_scene: scene.home_office_off
@@ -78,18 +78,16 @@ sections:
               columns: 2
               square: false
               cards:
-                - type: custom:material-slider-card
-                  control_type: light
-                  show_percentage: true
-                  bold_text: false
-                  entity: light.home_office_light_desk_lamp
-                  name: Desk lamp
-                - type: custom:material-slider-card
-                  control_type: light
-                  show_percentage: true
-                  bold_text: false
-                  entity: light.home_office_light_floor_lamp
-                  name: Floor lamp
+                - type: custom:streamline-card
+                  template: popup_light_slider
+                  variables:
+                    entity: light.home_office_light_desk_lamp
+                    name: Desk lamp
+                - type: custom:streamline-card
+                  template: popup_light_slider
+                  variables:
+                    entity: light.home_office_light_floor_lamp
+                    name: Floor lamp
             - type: custom:streamline-card
               template: section_title
               variables:
@@ -98,18 +96,13 @@ sections:
               columns: 1
               square: false
               cards:
-                - type: custom:material-slider-card
-                  control_type: light
-                  show_percentage: true
-                  bold_text: false
-                  entity: light.home_office_light_ceiling
-                  name: Ceiling
+                - type: custom:streamline-card
+                  template: popup_light_slider
+                  variables:
+                    entity: light.home_office_light_ceiling
+                    name: Ceiling
       - type: custom:streamline-card
-        template: spacer_card
-        variables:
-          padding: 110px
-      - type: custom:streamline-card
-        template: floating_navbar
+        template: page_footer
         variables:
           active: rooms
       - type: custom:bubble-card
@@ -117,22 +110,10 @@ sections:
         hash: '#home-office-settings'
         show_header: false
         cards:
-          - type: custom:paper-buttons-row
-            styles:
-              justify-content: flex-start
-              margin: 20px 12px 8px 12px
-            buttons:
-              - layout: name
-                name: Home Office Settings
-                styles:
-                  name:
-                    font-size: 22px
-                    font-weight: 700
-                    letter-spacing: -0.3px
-                    color: var(--primary-text-color)
-                  button:
-                    padding: 0
-                    background: none
+          - type: custom:streamline-card
+            template: popup_header
+            variables:
+              title: Home Office Settings
           - type: custom:streamline-card
             template: sonos_follow_section
             variables:

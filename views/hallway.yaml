@@ -61,7 +61,7 @@ sections:
       - type: custom:streamline-card
         template: rooms_popup
       - type: custom:streamline-card
-        template: lights_popup_section
+        template: lights_popup_scaffold
         variables:
           popup_hash: '#hallway-downstairs-lights'
           off_scene: scene.hallway_downstairs_off
@@ -75,14 +75,13 @@ sections:
               columns: 1
               square: false
               cards:
-                - type: custom:material-slider-card
-                  control_type: light
-                  show_percentage: true
-                  bold_text: false
-                  entity: light.hallway_downstairs_light_ceiling
-                  name: Ceiling
+                - type: custom:streamline-card
+                  template: popup_light_slider
+                  variables:
+                    entity: light.hallway_downstairs_light_ceiling
+                    name: Ceiling
       - type: custom:streamline-card
-        template: lights_popup_section
+        template: lights_popup_scaffold
         variables:
           popup_hash: '#hallway-upstairs-lights'
           off_scene: scene.hallway_upstairs_off
@@ -96,16 +95,13 @@ sections:
               columns: 1
               square: false
               cards:
-                - type: custom:material-slider-card
-                  control_type: light
-                  show_percentage: true
-                  bold_text: false
-                  entity: light.hallway_upstairs_light_ceiling
-                  name: Ceiling
+                - type: custom:streamline-card
+                  template: popup_light_slider
+                  variables:
+                    entity: light.hallway_upstairs_light_ceiling
+                    name: Ceiling
       - type: custom:streamline-card
-        template: navbar_spacer
-      - type: custom:streamline-card
-        template: floating_navbar
+        template: page_footer
         variables:
           active: rooms
       - type: custom:bubble-card
@@ -113,22 +109,10 @@ sections:
         hash: '#hallway-settings'
         show_header: false
         cards:
-          - type: custom:paper-buttons-row
-            styles:
-              justify-content: flex-start
-              margin: 20px 12px 8px 12px
-            buttons:
-              - layout: name
-                name: Hallway Settings
-                styles:
-                  name:
-                    font-size: 22px
-                    font-weight: 700
-                    letter-spacing: -0.3px
-                    color: var(--primary-text-color)
-                  button:
-                    padding: 0
-                    background: none
+          - type: custom:streamline-card
+            template: popup_header
+            variables:
+              title: Hallway Settings
           - type: custom:streamline-card
             template: presence_section
             variables:

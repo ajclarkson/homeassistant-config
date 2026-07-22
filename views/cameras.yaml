@@ -75,22 +75,10 @@ sections:
         hash: '#parlour-recordings'
         show_header: false
         cards:
-          - type: custom:paper-buttons-row
-            styles:
-              justify-content: flex-start
-              margin: 20px 12px 8px 12px
-            buttons:
-              - layout: name
-                name: Parlour recordings
-                styles:
-                  name:
-                    font-size: 22px
-                    font-weight: 700
-                    letter-spacing: -0.3px
-                    color: var(--primary-text-color)
-                  button:
-                    padding: 0
-                    background: none
+          - type: custom:streamline-card
+            template: popup_header
+            variables:
+              title: Parlour recordings
           - type: custom:camera-events-card
             camera: parlour
             title: Parlour
@@ -101,22 +89,10 @@ sections:
         hash: '#kitchen-recordings'
         show_header: false
         cards:
-          - type: custom:paper-buttons-row
-            styles:
-              justify-content: flex-start
-              margin: 20px 12px 8px 12px
-            buttons:
-              - layout: name
-                name: Kitchen recordings
-                styles:
-                  name:
-                    font-size: 22px
-                    font-weight: 700
-                    letter-spacing: -0.3px
-                    color: var(--primary-text-color)
-                  button:
-                    padding: 0
-                    background: none
+          - type: custom:streamline-card
+            template: popup_header
+            variables:
+              title: Kitchen recordings
           - type: custom:camera-events-card
             camera: kitchen
             title: Kitchen
@@ -127,22 +103,10 @@ sections:
         hash: '#home-office-recordings'
         show_header: false
         cards:
-          - type: custom:paper-buttons-row
-            styles:
-              justify-content: flex-start
-              margin: 20px 12px 8px 12px
-            buttons:
-              - layout: name
-                name: Home Office recordings
-                styles:
-                  name:
-                    font-size: 22px
-                    font-weight: 700
-                    letter-spacing: -0.3px
-                    color: var(--primary-text-color)
-                  button:
-                    padding: 0
-                    background: none
+          - type: custom:streamline-card
+            template: popup_header
+            variables:
+              title: Home Office recordings
           - type: custom:camera-events-card
             camera: home_office
             title: Home Office
@@ -151,8 +115,6 @@ sections:
       - type: custom:streamline-card
         template: rooms_popup
       - type: custom:streamline-card
-        template: navbar_spacer
-      - type: custom:streamline-card
-        template: floating_navbar
+        template: page_footer
         variables:
           active: cameras

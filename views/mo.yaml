@@ -128,22 +128,10 @@ sections:
         hash: '#mo-settings'
         show_header: false
         cards:
-          - type: custom:paper-buttons-row
-            styles:
-              justify-content: flex-start
-              margin: 20px 12px 8px 12px
-            buttons:
-              - layout: name
-                name: Mo Settings
-                styles:
-                  name:
-                    font-size: 22px
-                    font-weight: 700
-                    letter-spacing: -0.3px
-                    color: var(--primary-text-color)
-                  button:
-                    padding: 0
-                    background: none
+          - type: custom:streamline-card
+            template: popup_header
+            variables:
+              title: Mo Settings
           - type: grid
             columns: 1
             square: false
@@ -163,6 +151,4 @@ sections:
                   icon_on: mdi:bowl-mix
                   icon_off: mdi:bowl-mix
       - type: custom:streamline-card
-        template: navbar_spacer
-      - type: custom:streamline-card
-        template: floating_navbar
+        template: page_footer
