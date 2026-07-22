@@ -102,14 +102,6 @@ sections:
           motion_enabled_entity: input_boolean.bedroom_sensor_motion_enabled
           override_entity: input_boolean.bedroom_automation_presence_override
           contained_entity: binary_sensor.bedroom_occupied_contained
-          title: Presence
-          subtitle: Control how this room decides it is occupied.
-          motion_title: Motion
-          motion_subtitle: Use motion sensor evidence
-          motion_toggle_name: Use motion sensor
-          override_title: Override
-          override_subtitle: Force occupied
-          override_toggle_name: Presence override
           reason_1_entity: binary_sensor.bedroom_bed_occupancy
           reason_1_state: 'on'
           reason_1_icon: m3of:bed
