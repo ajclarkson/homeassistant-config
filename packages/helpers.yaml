@@ -186,6 +186,12 @@ input_number:
         min: 12
         max: 22
         step: 1
+    bedroom_automation_window_indoor_comfort_threshold:
+        name: Bedroom Window Indoor Comfort Threshold
+        min: 18
+        max: 28
+        step: 0.5
+        unit_of_measurement: "°C"
 
     # Foreign Office Door Ventilation
     foreign_office_automation_door_open_delta:
