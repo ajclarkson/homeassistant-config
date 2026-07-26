@@ -731,6 +731,9 @@
     switch.parlour_plug_table_lamp:
       friendly_name: parlour_plug_table_lamp
       state: 'off'
+    switch.parlour_plug_donut_lamp:
+      friendly_name: parlour_plug_donut_lamp
+      state: 'off'
   metadata: {}
 - id: '1760283865506'
   name: Parlour Lamps
@@ -808,6 +811,9 @@
       state: 'on'
     switch.parlour_plug_table_lamp:
       friendly_name: parlour_plug_table_lamp
+      state: 'on'
+    switch.parlour_plug_donut_lamp:
+      friendly_name: parlour_plug_donut_lamp
       state: 'on'
   metadata: {}
 - id: '1760283892412'
@@ -887,6 +893,9 @@
     switch.parlour_plug_table_lamp:
       friendly_name: parlour_plug_table_lamp
       state: 'on'
+    switch.parlour_plug_donut_lamp:
+      friendly_name: parlour_plug_donut_lamp
+      state: 'on'
   metadata: {}
 - id: '1760283911874'
   name: Parlour All
@@ -964,6 +973,9 @@
       state: 'on'
     switch.parlour_plug_table_lamp:
       friendly_name: parlour_plug_table_lamp
+      state: 'on'
+    switch.parlour_plug_donut_lamp:
+      friendly_name: parlour_plug_donut_lamp
       state: 'on'
   metadata: {}
   icon: mdi:ceiling-light-multiple
