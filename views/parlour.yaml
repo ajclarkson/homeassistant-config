@@ -96,6 +96,11 @@ sections:
                     variables:
                       entity: light.parlour_light_floor_lamp
                       name: Floor Lamp
+                  - type: custom:streamline-card
+                    template: popup_switch_button
+                    variables:
+                      entity: switch.parlour_plug_donut_lamp
+                      name: Donut Lamp
             - type: custom:streamline-card
               template: popup_light_section
               variables:
