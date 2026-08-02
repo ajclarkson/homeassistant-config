@@ -207,6 +207,18 @@ input_number:
         step: 15
         unit_of_measurement: "min"
 
+    # House Mode
+    house_automation_exit_sleep_earliest_hour:
+        name: House Exit Sleep Earliest Hour
+        min: 0
+        max: 12
+        step: 1
+    house_automation_exit_sleep_latest_hour:
+        name: House Exit Sleep Latest Hour
+        min: 6
+        max: 14
+        step: 1
+
 input_select:
     house_active_mode_modifier:
         name: House Active Mode Modifier
