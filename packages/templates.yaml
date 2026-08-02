@@ -598,6 +598,11 @@ template:
         state: "{{ states('sensor.home_office_plug_monitor_power') | float(0) > 5 }}"
 
   - binary_sensor:
+      - name: Foreign Office Monitor
+        unique_id: foreign_office_monitor
+        state: "{{ states('sensor.foreign_office_plug_monitor_power') | float(0) > 10 }}"
+
+  - binary_sensor:
       - name: Bedroom Bed Occupied
         unique_id: bedroom_bed_occupied
         state: "{{ is_state('binary_sensor.bedroom_sensor_bed_occupancy', 'on') }}"
