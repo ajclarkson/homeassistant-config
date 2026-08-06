@@ -1,0 +1,23 @@
+sensor:
+  # Smooths brief dock/monitor polling spikes (seen up to 47W for ~10-30s
+  # against a ~3-4W idle baseline) out of the raw power reading, so the
+  # foreign_office_monitor / home_office_monitor occupancy hold sensors
+  # only respond to sustained draw. See packages/templates.yaml.
+  - platform: filter
+    name: "Foreign Office Monitor Power Smoothed"
+    unique_id: foreign_office_plug_monitor_power_smoothed
+    entity_id: sensor.foreign_office_plug_monitor_power
+    filters:
+      - filter: time_simple_moving_average
+        window_size: "00:03:00"
+        type: last
+        precision: 1
+  - platform: filter
+    name: "Home Office Monitor Power Smoothed"
+    unique_id: home_office_plug_monitor_power_smoothed
+    entity_id: sensor.home_office_plug_monitor_power
+    filters:
+      - filter: time_simple_moving_average
+        window_size: "00:03:00"
+        type: last
+        precision: 1

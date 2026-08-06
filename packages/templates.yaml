@@ -595,16 +595,12 @@ template:
   - binary_sensor:
       - name: Home Office Monitor
         unique_id: home_office_monitor
-        state: "{{ states('sensor.home_office_plug_monitor_power') | float(0) > 5 }}"
-        delay_on:
-          minutes: 2
+        state: "{{ states('sensor.home_office_plug_monitor_power_smoothed') | float(0) > 5 }}"
 
   - binary_sensor:
       - name: Foreign Office Monitor
         unique_id: foreign_office_monitor
-        state: "{{ states('sensor.foreign_office_plug_monitor_power') | float(0) > 10 }}"
-        delay_on:
-          minutes: 2
+        state: "{{ states('sensor.foreign_office_plug_monitor_power_smoothed') | float(0) > 10 }}"
 
   - binary_sensor:
       - name: Bedroom Bed Occupied
