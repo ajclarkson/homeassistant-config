@@ -1,0 +1,17 @@
+house_all_lights_off:
+  alias: House - All Lights Off
+  icon: mdi:lightbulb-off-outline
+  sequence:
+    - action: scene.turn_on
+      target:
+        entity_id:
+          - scene.parlour_off
+          - scene.kitchen_off
+          - scene.hallway_downstairs_off
+          - scene.hallway_upstairs_off
+          - scene.bedroom_off
+          - scene.bathroom_off
+          - scene.home_office_off
+          - scene.foreign_office_off
+          - scene.back_garden_off
+  mode: single

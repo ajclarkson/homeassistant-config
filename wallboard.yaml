@@ -1,0 +1,4 @@
+streamline_templates: !include streamline_templates.yaml
+
+views:
+  - !include views/wallboard.yaml

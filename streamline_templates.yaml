@@ -2472,6 +2472,247 @@ bin_card:
           - width: 100%
           - margin-top: 2px
 
+# ── house_control_strip ──────────────────────────────────────────
+house_control_strip:
+  card:
+    type: grid
+    columns: 4
+    square: false
+    cards:
+      - type: custom:button-card
+        entity: sensor.house_active_mode
+        show_icon: false
+        show_name: false
+        show_state: false
+        tap_action:
+          action: navigate
+          navigation_path: '#house_settings'
+        custom_fields:
+          label: House
+          value: >
+            [[[
+              const modifier = states['input_select.house_active_mode_modifier']?.state;
+              const mode = entity?.state;
+              const raw = (modifier && modifier !== 'none') ? modifier : mode;
+              if (!raw) return '—';
+              return raw.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+            ]]]
+          sub: >
+            [[[
+              const adam = states['person.adam']?.state === 'home';
+              const sarah = states['person.sarah']?.state === 'home';
+              if (adam && sarah) return 'Both home';
+              if (adam) return 'Adam home';
+              if (sarah) return 'Sarah home';
+              return 'Nobody home';
+            ]]]
+        styles:
+          card:
+            - background: var(--md-sys-color-surface-container-low)
+            - border-radius: 16px
+            - border: none
+            - box-shadow: none
+            - padding: 14px
+            - height: 100px
+          grid:
+            - grid-template-areas: '"label" "value" "sub"'
+            - grid-template-rows: auto 1fr auto
+            - justify-items: start
+            - align-items: start
+          custom_fields:
+            label:
+              - font-size: 10px
+              - font-weight: 700
+              - letter-spacing: 0.8px
+              - text-transform: uppercase
+              - color: rgba(255,255,255,0.38)
+              - text-align: left
+              - width: 100%
+            value:
+              - font-size: 22px
+              - font-weight: 700
+              - line-height: '1'
+              - letter-spacing: -0.3px
+              - margin-top: 6px
+              - text-align: left
+              - width: 100%
+              - color: var(--primary-text-color)
+            sub:
+              - font-size: 11px
+              - color: rgba(255,255,255,0.45)
+              - margin-top: 6px
+              - text-align: left
+              - width: 100%
+      - type: custom:button-card
+        entity: input_boolean.house_heating_enabled
+        show_icon: false
+        show_name: false
+        show_state: false
+        tap_action:
+          action: toggle
+        hold_action:
+          action: more-info
+        custom_fields:
+          label: Heating
+          value: '[[[ return entity?.state === "on" ? "On" : "Off"; ]]]'
+          sub: >
+            [[[
+              if (entity?.state !== 'on') return 'Disabled';
+              const n = parseInt(states['sensor.house_heating_rooms']?.state) || 0;
+              const firing = states['binary_sensor.house_heating_boiler_firing']?.state === 'on';
+              if (firing && n > 0) return `${n} room${n > 1 ? 's' : ''} heating`;
+              return 'Idle';
+            ]]]
+        styles:
+          card:
+            - background: >
+                [[[
+                  return entity?.state === 'on'
+                    ? 'color-mix(in srgb, var(--md-sys-color-primary) 10%, var(--md-sys-color-surface-container-low))'
+                    : 'var(--md-sys-color-surface-container-low)';
+                ]]]
+            - border-radius: 16px
+            - border: none
+            - box-shadow: none
+            - padding: 14px
+            - height: 100px
+          grid:
+            - grid-template-areas: '"label" "value" "sub"'
+            - grid-template-rows: auto 1fr auto
+            - justify-items: start
+            - align-items: start
+          custom_fields:
+            label:
+              - font-size: 10px
+              - font-weight: 700
+              - letter-spacing: 0.8px
+              - text-transform: uppercase
+              - color: rgba(255,255,255,0.38)
+              - text-align: left
+              - width: 100%
+            value:
+              - font-size: 22px
+              - font-weight: 700
+              - line-height: '1'
+              - letter-spacing: -0.3px
+              - margin-top: 6px
+              - text-align: left
+              - width: 100%
+              - color: var(--primary-text-color)
+            sub:
+              - font-size: 11px
+              - color: rgba(255,255,255,0.45)
+              - margin-top: 6px
+              - text-align: left
+              - width: 100%
+      - type: custom:button-card
+        show_icon: false
+        show_name: false
+        show_state: false
+        tap_action:
+          action: call-service
+          service: script.house_all_lights_off
+          confirmation:
+            text: Turn off all lights?
+        custom_fields:
+          label: Lights
+          value: All off
+          sub: Every room
+        styles:
+          card:
+            - background: var(--md-sys-color-surface-container-low)
+            - border-radius: 16px
+            - border: none
+            - box-shadow: none
+            - padding: 14px
+            - height: 100px
+          grid:
+            - grid-template-areas: '"label" "value" "sub"'
+            - grid-template-rows: auto 1fr auto
+            - justify-items: start
+            - align-items: start
+          custom_fields:
+            label:
+              - font-size: 10px
+              - font-weight: 700
+              - letter-spacing: 0.8px
+              - text-transform: uppercase
+              - color: rgba(255,255,255,0.38)
+              - text-align: left
+              - width: 100%
+            value:
+              - font-size: 22px
+              - font-weight: 700
+              - line-height: '1'
+              - letter-spacing: -0.3px
+              - margin-top: 6px
+              - text-align: left
+              - width: 100%
+              - color: var(--primary-text-color)
+            sub:
+              - font-size: 11px
+              - color: rgba(255,255,255,0.45)
+              - margin-top: 6px
+              - text-align: left
+              - width: 100%
+      - type: custom:button-card
+        entity: sensor.octopus_energy_electricity_24e8140196_1012483035417_current_rate
+        show_icon: false
+        show_name: false
+        show_state: false
+        tap_action:
+          action: more-info
+        custom_fields:
+          label: Rate now
+          value: >
+            [[[
+              const r = parseFloat(entity?.state);
+              return isNaN(r) ? '—' : `${(r * 100).toFixed(1)}p`;
+            ]]]
+          sub: >
+            [[[
+              const fmt = s => new Date(s).toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit'});
+              const e = entity?.attributes?.end;
+              return e ? `until ${fmt(e)}` : '';
+            ]]]
+        styles:
+          card:
+            - background: var(--md-sys-color-surface-container-low)
+            - border-radius: 16px
+            - border: none
+            - box-shadow: none
+            - padding: 14px
+            - height: 100px
+          grid:
+            - grid-template-areas: '"label" "value" "sub"'
+            - grid-template-rows: auto 1fr auto
+            - justify-items: start
+            - align-items: start
+          custom_fields:
+            label:
+              - font-size: 10px
+              - font-weight: 700
+              - letter-spacing: 0.8px
+              - text-transform: uppercase
+              - color: rgba(255,255,255,0.38)
+              - text-align: left
+              - width: 100%
+            value:
+              - font-size: 22px
+              - font-weight: 700
+              - line-height: '1'
+              - letter-spacing: -0.3px
+              - margin-top: 6px
+              - text-align: left
+              - width: 100%
+              - color: var(--primary-text-color)
+            sub:
+              - font-size: 11px
+              - color: rgba(255,255,255,0.45)
+              - margin-top: 6px
+              - text-align: left
+              - width: 100%
+
 # ── house_settings_popup ──────────────────────────────────────────
 house_settings_popup:
   card:
