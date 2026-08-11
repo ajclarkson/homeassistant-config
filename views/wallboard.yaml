@@ -1,0 +1,116 @@
+title: Wallboard
+path: wallboard
+icon: mdi:tablet-dashboard
+type: sections
+max_columns: 3
+sections:
+  - type: grid
+    cards:
+      - type: custom:paper-buttons-row
+        styles:
+          justify-content: flex-start
+          gap: 10px
+          align-items: center
+          margin: 0 12px 0 12px
+        buttons:
+          - layout: name
+            name: Home
+            styles:
+              name:
+                font-size: 30px
+                font-weight: 700
+                color: var(--primary-text-color)
+              button:
+                padding: 0
+                background: none
+      - type: custom:streamline-card
+        template: house_control_strip
+  - type: grid
+    cards:
+      - type: custom:streamline-card
+        template: lighting_scenes_section_3
+        variables:
+          title: Parlour Lighting
+          scene_1_entity: scene.parlour_all
+          scene_1_name: All
+          scene_2_entity: scene.parlour_dining
+          scene_2_name: Dining
+          scene_3_entity: scene.parlour_lamps
+          scene_3_name: Lamps
+          scene_off_entity: scene.parlour_off
+          scene_off_name: 'Off'
+          lights_group: group.parlour_lights
+          popup_hash: '#wallboard-parlour-lights'
+          room: parlour
+  - type: grid
+    cards:
+      - type: custom:streamline-card
+        template: media_title_card
+        variables:
+          title: Media
+          player_1_entity: media_player.parlour
+          player_2_entity: media_player.parlour_tv
+      - type: grid
+        columns: 1
+        square: false
+        cards:
+          - type: custom:streamline-card
+            template: media_player_card
+            variables:
+              entity: media_player.parlour
+              name: Soundbar
+              icon: mdi:speaker-wireless
+          - type: custom:streamline-card
+            template: media_player_card
+            variables:
+              entity: media_player.parlour_tv
+              name: Bravia TV
+              icon: mdi:television
+  - type: custom:streamline-card
+    template: house_settings_popup
+  - type: custom:streamline-card
+    template: lights_popup_scaffold
+    variables:
+      popup_hash: '#wallboard-parlour-lights'
+      off_scene: scene.parlour_off
+      off_label: All off
+      title: Individual Lights
+      icon: m3of:lightbulb
+      popup_cards:
+        - type: custom:streamline-card
+          template: popup_light_section
+          variables:
+            title: Accent Lighting
+            columns: 2
+            cards:
+              - type: custom:streamline-card
+                template: popup_switch_button
+                variables:
+                  entity: switch.parlour_plug_table_lamp
+                  name: Table Lamp
+              - type: custom:streamline-card
+                template: popup_light_slider
+                variables:
+                  entity: light.parlour_light_floor_lamp
+                  name: Floor Lamp
+              - type: custom:streamline-card
+                template: popup_switch_button
+                variables:
+                  entity: switch.parlour_plug_donut_lamp
+                  name: Donut Lamp
+        - type: custom:streamline-card
+          template: popup_light_section
+          variables:
+            title: Overhead Lighting
+            columns: 2
+            cards:
+              - type: custom:streamline-card
+                template: popup_light_slider
+                variables:
+                  entity: light.parlour_light_ceiling_dining
+                  name: Dining Ceiling
+              - type: custom:streamline-card
+                template: popup_light_slider
+                variables:
+                  entity: light.parlour_light_ceiling_sofa
+                  name: Sofa Ceiling
