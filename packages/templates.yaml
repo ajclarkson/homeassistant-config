@@ -611,6 +611,12 @@ template:
   # the filter always has fresh input to slide its window against. This is
   # what caused foreign_office_monitor to stay stuck "on" for hours on
   # 2026-08-13 after the desk was vacated.
+  #
+  # force_update is required: without it, HA's state machine drops a write
+  # whose value is identical to the current state (no state_changed event),
+  # so a time_pattern tick that recomputes the same steady value is a no-op
+  # and this mirror freezes exactly like the sensor it's meant to unstick.
+  # That gap caused the same stuck-occupied bug to recur on 2026-08-15.
   - trigger:
       - platform: time_pattern
         minutes: "/1"
@@ -622,6 +628,7 @@ template:
         unit_of_measurement: "W"
         device_class: power
         state_class: measurement
+        force_update: true
         state: "{{ states('sensor.foreign_office_plug_monitor_power') | float(0) }}"
 
   - trigger:
@@ -635,6 +642,7 @@ template:
         unit_of_measurement: "W"
         device_class: power
         state_class: measurement
+        force_update: true
         state: "{{ states('sensor.home_office_plug_monitor_power') | float(0) }}"
 
   - binary_sensor:
