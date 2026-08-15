@@ -606,44 +606,37 @@ template:
   # in packages/sensors.yaml. The raw plug sensors stop emitting updates once
   # steady at a value (e.g. idle 0W), and the `time_simple_moving_average`
   # filter only recomputes when its source entity gets a new state — with no
-  # new events it freezes at its last value forever instead of decaying.
-  # Ticking on a 1-minute time_pattern (as well as on real changes) guarantees
-  # the filter always has fresh input to slide its window against. This is
-  # what caused foreign_office_monitor to stay stuck "on" for hours on
-  # 2026-08-13 after the desk was vacated.
+  # new events it freezes at its last value forever instead of decaying. This
+  # caused foreign_office_monitor to stay stuck "on" for hours on 2026-08-13.
   #
-  # force_update is required: without it, HA's state machine drops a write
-  # whose value is identical to the current state (no state_changed event),
-  # so a time_pattern tick that recomputes the same steady value is a no-op
-  # and this mirror freezes exactly like the sensor it's meant to unstick.
-  # That gap caused the same stuck-occupied bug to recur on 2026-08-15.
-  - trigger:
-      - platform: time_pattern
-        minutes: "/1"
-      - platform: state
-        entity_id: sensor.foreign_office_plug_monitor_power
-    sensor:
+  # Plain (non-trigger) template schema, not `trigger:` + time_pattern: the
+  # `now()` reference below makes HA auto-schedule a per-minute re-render on
+  # top of the implicit tracking of the raw sensor, without needing an
+  # explicit time_pattern trigger — and force_update is only a valid option
+  # on this schema, not on TRIGGER_ENTITY_SCHEMA (attempting it there failed
+  # config validation silently on 2026-08-15, leaving both mirrors permanently
+  # "unavailable" after reload, which was worse than the original bug).
+  # force_update itself is still required: without it, HA's state machine
+  # drops a write whose value is identical to the current state (no
+  # state_changed event fires), so a same-value re-render would be a no-op
+  # and this mirror would freeze exactly like the sensor it's meant to unstick.
+  - sensor:
       - name: "Foreign Office Plug Monitor Power Ticked"
         unique_id: foreign_office_plug_monitor_power_ticked
         unit_of_measurement: "W"
         device_class: power
         state_class: measurement
         force_update: true
-        state: "{{ states('sensor.foreign_office_plug_monitor_power') | float(0) }}"
+        state: "{{ now() and states('sensor.foreign_office_plug_monitor_power') | float(0) }}"
 
-  - trigger:
-      - platform: time_pattern
-        minutes: "/1"
-      - platform: state
-        entity_id: sensor.home_office_plug_monitor_power
-    sensor:
+  - sensor:
       - name: "Home Office Plug Monitor Power Ticked"
         unique_id: home_office_plug_monitor_power_ticked
         unit_of_measurement: "W"
         device_class: power
         state_class: measurement
         force_update: true
-        state: "{{ states('sensor.home_office_plug_monitor_power') | float(0) }}"
+        state: "{{ now() and states('sensor.home_office_plug_monitor_power') | float(0) }}"
 
   - binary_sensor:
       - name: Bedroom Bed Occupied
