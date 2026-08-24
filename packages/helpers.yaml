@@ -192,6 +192,12 @@ input_number:
         max: 28
         step: 0.5
         unit_of_measurement: "°C"
+    home_office_automation_window_indoor_comfort_threshold:
+        name: Home Office Window Indoor Comfort Threshold
+        min: 18
+        max: 28
+        step: 0.5
+        unit_of_measurement: "°C"
 
     # Foreign Office Door Ventilation
     foreign_office_automation_door_open_delta:
