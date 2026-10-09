@@ -55,6 +55,7 @@ sections:
               variables:
                 room: foreign_office
                 climate_entity: climate.foreign_office
+                temp_sensor: sensor.foreign_office_sensor_climate_temperature
                 humidity_entity: sensor.foreign_office_sensor_climate_humidity
   - type: grid
     cards:
