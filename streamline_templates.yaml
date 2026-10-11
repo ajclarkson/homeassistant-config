@@ -2763,6 +2763,24 @@ house_settings_popup:
         entity: input_select.house_active_mode_modifier
         name: Mode modifier
         icon: m3of:manage-accounts
+      - type: tile
+        entity: input_number.house_automation_vacation_threshold_hours
+        name: Vacation threshold
+        icon: mdi:bag-suitcase-outline
+        features:
+          - type: numeric-input
+      - type: custom:mushroom-title-card
+        subtitle: How long away mode must hold before the house drops to vacation heating.
+        card_mod:
+          style: |
+            ha-card {
+              padding: 6px 6px 0 6px !important;
+              background: none;
+              box-shadow: none;
+              border: 0;
+              --subtitle-font-size: 12px !important;
+            }
+            .subtitle { opacity: 0.62; }
       - type: custom:streamline-card
         template: section_title
         variables:
