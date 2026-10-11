@@ -94,6 +94,34 @@ climate_settings_popup:
               --subtitle-font-size: 12px !important;
             }
             .subtitle { opacity: 0.62; }
+      - type: custom:streamline-card
+        template: section_title
+        variables:
+          font_size: '18px'
+          compact: 'true'
+          title: Safety
+      - type: grid
+        columns: 2
+        square: false
+        cards:
+          - type: tile
+            entity: input_number.global_heating_window_open_grace_minutes
+            name: Window open grace
+            icon: mdi:window-open-variant
+            features:
+              - type: numeric-input
+      - type: custom:mushroom-title-card
+        subtitle: How long a door or window can be open before heating drops to minimum.
+        card_mod:
+          style: |
+            ha-card {
+              padding: 6px 6px 0 6px !important;
+              background: none;
+              box-shadow: none;
+              border: 0;
+              --subtitle-font-size: 12px !important;
+            }
+            .subtitle { opacity: 0.62; }
 
 # ── climate_ambient_summary ──────────────────────────────────────────
 climate_ambient_summary:
