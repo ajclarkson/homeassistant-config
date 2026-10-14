@@ -1,0 +1,77 @@
+title: Front Garden
+path: front-garden
+type: sections
+max_columns: 1
+sections:
+  - type: grid
+    cards:
+      - type: custom:streamline-card
+        template: section_title
+        variables:
+          title: Front Garden
+      - type: custom:streamline-card
+        template: section_title
+        variables:
+          title: Lighting
+      - type: grid
+        columns: 2
+        square: false
+        cards:
+          - type: custom:streamline-card
+            template: scene_card
+            variables:
+              entity: scene.front_garden_all
+              name: 'On'
+              room: front_garden
+          - type: custom:streamline-card
+            template: scene_card
+            variables:
+              entity: scene.front_garden_off
+              name: 'Off'
+              room: front_garden
+              default_icon: 'mdi:power'
+              inactive_bg_opacity: '52%'
+              label_color_override: 'color: color-mix(in srgb, var(--primary-text-color) 40%, transparent);'
+              icon_color_override: 'color: color-mix(in srgb, var(--primary-text-color) 30%, transparent) !important;'
+      - type: custom:streamline-card
+        template: lighting_automation_section_sleep_hold
+        variables:
+          toggle_entity: input_boolean.front_garden_automation_lights_enabled
+      - type: custom:streamline-card
+        template: behaviour_section_header
+        variables:
+          title: Theme
+      - type: grid
+        columns: 3
+        square: false
+        cards:
+          - type: custom:streamline-card
+            template: light_theme_option
+            variables:
+              select_entity: input_select.front_garden_light_theme
+              option: normal
+              name: Normal
+              icon: m3of:lightbulb
+          - type: custom:streamline-card
+            template: light_theme_option
+            variables:
+              select_entity: input_select.front_garden_light_theme
+              option: halloween
+              name: Halloween
+              icon: m3of:skull
+          - type: custom:streamline-card
+            template: light_theme_option
+            variables:
+              select_entity: input_select.front_garden_light_theme
+              option: christmas
+              name: Christmas
+              icon: m3of:park
+  - type: grid
+    cards:
+      - type: custom:streamline-card
+        template: rooms_popup
+      - type: custom:streamline-card
+        template: page_footer
+        variables:
+          active: rooms
+

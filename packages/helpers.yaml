@@ -54,6 +54,8 @@ input_boolean:
         name: Foreign Office Lights Automation Enabled
     back_garden_automation_lights_enabled:
         name: Back Garden Lights Automation Enabled
+    front_garden_automation_lights_enabled:
+        name: Front Garden Lights Automation Enabled
 
     # Heating Automation Helpers
     parlour_automation_heating_enabled:
@@ -307,6 +309,14 @@ input_select:
             - baseline_day
             - baseline_night
             - minimum
+
+    # Seasonal Lighting Themes
+    front_garden_light_theme:
+        name: Front Garden Light Theme
+        options:
+            - normal
+            - halloween
+            - christmas
 
 input_text:
     outdoor_temp_7day_history:
