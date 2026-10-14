@@ -42,7 +42,7 @@ sections:
         variables:
           title: Theme
       - type: grid
-        columns: 3
+        columns: 2
         square: false
         cards:
           - type: custom:streamline-card
@@ -52,6 +52,13 @@ sections:
               option: normal
               name: Normal
               icon: m3of:lightbulb
+          - type: custom:streamline-card
+            template: light_theme_option
+            variables:
+              select_entity: input_select.front_garden_light_theme
+              option: autumn
+              name: Autumn
+              icon: m3of:eco
           - type: custom:streamline-card
             template: light_theme_option
             variables:
