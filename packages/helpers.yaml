@@ -315,6 +315,7 @@ input_select:
         name: Front Garden Light Theme
         options:
             - normal
+            - autumn
             - halloween
             - christmas
 

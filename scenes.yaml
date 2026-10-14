@@ -3120,3 +3120,23 @@
       color_temp_kelvin: 2200
       brightness: 255
   metadata: {}
+- id: '1792000000003'
+  name: Front Garden Autumn
+  entities:
+    light.front_garden_light_birch:
+      friendly_name: front_garden_light_birch
+      state: 'on'
+      color_mode: xy
+      xy_color:
+      - 0.53
+      - 0.411
+      brightness: 217
+    light.front_garden_light_maple:
+      friendly_name: front_garden_light_maple
+      state: 'on'
+      color_mode: xy
+      xy_color:
+      - 0.525
+      - 0.397
+      brightness: 184
+  metadata: {}
