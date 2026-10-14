@@ -3094,3 +3094,29 @@
       friendly_name: back_garden_plug_fence_lights
       state: 'on'
   metadata: {}
+- id: '1792000000001'
+  name: Front Garden Off
+  entities:
+    light.front_garden_light_birch:
+      friendly_name: front_garden_light_birch
+      state: 'off'
+    light.front_garden_light_maple:
+      friendly_name: front_garden_light_maple
+      state: 'off'
+  metadata: {}
+- id: '1792000000002'
+  name: Front Garden All
+  entities:
+    light.front_garden_light_birch:
+      friendly_name: front_garden_light_birch
+      state: 'on'
+      color_mode: color_temp
+      color_temp_kelvin: 4500
+      brightness: 90
+    light.front_garden_light_maple:
+      friendly_name: front_garden_light_maple
+      state: 'on'
+      color_mode: color_temp
+      color_temp_kelvin: 2200
+      brightness: 255
+  metadata: {}

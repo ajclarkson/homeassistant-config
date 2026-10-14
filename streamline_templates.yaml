@@ -526,6 +526,12 @@ rooms_popup:
               name: Back Garden
               icon: m3of:yard
               navigation_path: /mobile-dashboard/back-garden
+          - type: custom:streamline-card
+            template: rooms_popup_tile
+            variables:
+              name: Front Garden
+              icon: m3of:park
+              navigation_path: /mobile-dashboard/front-garden
 
 # ── rooms_popup_tile ──────────────────────────────────────────
 rooms_popup_tile:
@@ -1400,6 +1406,52 @@ lighting_automation_section_sleep_hold:
               tap_action:
                 action: more-info
                 entity: '[[sleep_mode_entity]]'
+
+# ── light_theme_option ──────────────────────────────────────────
+light_theme_option:
+  variables:
+    select_entity: ''
+    option: ''
+    name: ''
+    icon: m3of:palette
+  card:
+    type: custom:mushroom-template-card
+    entity: '[[select_entity]]'
+    primary: '[[name]]'
+    icon: '[[icon]]'
+    icon_color: >
+      {% if is_state('[[select_entity]]', '[[option]]') %}var(--md-sys-color-primary){% else %}rgba(255,255,255,0.45){% endif %}
+    layout: horizontal
+    tap_action:
+      action: call-service
+      service: input_select.select_option
+      target:
+        entity_id: '[[select_entity]]'
+      data:
+        option: '[[option]]'
+    hold_action:
+      action: more-info
+    card_mod:
+      style:
+        .: |
+          ha-card {
+            border-radius: 8px;
+            border: none;
+            background: {% if is_state('[[select_entity]]', '[[option]]') %}color-mix(in srgb, var(--md-sys-color-primary) 10%, var(--md-sys-color-surface-container-high)){% else %}var(--md-sys-color-surface-container-high){% endif %};
+            box-shadow: none;
+            padding: 0;
+            --icon-size: 18px;
+            --shape-color: transparent;
+            --shape-border-radius: 0px;
+            --spacing: 10px;
+          }
+          ha-card:active { transform: scale(0.99); }
+        ha-tile-icon$: |
+          .container::before { background: transparent !important; }
+        mushroom-state-item$: |
+          .container { padding: 10px 14px; gap: 12px; }
+        mushroom-primary-info$: |
+          .primary { font-size: 14px; font-weight: 600; }
 
 # ── heating_mode_section ──────────────────────────────────────────
 heating_mode_section:
