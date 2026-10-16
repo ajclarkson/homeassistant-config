@@ -346,7 +346,7 @@ template:
       - name: "Speaker of the House grouped with Parlour"
         unique_id: speaker_of_the_house_grouped_with_parlour
         state: >
-          {% set members = state_attr('media_player.speaker_of_the_house', 'group_members') or [] %}
+          {% set members = state_attr('media_player.the_speaker_of_the_house', 'group_members') or [] %}
           {{ 'media_player.parlour' in members }}
         icon: >
           {% if is_state('binary_sensor.speaker_of_the_house_grouped_with_parlour','on') %}
