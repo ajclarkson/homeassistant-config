@@ -14,7 +14,7 @@ sections:
         variables:
           title: Lighting
       - type: grid
-        columns: 3
+        columns: 2
         square: false
         cards:
           - type: custom:streamline-card
@@ -28,6 +28,12 @@ sections:
             variables:
               entity: scene.front_garden_autumn
               name: Autumn
+              room: front_garden
+          - type: custom:streamline-card
+            template: scene_card
+            variables:
+              entity: scene.front_garden_halloween
+              name: Halloween
               room: front_garden
           - type: custom:streamline-card
             template: scene_card
