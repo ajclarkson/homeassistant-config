@@ -102,6 +102,10 @@ sections:
           reason_1_state: 'on'
           reason_1_icon: m3of:meeting-room
           reason_1_label: Doors closed
+          reason_2_entity: binary_sensor.foreign_office_monitor
+          reason_2_state: 'on'
+          reason_2_icon: m3of:desktop-windows
+          reason_2_label: Monitor on
       - type: custom:streamline-card
         template: lighting_automation_section_sleep_hold
         variables:
