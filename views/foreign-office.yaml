@@ -111,6 +111,50 @@ sections:
         variables:
           toggle_entity: input_boolean.foreign_office_automation_heating_enabled
           heating_hold_entity: binary_sensor.foreign_office_external_openings
+      - type: custom:streamline-card
+        template: behaviour_section_header
+        variables:
+          title: Door ventilation
+      - type: grid
+        columns: 2
+        square: false
+        cards:
+          - type: tile
+            entity: input_number.foreign_office_automation_door_open_delta
+            name: Open delta
+            icon: mdi:thermometer-minus
+            features:
+              - type: numeric-input
+          - type: tile
+            entity: input_number.foreign_office_automation_door_open_min_outdoor
+            name: Min outdoor
+            icon: mdi:thermometer-low
+            features:
+              - type: numeric-input
+          - type: tile
+            entity: input_number.foreign_office_automation_door_indoor_comfort_threshold
+            name: Indoor comfort
+            icon: mdi:thermometer-high
+            features:
+              - type: numeric-input
+          - type: tile
+            entity: input_number.foreign_office_automation_door_notification_cooldown_mins
+            name: Notify cooldown
+            icon: mdi:timer-outline
+            features:
+              - type: numeric-input
+      - type: custom:mushroom-title-card
+        subtitle: Suggests opening the door when it's warm inside, cooler outside by the delta, and outside is above the minimum.
+        card_mod:
+          style: |
+            ha-card {
+              padding: 6px 6px 0 6px !important;
+              background: none;
+              box-shadow: none;
+              border: 0;
+              --subtitle-font-size: 12px !important;
+            }
+            .subtitle { opacity: 0.62; }
   - type: custom:streamline-card
     template: page_footer
     variables:
