@@ -78,7 +78,9 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 .sub{font-size:12px;color:${TOKENS.text2};margin-top:2px;line-height:1.35}
 .t{font-size:17px;font-weight:600;text-align:right}
 .rh{font-size:11px;color:${TOKENS.text3};text-align:right}
-.chip{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;background:${TOKENS.surface};font-size:12px;font-weight:600;min-height:32px}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:5px 9px;border-radius:999px;background:${TOKENS.divider};font-size:12px;font-weight:600;min-height:30px;white-space:nowrap;flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.chips{display:flex;gap:6px;flex-wrap:nowrap;min-width:0}
+.pstrip{display:flex;align-items:center;gap:16px;min-height:56px;color:inherit}
 .det{grid-column:2 / 4;display:flex;flex-direction:column;gap:6px;padding:4px 0 6px}
 .det .l{display:flex;gap:8px;font-size:12.5px;color:#cfd5dd;line-height:1.4}
 .det .l b{color:${TOKENS.amber};font-weight:600}
@@ -106,10 +108,16 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 .lt{display:grid;grid-template-columns:1fr 130px;gap:12px;align-items:center;min-height:56px;padding:6px 14px;border-top:1px solid ${TOKENS.divider}}
 .lt:first-child{border-top:0}
 .badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:${TOKENS.divider};color:#cfd5dd;white-space:nowrap}
-.oc{display:flex;align-items:center;gap:12px;padding:14px;min-height:64px;text-decoration:none}
+.oc{display:grid;grid-template-columns:20px 1fr auto;column-gap:12px;row-gap:6px;align-items:center;padding:12px 14px;min-height:64px;box-sizing:border-box;text-decoration:none;color:inherit}
+.oc .nm{font-size:16px;font-weight:600}
+.oc .t{text-align:right}
+.oc .sub{grid-column:2 / 4;display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:12px;color:#a3adba}
 .rgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
-.rt{display:flex;flex-direction:column;justify-content:space-between;gap:6px;padding:12px 12px 10px;min-height:76px;background:${TOKENS.surface};border-radius:14px;text-decoration:none;color:inherit}
-.rt .b{display:flex;gap:6px;align-items:center;flex-wrap:wrap;color:#7d8794;font-size:11px;min-height:16px}
+.rt{display:grid;grid-template-rows:auto 1fr auto;gap:6px;padding:12px;height:92px;box-sizing:border-box;background:${TOKENS.surface};border-radius:14px;text-decoration:none;color:inherit;overflow:hidden}
+.rt .nm{display:flex;align-items:center;gap:6px;font-size:13.5px;font-weight:600;color:#cfd5dd;white-space:nowrap;min-width:0}
+.rt .t{align-self:center}
+.rt .b{display:flex;gap:6px;align-items:center;flex-wrap:nowrap;color:#8f9aa8;font-size:11.5px;min-height:20px;white-space:nowrap;overflow:hidden}
+.rt .b>*{flex:none}
 .segs{display:flex;gap:8px;background:${TOKENS.surface};border-radius:14px;padding:4px}
 .seg{border:0;font:inherit;font-size:14px;font-weight:600;min-height:44px;border-radius:12px;cursor:pointer;flex:1;background:transparent;color:#cfd5dd}
 .seg.on{background:${TOKENS.sceneActive};color:${TOKENS.sceneActiveText}}
@@ -522,20 +530,20 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const mode = state(hass, 'sensor.house_active_mode');
     const mod = state(hass, 'input_select.house_active_mode_modifier');
     const pill = usable(mode) ? `<div class="tag ok" style="padding:3px 9px">● ${esc(mode.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase()))}${usable(mod) && mod !== 'none' ? ' · ' + esc(mod) : ''}</div>` : '';
-    return `<div style="display:flex;align-items:center;gap:10px"><div style="font-size:28px;font-weight:700;letter-spacing:-.4px">Pulse</div>${pill}<div style="flex:1"></div>
-<a class="tap" data-act="nav" data-path="${MOBILE}" aria-label="Open Mobile controls" style="min-height:44px;min-width:44px;display:flex;align-items:center;justify-content:center;color:${TOKENS.text2}">${svg(ICON.sliders, 22)}</a></div>`;
+    return `<div style="display:flex;align-items:center;gap:10px;min-height:44px"><div style="font-size:28px;font-weight:700;letter-spacing:-.4px">Pulse</div>${pill}</div>`;
   }
 
+  // People and Mo on ONE row: 30px chips, 12px text, nowrap. Texts are shortened before anything could wrap.
   function peopleChips(hass, at) {
     const person = (id, name, wfh) => {
       const st = state(hass, id);
       const home = st === 'home';
       const w = state(hass, wfh) === 'on';
-      const label = !usable(st) ? 'Unknown' : home && w ? 'WFH' : home ? 'Home' : w ? 'Away · WFH' : 'Away';
-      return `<div class="chip"><span class="dot${home ? '' : ' dim'}" style="width:8px;height:8px"></span>${esc(name)} · ${label}</div>`;
+      const label = !usable(st) ? '?' : home && w ? 'WFH' : home ? 'Home' : 'Away';
+      return `<div class="chip"><span class="dot${home ? '' : ' dim'}" style="width:7px;height:7px"></span>${esc(name)} · ${label}</div>`;
     };
-    const ate = moAte(hass, at);
-    return `<div style="display:flex;gap:8px;flex-wrap:wrap">${person('person.adam', 'Adam', 'input_boolean.wfh_adam')}${person('person.sarah', 'Sarah', 'input_boolean.wfh_sarah')}<a class="chip tap" data-act="nav" data-path="${MOBILE}/mo" style="color:${TOKENS.text2}">Mo${ate ? ' · ' + esc(ate) : ''}</a></div>`;
+    const ate = moAte(hass, at).replace('yesterday', 'yest');
+    return `<div class="chips">${person('person.adam', 'Adam', 'input_boolean.wfh_adam')}${person('person.sarah', 'Sarah', 'input_boolean.wfh_sarah')}<a class="chip tap" data-act="nav" data-path="${MOBILE}/mo" style="color:${TOKENS.text2}">Mo${ate ? ' · ' + esc(ate) : ''}</a></div>`;
   }
 
   // Now / Next (graded colours) and Usage (unit-aware). A reading that has not updated for 10 minutes
@@ -571,7 +579,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return { status: 'upcoming', start, end, avg, dayWord, range: `${hm(start)} → ${hm(end)}`, text: `${dayWord} ${hm(start)} → ${hm(end)}` };
   }
 
-  function priceStrip(hass, at, bare, link) {
+  function priceFigures(hass, at) {
     const base = 'sensor.octopus_energy_electricity_24e8140196_1012483035417';
     const p = (v) => (v === null ? null : v * 100);
     const nowP = p(num(state(hass, `${base}_current_rate`)));
@@ -580,17 +588,26 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const wAge = wState ? parseTs(wState.last_updated) : null;
     const stale = wAge !== null && at - wAge > 600000;
     const usageText = stale ? '–' : formatPower(state(hass, 'sensor.glow_electricity_power'), attr(hass, 'sensor.glow_electricity_power', 'unit_of_measurement'));
-    const edge = bare || link ? '' : `margin-top:14px;padding-top:12px;border-top:1px solid ${TOKENS.divider}`;
-    const strip = `<div style="display:flex;gap:16px;align-items:flex-end;${edge}">
+    return { nowP, nextP, usageText };
+  }
+
+  // Energy page head: Now / Next / Usage (a reading that has not updated for 10 minutes shows a dash).
+  function priceStrip(hass, at) {
+    const { nowP, nextP, usageText } = priceFigures(hass, at);
+    return `<div style="display:flex;gap:16px;align-items:flex-end">
 <div><div class="lbl">Now</div><div style="font-size:26px;font-weight:700;letter-spacing:-.5px;line-height:1.15;color:${priceColour(nowP, { text: true })}">${nowP === null ? '–' : fmt1(nowP)}<span style="font-size:12px;font-weight:500;color:${TOKENS.text2}"> p/kWh</span></div></div>
 <div><div class="lbl">Next</div><div style="font-size:18px;font-weight:600;color:${priceColour(nextP, { text: true })};line-height:1.5">${nextP === null ? '–' : fmt1(nextP) + 'p'}</div></div>
 <div style="flex:1"></div><div style="text-align:right"><div class="lbl">Usage</div><div style="font-size:18px;font-weight:600;line-height:1.5">${usageText}</div></div></div>`;
-    if (!link) return strip;
-    // The whole strip is one 44px+ tap target to the Energy page, with a visible "Energy ›" cue, and a
-    // small cheapest-2h line when one is coming up (or running).
+  }
+
+  // Status card price row: one 56px+ link to the Energy page (Now / Next / Usage, chevron), and under it the
+  // cheapest-2h window with its Today/Tomorrow label (hidden when past or unknown).
+  function statusPriceLink(hass, at) {
+    const { nowP, nextP, usageText } = priceFigures(hass, at);
     const cw = cheapestWindow(hass, at);
-    const cue = cw.status === 'running' ? `<div style="font-size:12px;color:${TOKENS.text2};margin-top:6px">Cheapest 2h running now${cw.endText ? ', until ' + esc(cw.endText) : ''}</div>` : cw.status === 'upcoming' ? `<div style="font-size:12px;color:${TOKENS.text2};margin-top:6px">Cheapest 2h ${esc(cw.text)}</div>` : '';
-    return `<a class="tap" data-act="nav" data-path="${ENERGY_PATH}" aria-label="Open energy details" style="display:block;min-height:44px;margin-top:14px;padding-top:12px;border-top:1px solid ${TOKENS.divider}">${strip}${cue}<div style="display:flex;justify-content:flex-end;align-items:center;gap:2px;font-size:12px;font-weight:600;color:${TOKENS.link};min-height:24px">Energy ›</div></a>`;
+    const lbl = (t) => `<div class="lbl" style="margin:0">${t}</div>`;
+    const cue = cw.status === 'running' ? `<div style="font-size:12px;color:${TOKENS.text2};margin-top:2px">Cheapest 2h · <b style="color:${TOKENS.text};font-weight:600">running now${cw.endText ? ', until ' + esc(cw.endText) : ''}</b></div>` : cw.status === 'upcoming' ? `<div style="font-size:12px;color:${TOKENS.text2};margin-top:2px">Cheapest 2h · <b style="color:${TOKENS.text};font-weight:600">${esc(cw.text)}</b></div>` : '';
+    return `<a class="tap pstrip" data-act="nav" data-path="${ENERGY_PATH}" aria-label="Open energy details"><div>${lbl('Now')}<div style="font-size:24px;font-weight:700;letter-spacing:-.5px;line-height:1.15;color:${priceColour(nowP, { text: true })}">${nowP === null ? '–' : fmt1(nowP)}<span style="font-size:11.5px;font-weight:500;color:${TOKENS.text2}"> p</span></div></div><div>${lbl('Next')}<div style="font-size:17px;font-weight:600;line-height:1.45;color:${priceColour(nextP, { text: true })}">${nextP === null ? '–' : fmt1(nextP) + 'p'}</div></div><div>${lbl('Usage')}<div style="font-size:17px;font-weight:600;line-height:1.45">${usageText}</div></div><div style="flex:1"></div><span style="color:${TOKENS.link};display:flex">${svg('M9 5l7 7-7 7', 20)}</span></a>${cue}`;
   }
 
   function heatingRooms(hass) {
@@ -605,21 +622,21 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const items = attentionItems(hass);
     const n = heatingRooms(hass).length;
     const occ = occupiedRooms(hass).length;
-    const mode = state(hass, 'sensor.house_active_mode');
-    const sentence = `${occ} ${plural(occ, 'room', 'rooms')} occupied · heating in ${n} ${plural(n, 'room', 'rooms')}${usable(mode) ? ' · ' + esc(mode) : ''}`;
+    const sentence = `${occ} ${plural(occ, 'room', 'rooms')} occupied · ${n > 0 ? `heating in ${n} ${plural(n, 'room', 'rooms')}` : 'heating idle'}`;
     const hasData = !!stateObj(hass, 'sensor.info_attention');
+    const side = `<div style="font-size:12px;color:${TOKENS.text2};text-align:right">${esc(sentence)}</div>`;
     let head;
     if (items.length === 0) {
-      head = `<div style="display:flex;align-items:center;gap:10px"><span class="dot${hasData ? '' : ' dim'}"></span><div><div style="font-size:15px;font-weight:700">${hasData ? 'All good' : 'No attention report'}</div><div style="font-size:12px;color:${TOKENS.text2};margin-top:2px">${sentence}</div></div></div>`;
+      head = `<div style="display:flex;align-items:center;gap:10px"><span class="dot${hasData ? '' : ' dim'}"></span><div style="font-size:15px;font-weight:700">${hasData ? 'All good' : 'No attention report'}</div><div style="flex:1"></div>${side}</div>`;
     } else {
       const first = items[0];
       const path = ROOMS[first.key] ? roomPath(first.key) : MOBILE;
       // The summary is room and what; the room card below carries the sentence.
       const shown = items.slice(0, 3).map((i) => `<div style="font-size:13px;margin-top:6px;line-height:1.4"><b>${esc(i.room)}</b> · ${esc(itemLabel(i, ROOMS[i.key] ? roomModel(hass, i.key) : null))}</div>`).join('');
       const more = items.length > 3 ? `<div style="font-size:12px;color:${TOKENS.text2};margin-top:4px">+${items.length - 3} more</div>` : '';
-      head = `<a class="tap" data-act="nav" data-path="${esc(path)}" style="display:block"><div style="display:flex;align-items:center;gap:8px"><span class="dot warn"></span><span style="font-size:15px;font-weight:700;color:${TOKENS.amber}">${items.length} ${plural(items.length, 'needs', 'need')} attention</span></div><div style="font-size:12px;color:${TOKENS.text2};margin-top:4px">${sentence}</div>${shown}${more}</a>`;
+      head = `<a class="tap" data-act="nav" data-path="${esc(path)}" style="display:block"><div style="display:flex;align-items:center;gap:10px"><span class="dot warn"></span><span style="font-size:15px;font-weight:700;color:${TOKENS.amber}">${items.length} ${plural(items.length, 'needs', 'need')} attention</span><div style="flex:1"></div>${side}</div>${shown}${more}</a>`;
     }
-    return `<div class="card pad${items.length ? ' warn' : ''}">${head}<div style="margin-top:12px">${peopleChips(hass, at)}</div>${priceStrip(hass, at, false, true)}</div>`;
+    return `<div class="card pad${items.length ? ' warn' : ''}">${head}<div style="margin-top:10px">${peopleChips(hass, at)}</div><div style="margin-top:12px;padding-top:4px;border-top:1px solid ${TOKENS.divider}">${statusPriceLink(hass, at)}</div></div>`;
   }
 
   // ── Rooms: three groups, quiet by default ───────────────────────────────────────────────────
@@ -659,13 +676,17 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   }
   function manualBadge(m, now) {
     if (!m.manual) return '';
-    const a = ago(m.manual.ts, now).replace(' ago', '');
-    return badge(`${sizedIcon(ICON.hand, 13)}Manual${a ? ' · ' + esc(a) + (a === 'just now' ? '' : ' ago') : ''}`, `color:${TOKENS.amber};background:${TOKENS.amberTag}`);
+    const a = ago(m.manual.ts, now);
+    const src = SOURCE_WORDS[m.manual.source] || m.manual.source;
+    const label = `${src.replace(/^./, (c) => c.toUpperCase())}${a ? ' · ' + a : ''}`;
+    return badge(`${sizedIcon(ICON.hand, 13)}${esc(label)}`, `color:${TOKENS.amber};background:${TOKENS.amberTag}`).replace('<span class="badge"', '<span class="badge" title="Manual change"');
   }
   const holdBadges = (m) => m.heat_labels.map((l) => badge(`${sizedIcon(ICON.window, 12)}${esc(shortHold(l))}`)).join('');
   const tempText = (m) => (m.temp !== null ? `${fmt1(m.temp)}°` : '–');
   // Rooms without a climate sensor have no temperature to show at all (a bare dash adds nothing).
-  const tempBlock = (m, style) => (m.cfg.climate ? `<div style="${style}${m.temp === null ? ';color:' + TOKENS.text3 : ''}">${tempText(m)}</div>` : '');
+  // Temperature slot: a number, a muted dash when a climate sensor has no reading, and a muted "no climate"
+  // for rooms that have no climate sensor at all (never a bare dash there).
+  const tempBlock = (m, style) => (m.cfg.climate ? `<div style="${style}${m.temp === null ? ';color:' + TOKENS.text3 : ''}">${tempText(m)}</div>` : `<div style="font-size:12px;font-weight:500;color:${TOKENS.text3}">no climate</div>`);
 
   function attentionCard(hass, k, items) {
     const m = roomModel(hass, k);
@@ -681,19 +702,22 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   function occupiedCard(hass, k, now) {
     const m = roomModel(hass, k);
     const scene = activeScene(hass, k);
-    const recent = recentNote(hass, k, now);
-    const reason = m.pres_labels.slice(0, 2).join(' · ');
+    const recent = recentNote(hass, k, now).replace(/^lights /, '');
     const lights = badge(`${sizedIcon(ICON.bulb, 13, m.lights_on > 0 ? TOKENS.sceneActive : undefined)}${esc(lightsBadgeText(m, scene))}`);
-    return `<a class="card oc tap" data-act="nav" data-path="${roomPath(k)}">${occIcon(m, 22)}<div style="flex:1;min-width:0"><div style="font-size:16px;font-weight:600">${esc(m.cfg.short)}</div><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;align-items:center">${lights}${manualBadge(m, now)}${holdBadges(m)}${recent ? `<span style="font-size:11px;color:${TOKENS.text3}">${esc(recent)}</span>` : ''}</div></div><div style="text-align:right">${tempBlock(m, 'font-size:22px;font-weight:700;letter-spacing:-.3px')}${reason ? `<div style="font-size:11px;color:${TOKENS.text3}">${esc(reason)}</div>` : ''}</div></a>`;
+    const holds = m.pres_labels.slice(0, 2).map((l) => badge(esc(l))).join('');
+    return `<a class="card oc tap" data-act="nav" data-path="${roomPath(k)}">${occIcon(m, 20)}<div class="nm">${esc(m.cfg.short)}</div><div class="t">${tempBlock(m, 'font-size:20px;font-weight:700;letter-spacing:-.3px')}</div><div class="sub">${lights}${manualBadge(m, now)}${holdBadges(m)}${holds}${recent ? `<span>${esc(recent)}</span>` : ''}</div></a>`;
   }
 
+  // Fixed-height tile: name / temperature (centred) / status line pinned to the bottom. The status line never
+  // wraps; at most one badge (a hold wins over the manual marker) so it cannot grow the tile.
   function roomTile(hass, k, now) {
     const m = roomModel(hass, k);
     const scene = activeScene(hass, k);
-    const recent = recentNote(hass, k, now);
-    const line = `${sizedIcon(ICON.bulb, 14)}${m.hasReport ? esc(lightsBadgeText(m, scene)) : 'No report'}`;
-    const extra = `${m.hasReport ? manualBadge(m, now) : ''}${m.hasReport ? holdBadges(m) : ''}${recent ? `<span>${esc(recent)}</span>` : ''}`;
-    return `<a class="rt tap" data-act="nav" data-path="${roomPath(k)}"><div class="nm" style="display:flex;align-items:center;gap:6px;font-size:14px;font-weight:600;color:#cfd5dd">${occIcon(m) || sizedIcon(ICON.person, 15, TOKENS.text3)}${esc(m.cfg.short)}</div>${tempBlock(m, 'font-size:20px;font-weight:700;letter-spacing:-.3px')}<div class="b">${line}${extra}</div></a>`;
+    const recent = recentNote(hass, k, now).replace(/^lights /, '');
+    const holds = m.hasReport ? holdBadges(m) : '';
+    const extra = m.hasReport ? (holds || manualBadge(m, now) || (recent ? `<span>${esc(recent)}</span>` : '')) : '';
+    const line = `${sizedIcon(ICON.bulb, 14)}<span>${m.hasReport ? esc(lightsBadgeText(m, scene)) : 'No report'}</span>${extra}`;
+    return `<a class="rt tap" data-act="nav" data-path="${roomPath(k)}"><div class="nm">${occIcon(m) || sizedIcon(ICON.person, 15, TOKENS.text3)}<span>${esc(m.cfg.short)}</span></div><div class="t">${tempBlock(m, 'font-size:20px;font-weight:700;letter-spacing:-.3px')}</div><div class="b">${line}</div></a>`;
   }
 
   function sectionRooms(hass, now) {
@@ -1208,8 +1232,8 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return `<div class="lbl" style="margin:4px 4px -10px">What the house did</div><div class="card">${body}</div>`;
   }
 
-  function sectionFooter(hass, now) {
-    return `<div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;color:${TOKENS.text3};padding:2px 4px"><span>Updated ${esc(hhmm(new Date(now).toISOString()))}</span><a class="link tap" data-act="nav" data-path="${MOBILE}">Open Mobile controls ›</a></div>`;
+  function sectionFooter() {
+    return `<div style="padding:4px 4px 24px"><a class="link tap" data-act="nav" data-path="${MOBILE}">Open Mobile controls ›</a></div>`;
   }
 
   // ── Room page sections ───────────────────────────────────────────────────────────────────────
@@ -1363,7 +1387,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     'energy-history': (h, c, n, ui) => sectionEnergyHistory(h, n, ui),
     'energy-usage': (h) => sectionEnergyUsage(h),
     feed: (h, c, n) => sectionFeed(h, n),
-    footer: (h, c, n) => sectionFooter(h, n),
+    footer: () => sectionFooter(),
     'room-head': (h, c) => sectionRoomHead(h, c.room),
     why: (h, c, n) => sectionWhy(h, c.room, n),
     scenes: (h, c, n) => sectionScenes(h, c.room, n),

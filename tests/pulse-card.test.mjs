@@ -299,12 +299,12 @@ ok('cheapest 2h: dated window from the binary sensor (Today / Tomorrow), past hi
   assert.ok(Math.abs(P.cheapestWindow(mk(), NOW).avg - 25.9) < 1e-9);
   const energy = P.render('energy-day', {}, mk(), NOW, {});
   assert.match(energy, /Next cheapest 2 hours<\/div><div class="m">Tomorrow 20:00 → 22:00 · avg 25\.9p/);
-  assert.match(P.render('status', {}, mk(), NOW), /Cheapest 2h Tomorrow 20:00 → 22:00/);
+  assert.match(P.render('status', {}, mk(), NOW), /Cheapest 2h · <b[^>]*>Tomorrow 20:00 → 22:00<\/b>/);
   assert.doesNotMatch(energy + P.render('status', {}, mk(), NOW), /02:00 → 04:00|avg 9\.8p/, 'the template sensors are no longer read');
   // later today
   const later = mk(cw({ next_time: '2026-10-25T20:00:00+00:00', next_duration_in_hours: 2, next_average_value: 0.059 }));
   assert.equal(P.cheapestWindow(later, NOW).dayWord, 'Today');
-  assert.match(P.render('status', {}, later, NOW), /Cheapest 2h Today 20:00 → 22:00/);
+  assert.match(P.render('status', {}, later, NOW), /Cheapest 2h · <b[^>]*>Today 20:00 → 22:00<\/b>/);
   // further out: a dated label
   const far = mk(cw({ next_time: '2026-10-28T20:00:00+00:00', next_duration_in_hours: 2, next_average_value: 0.1 }));
   assert.equal(P.cheapestWindow(far, NOW).dayWord, 'Wed 28 Oct');
@@ -317,10 +317,10 @@ ok('cheapest 2h: dated window from the binary sensor (Today / Tomorrow), past hi
   // running now: from current_end, or current_start + duration; state on without an end still says running
   const run = mk(cw({ current_start: '2026-10-25T18:00:00+00:00', current_end: '2026-10-25T20:00:00+00:00' }, 'on'));
   assert.equal(P.cheapestWindow(run, NOW).endText, '20:00');
-  assert.match(P.render('status', {}, run, NOW), /Cheapest 2h running now, until 20:00/);
+  assert.match(P.render('status', {}, run, NOW), /Cheapest 2h · <b[^>]*>running now, until 20:00<\/b>/);
   assert.match(P.render('energy-day', {}, run, NOW, {}), /Running now/);
   assert.equal(P.cheapestWindow(mk(cw({ current_start: '2026-10-25T18:00:00+00:00', current_duration_in_hours: 2 }, 'on')), NOW).endText, '20:00');
-  assert.match(P.render('status', {}, mk(cw({}, 'on')), NOW), /Cheapest 2h running now</);
+  assert.match(P.render('status', {}, mk(cw({}, 'on')), NOW), /Cheapest 2h · <b[^>]*>running now<\/b>/);
   // unknown / garbage / missing -> hidden, never throws
   for (const attrs of [{}, { next_time: 'nope', next_duration_in_hours: 2 }, { next_time: '2026-10-26T20:00:00+00:00' }, { next_time: '2026-10-26T20:00:00+00:00', next_duration_in_hours: 0 }]) {
     assert.equal(P.cheapestWindow(mk(cw(attrs)), NOW).status, 'none', JSON.stringify(attrs));
@@ -565,7 +565,7 @@ ok('Now v2 all calm: status card not amber, no attention/occupied groups, 8 comp
   const status = P.render('status', {}, hass, NOW);
   const rooms = P.render('rooms', {}, hass, NOW);
   assert.match(status, /All good/);
-  assert.match(status, /0 rooms occupied · heating in 0 rooms · normal/);
+  assert.match(status, /0 rooms occupied · heating idle/);
   assert.doesNotMatch(status, /card pad warn/);
   assert.doesNotMatch(status, /\d home/);
   assert.doesNotMatch(rooms, /Needs attention|Occupied now|Other rooms/);
@@ -645,10 +645,10 @@ ok('Now v2 groups are a partition of the rooms for every occupied/attention comb
 ok('Now v2 manual badge only while the marker exists; attention + manual combine', () => {
   const manual = { source: 'wall_button', ts: '2026-10-25T16:40:00+00:00', what: 'Wall button: scene cycled' };
   const occ = P.render('rooms', {}, withRooms(calmRooms({ parlour: { occupied: true, manual, lights_on: 2 } }), []), NOW);
-  assert.match(occ, /Manual · 2 h ago/);
-  assert.equal(count(occ, /Manual/g), 1);
+  assert.match(occ, /Wall button · 2 h ago/);
+  assert.equal(count(occ, /Wall button/g), 1);
   const none = P.render('rooms', {}, withRooms(calmRooms({ parlour: { occupied: true, manual: null } }), []), NOW);
-  assert.doesNotMatch(none, /Manual/);
+  assert.doesNotMatch(none, /Wall button|Manual change/);
   const tile = P.render('rooms', {}, withRooms(calmRooms({ kitchen: { manual } }), []), NOW);
   assert.match(tile, /Kitchen[\s\S]*Manual/);
   const both = P.render('rooms', {}, withRooms(calmRooms({ bedroom: { occupied: true, manual, target_reason: 'window open', target: 5, heat_labels: ['Window open'], labels: ['Window open'] } }), [attn('Bedroom', 'bedroom', 'window_open_heating_on', 'Open window')]), NOW);
@@ -668,9 +668,9 @@ ok('recent action note is a phrase with its verb ("lights off 7 min ago"), under
   const at = (mins) => new Date(NOW - mins * 60000).toISOString();
   const feedOf = (mins, decision = 'turn_off', sub = 'lighting', loc = 'kitchen') => ({ 'sensor.info_decision_feed': { state: 'x', attributes: { entries: JSON.stringify([{ loc, sub, decision, ts: at(mins), sentence: 'x', auto: `${loc}:lighting` }]), by_room: '[]' } } });
   const rec = (mins, decision, sub) => P.render('rooms', {}, withRooms(calmRooms(), [], feedOf(mins, decision, sub)), NOW);
-  assert.match(rec(0.2), /<span>lights off just now<\/span>/);
-  assert.match(rec(7), /<span>lights off 7 min ago<\/span>/);
-  assert.match(rec(1, 'turn_on'), /<span>lights on 1 min ago<\/span>/);
+  assert.match(rec(0.2), /<span>off just now<\/span>/);
+  assert.match(rec(7), /<span>off 7 min ago<\/span>/);
+  assert.match(rec(1, 'turn_on'), /<span>on 1 min ago<\/span>/);
   assert.match(rec(3, 'set_mode', 'heating'), /heating changed 3 min ago/);
   assert.doesNotMatch(rec(15), /min ago|just now/);
   assert.doesNotMatch(rec(120), /min ago|just now/);
@@ -679,7 +679,7 @@ ok('recent action note is a phrase with its verb ("lights off 7 min ago"), under
   for (const m of [0.2, 4, 14.5, 30]) assert.doesNotMatch(rec(m), /<span>\d+ min<\/span>|<span>just now<\/span>/);
   // occupied card carries it too
   const occ = P.render('rooms', {}, withRooms(calmRooms({ kitchen: { occupied: true } }), [], feedOf(7)), NOW);
-  assert.match(occ, /lights off 7 min ago/);
+  assert.match(occ, /<span>off 7 min ago<\/span>/);
   assert.equal(P.recentNote({ states: {} }, 'kitchen', NOW), '');
 });
 
@@ -691,16 +691,17 @@ ok('Now v2 tiles: unavailable occupancy keeps the dashed amber icon; rooms with 
   assert.equal(count(missing, /No report/g), 8);
   assert.equal(count(missing, /color:#8f9aa8">–</g), 7, 'seven rooms with a climate sensor show a muted dash; the climate-less hallway shows none');
   const css = readFileSync(root + 'www/pulse-card.js', 'utf8');
-  assert.match(css, /\.rt\{[^}]*min-height:76px/);
+  assert.match(css, /\.rt\{[^}]*height:92px/);
   assert.match(css, /\.oc\{[^}]*min-height:64px/);
 });
 
 ok('Now v2: the price strip is one 44px+ link to the Energy page; the chart is gone from Now; the energy view exists', () => {
   const html = P.render('status', {}, mk(), NOW);
   assert.equal(P.ENERGY_PATH, '/pulse-dashboard/energy');
-  const link = html.match(/<a class="tap" data-act="nav" data-path="\/pulse-dashboard\/energy" aria-label="Open energy details" style="[^"]*min-height:44px[^"]*">[\s\S]*?Energy ›<\/div><\/a>/);
+  const link = html.match(/<a class="tap pstrip" data-act="nav" data-path="\/pulse-dashboard\/energy" aria-label="Open energy details">[\s\S]*?<\/a>/);
   assert.ok(link, 'strip is wrapped in one link');
-  for (const word of ['>Now<', '>Next<', '>Usage<', 'p/kWh', 'Energy ›']) assert.ok(link[0].includes(word), word);
+  for (const word of ['>Now<', '>Next<', '>Usage<', ' p</span>', 'M9 5l7 7-7 7']) assert.ok(link[0].includes(word), word);
+  assert.match(readFileSync(root + 'www/pulse-card.js', 'utf8'), /\.pstrip\{[^}]*min-height:56px/);
   assert.equal(count(html, /data-path="\/pulse-dashboard\/energy"/g), 1);
   assert.doesNotMatch(html, /data-chart|<rect|Tomorrow's rates/);
   // the Energy page's own head shows the same strip without linking to itself
@@ -1305,12 +1306,146 @@ ok('rooms without a climate sensor show no temperature at all; rooms with one bu
   const quiet = P.render('rooms', {}, withRooms(calmRooms({ hallway_upstairs: { temp: null, humidity: null }, kitchen: { temp: null } }), []), NOW);
   const tile = (html, name) => html.match(new RegExp(`<a class="rt tap"[^>]*>(?:(?!<a class="rt tap").)*?${name}[\\s\\S]*?</a>`))[0];
   const up = tile(quiet, 'Hallway up');
-  assert.doesNotMatch(up, /–|font-size:20px/);
+  assert.doesNotMatch(up, /–/);
+  assert.match(up, />no climate</);
   assert.match(tile(quiet, 'Kitchen'), /color:#8f9aa8">–</);
   const occ = P.render('rooms', {}, withRooms(calmRooms({ hallway_upstairs: { occupied: true, temp: null } }), []), NOW);
-  assert.doesNotMatch(occ.match(/<a class="card oc tap"[\s\S]*?<\/a>/)[0], /–|font-size:22px/);
+  const occCard = occ.match(/<a class="card oc tap"[\s\S]*?<\/a>/)[0];
+  assert.doesNotMatch(occCard, /–/);
+  assert.match(occCard, />no climate</);
   const att = P.render('rooms', {}, withRooms(calmRooms({ hallway_upstairs: { temp: null } }), [attn('Hallway upstairs', 'hallway_upstairs', 'automation_disabled', 'Lights automation off')]), NOW);
-  assert.doesNotMatch(att.match(/<div class="card warn pad">[\s\S]*?details ›/)[0], /font-size:22px/);
+  assert.match(att.match(/<div class="card warn pad">[\s\S]*?details ›/)[0], />no climate</);
+});
+
+// ── Now v3 ─────────────────────────────────────────────────────────────────────────────────────
+const NOW_MODES = ['now-header', 'status', 'rooms', 'bins-heating', 'feed', 'footer'];
+const nowPage = (hass) => NOW_MODES.map((m) => P.render(m, {}, hass, NOW)).join('\n');
+
+ok('Now v3 header is the title and mode pill only; no "Updated" text anywhere on Now; Mobile link stays at the bottom', () => {
+  const hdr = P.render('now-header', {}, mk(), NOW);
+  assert.match(hdr, />Pulse</);
+  assert.match(hdr, /● Normal/);
+  assert.doesNotMatch(hdr, /<a |data-path|sliders/, 'no link or icon in the title row');
+  for (const hass of [mk(), withRooms(calmRooms(), []), withRooms(P.ROOM_ORDER.map((k) => quietRoom(k, { occupied: true })), [attn('Bedroom', 'bedroom', 'automation_disabled', 't')]), { states: {} }]) assert.doesNotMatch(nowPage(hass), /Updated/);
+  const foot = P.render('footer', {}, mk(), NOW);
+  assert.match(foot, /data-path="\/mobile-dashboard"[^>]*>Open Mobile controls ›</);
+  assert.match(foot, /padding:4px 4px 24px/, 'bottom padding left for the later tab bar');
+  assert.equal(count(nowPage(mk()), /data-path="\/mobile-dashboard"/g), 1);
+  const view = yaml.load(readFileSync(root + 'views/info-now.yaml', 'utf8'));
+  assert.deepEqual(view.sections[0].cards.map((c) => c.mode), ['now-header', 'status', 'rooms', 'bins-heating', 'feed', 'footer']);
+});
+
+ok('Now v3 status card: verdict row with the sentence right-aligned, ONE chip row (nowrap, 30px), price strip link, cheapest line', () => {
+  const hass = withRooms(calmRooms({ parlour: { occupied: true }, kitchen: { occupied: true }, bedroom: { occupied: true }, bathroom: { occupied: true } }), []);
+  const st = P.render('status', {}, hass, NOW);
+  assert.match(st, /<div style="font-size:15px;font-weight:700">All good<\/div><div style="flex:1"><\/div><div style="font-size:12px;color:#a3adba;text-align:right">4 rooms occupied · heating idle<\/div>/);
+  const chips = st.match(/<div class="chips">[\s\S]*?<\/a><\/div>/)[0];
+  assert.equal(count(chips, /class="chip[" ]/g), 3, 'Adam, Sarah, Mo in one row');
+  assert.doesNotMatch(chips, /flex-wrap:wrap/);
+  const css = readFileSync(root + 'www/pulse-card.js', 'utf8');
+  assert.match(css, /\.chips\{[^\n]*display:flex[^\n]*flex-wrap:nowrap/);
+  assert.match(css, /\.chip\{[^\n]*min-height:30px[^\n]*white-space:nowrap/);
+  assert.match(css, /\.chip\{[^\n]*font-size:12px/);
+  assert.match(chips, /Adam · WFH/);
+  assert.match(chips, />Mo</);
+  // the long variants are shortened rather than wrapped
+  const worst = P.render('status', {}, mk({ 'person.adam': { state: 'not_home', attributes: {} }, 'input_boolean.wfh_adam': { state: 'on', attributes: {} }, 'sensor.mo_timeline': { state: 'x', attributes: { eating: [{ ts: Date.parse('2026-10-24T18:05:00Z') }] } } }), NOW);
+  const wc = worst.match(/<div class="chips">[\s\S]*?<\/a><\/div>/)[0];
+  assert.match(wc, /Adam · Away/);
+  assert.match(wc, /Mo · ate yest 18:05/);
+  assert.doesNotMatch(wc, /yesterday|Away · WFH/);
+  assert.ok(wc.replace(/<[^>]+>/g, '').length < 60, 'chip text fits one 390px row');
+  // price strip: one 56px+ link, chevron, aria-label, graded colours; cheapest line under it
+  const strip = st.match(/<a class="tap pstrip"[\s\S]*?<\/a>/)[0];
+  assert.match(strip, /data-path="\/pulse-dashboard\/energy" aria-label="Open energy details"/);
+  assert.ok(strip.includes(`color:${P.priceColour(34.8, { text: true })}`));
+  assert.ok(strip.includes(`color:${P.priceColour(41.2, { text: true })}`));
+  assert.match(strip, /M9 5l7 7-7 7/);
+  assert.match(st, /<\/a><div style="font-size:12px;color:#a3adba;margin-top:2px">Cheapest 2h · <b[^>]*>Tomorrow 20:00 → 22:00<\/b><\/div>/);
+  assert.ok(st.indexOf('class="chips"') > st.indexOf('All good') && st.indexOf('pstrip') > st.indexOf('class="chips"'), 'verdict, chips, strip in that order');
+});
+
+ok('Now v3 calm / 4 occupied / attention: partition rules and the amber state', () => {
+  const calm = nowPage(withRooms(calmRooms(), []));
+  assert.doesNotMatch(calm, /Needs attention|Occupied now|card pad warn/);
+  assert.match(calm, />Rooms</);
+  assert.equal(count(calm, /class="rt tap"/g), 8);
+  const four = withRooms(calmRooms({ parlour: { occupied: true, lights_on: 2 }, kitchen: { occupied: true }, bathroom: { occupied: true, temp: 19.8 }, hallway_upstairs: { occupied: true, temp: null } }), []);
+  const rooms = P.render('rooms', {}, four, NOW);
+  assert.equal(count(rooms, /class="card oc tap"/g), 4);
+  assert.equal(count(rooms, /class="rt tap"/g), 4);
+  assert.match(rooms, />Occupied now</);
+  assert.match(rooms, />Other rooms</);
+  assert.match(P.render('status', {}, four, NOW), /4 rooms occupied · heating idle/);
+  const att = withRooms(calmRooms({ bathroom: { occupied: true, temp: 23.1, humidity: 88, lights_on: 1 }, bedroom: { occupied: true, target: 5, target_reason: 'window open', mode_name: 'baseline day', mode_target: 18, heat_labels: ['Window open'], labels: ['Window open'] } }), [attn('Bathroom', 'bathroom', 'comfort_outlier', '23.1° (room sensor) is too warm'), attn('Bedroom', 'bedroom', 'window_open_heating_on', 'Open window while heating is on')]);
+  const status = P.render('status', {}, att, NOW);
+  assert.match(status, /card pad warn/);
+  assert.match(status, /2 need attention<\/span><div style="flex:1"><\/div><div style="font-size:12px;color:#a3adba;text-align:right">2 rooms occupied · heating idle/);
+  assert.match(status, /Bathroom<\/b> · Steamy/);
+  assert.match(status, /class="chips"/);
+  assert.match(status, /pstrip/);
+  const r = P.render('rooms', {}, att, NOW);
+  assert.equal(count(r, />Needs attention</g), 1);
+  assert.doesNotMatch(r, />Occupied now</);
+  assert.equal(count(r, /class="rt tap"/g), 6);
+  const heating = withRooms(calmRooms({ kitchen: { hvac_action: 'heating' }, parlour: { hvac_action: 'heating' } }), []);
+  assert.match(P.render('status', {}, heating, NOW), /heating in 2 rooms/);
+});
+
+ok('Now v3 occupied card is two lines: icon + name + temperature, then badges (amber manual badge, holds, phrase)', () => {
+  const manual = { source: 'wall_button', ts: '2026-10-25T15:42:00+00:00', what: 'x' };
+  const feed = { 'sensor.info_decision_feed': { state: 'x', attributes: { entries: JSON.stringify([{ loc: 'parlour', sub: 'lighting', decision: 'turn_on', ts: new Date(NOW - 60000).toISOString(), sentence: 'x', auto: 'p:l' }]), by_room: '[]' } } };
+  const hass = withRooms(calmRooms({ parlour: { occupied: true, lights_on: 2, temp: 20.3, manual, heat_labels: ['Window open'], pres_labels: ['Sofa occupied'], labels: ['Sofa occupied'] }, hallway_upstairs: { occupied: true, temp: null } }), [], { ...feed, 'sensor.parlour_active_scene': { state: 'parlour_lamps', attributes: {} } });
+  const html = P.render('rooms', {}, hass, NOW);
+  const card = html.match(/<a class="card oc tap"[\s\S]*?<\/a>/)[0];
+  assert.match(card, /^<a class="card oc tap"[^>]*><svg class="occ"[^>]*width="20" height="20"[^>]*fill="currentColor"/);
+  assert.match(card, /<div class="nm">Parlour<\/div><div class="t"><div style="font-size:20px;font-weight:700[^>]*>20\.3°<\/div><\/div><div class="sub">/);
+  assert.match(card, /Lamps<\/span>/);
+  assert.match(card, /style="color:#f2b84b;background:#2b2415"[^>]*>[\s\S]*Wall button · 3 h ago/);
+  assert.match(card, /Window<\/span>/);
+  assert.match(card, /Sofa occupied/);
+  assert.match(card, /<span>on 1 min ago<\/span>/);
+  const up = html.match(/<a class="card oc tap"[^>]*room-hallway_upstairs[\s\S]*?<\/a>/)[0];
+  assert.match(up, /<div class="t"><div style="font-size:12px;font-weight:500;color:#8f9aa8">no climate<\/div><\/div>/);
+  assert.doesNotMatch(up, /–/);
+  const css = readFileSync(root + 'www/pulse-card.js', 'utf8');
+  assert.match(css, /\.oc\{[^\n]*grid-template-columns:20px 1fr auto/);
+  assert.match(css, /\.oc \.sub\{grid-column:2 \/ 4/);
+});
+
+ok('Now v3 tiles: fixed height, name / temperature / status-line grid, identical structure with or without badges, nothing wraps', () => {
+  const plain = P.render('rooms', {}, withRooms(calmRooms(), []), NOW);
+  const busy = P.render('rooms', {}, withRooms(calmRooms({ bedroom: { heat_labels: ['Window open'], labels: ['Window open'], manual: { source: 'dashboard', ts: new Date(NOW - 600000).toISOString(), what: 'x' } }, kitchen: { lights_on: 3 } }), []), NOW);
+  const tiles = (h) => [...h.matchAll(/<a class="rt tap"[^>]*>([\s\S]*?)<\/a>/g)].map((m) => m[0]);
+  const shape = (t) => t.replace(/<svg[\s\S]*?<\/svg>/g, '<svg/>').match(/<(?:a|div)[^>]*>/g).map((x) => x.replace(/data-path="[^"]*"/, '').replace(/style="[^"]*"/, 'style').trim());
+  const a = tiles(plain);
+  const b = tiles(busy);
+  assert.equal(a.length, 8);
+  assert.equal(b.length, 8);
+  for (const t of [...a, ...b]) {
+    assert.match(t, /^<a class="rt tap"[^>]*><div class="nm">[\s\S]*?<\/div><div class="t">[\s\S]*?<\/div><div class="b">[\s\S]*<\/div><\/a>$/);
+    assert.equal((t.match(/class="rt/g) || []).length, 1);
+    assert.doesNotMatch(t, /height:|min-height:|flex-wrap:wrap/, 'height comes from CSS only, never from content or inline style');
+  }
+  const bedroom = b.find((t) => t.includes('Bedroom'));
+  assert.match(bedroom, /Window<\/span>/);
+  assert.doesNotMatch(bedroom, /Dashboard/, 'a hold wins over the manual badge so the status line stays one line');
+  assert.deepEqual(shape(b[4]).slice(0, 3), shape(a[4]).slice(0, 3));
+  const css = readFileSync(root + 'www/pulse-card.js', 'utf8');
+  assert.match(css, /\.rt\{[^\n]*grid-template-rows:auto 1fr auto[^\n]*height:92px[^\n]*overflow:hidden/);
+  assert.match(css, /\.rt \.b\{[^\n]*flex-wrap:nowrap[^\n]*white-space:nowrap[^\n]*overflow:hidden/);
+  assert.match(css, /\.rt \.t\{align-self:center\}/);
+  assert.doesNotMatch(plain + busy, /%|humidity/);
+  const kitchen = a.find((t) => t.includes('Kitchen'));
+  assert.match(kitchen, /Off<\/span>/);
+});
+
+ok('Now v3 sparse and missing data: every Now mode renders cleanly', () => {
+  for (const hass of [{ states: {} }, mk(), withRooms(P.ROOM_ORDER.map((k) => ({ k })), [{}]), withRooms('junk', 'junk'), withRooms(P.ROOM_ORDER.map((k) => ({ k, temp: null, manual: 'x', labels: 7 })), [])]) {
+    const page = nowPage(hass);
+    assert.doesNotMatch(page, NOISE);
+    assert.doesNotMatch(page, /Updated/);
+  }
 });
 
 console.log(`\n${n} test groups passed`);
