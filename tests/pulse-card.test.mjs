@@ -815,17 +815,34 @@ ok('covered day: derived from charges, otherwise "latest complete day"; never gu
   for (const bad of [undefined, null, {}, { charges: [] }, { charges: 'x' }, { charges: [{ start: 'nope' }] }]) assert.equal(P.coveredDay(bad), null);
 });
 
-ok('standing charge is only claimed when the attributes prove it', () => {
-  assert.equal(P.standingNote(3.42, { total_cost_without_standing_charge: 2.9, standing_charge: 0.52 }), 'incl. standing charge');
-  assert.equal(P.standingNote(2.9, { total_cost_without_standing_charge: 2.9, standing_charge: 0.52 }), 'excl. standing charge');
-  assert.equal(P.standingNote(3.42, { total_cost_without_standing_charge: 2.0 }), '');
-  assert.equal(P.standingNote(3.42, {}), '');
-  assert.equal(P.standingNote(null, { total_cost_without_standing_charge: 2.9 }), '');
-  assert.equal(P.standingNote(3.42, undefined), '');
+ok('standing charge is only claimed when the attributes prove it (live shapes: rounding tolerant)', () => {
+  const at = (without, standing) => ({ total_without_standing_charge: without, standing_charge: standing });
+  assert.equal(P.standingNote(3.58, at(3.11, 0.46)), 'incl. standing charge'); // live electricity: sum is 3.57
+  assert.equal(P.standingNote(2.84, at(2.56, 0.28)), 'incl. standing charge'); // live gas: exact
+  assert.equal(P.standingNote(3.58, at(3.11, 0.46)), P.standingNote(3.57, at(3.11, 0.46)));
+  assert.equal(P.standingNote(3.9, at(3.11, 0.46)), '', 'a genuinely different total makes no claim');
+  assert.equal(P.standingNote(2.9, at(2.9, 0.52)), 'excl. standing charge');
+  assert.equal(P.standingNote(3.58, { total_without_standing_charge: 3.11 }), '', 'standing charge missing');
+  assert.equal(P.standingNote(3.58, { standing_charge: 0.46 }), '', 'without-standing missing');
+  assert.equal(P.standingNote(3.58, {}), '');
+  assert.equal(P.standingNote(null, at(3.11, 0.46)), '');
+  assert.equal(P.standingNote(3.58, undefined), '');
+  assert.equal(P.standingNote(3.58, at('x', 'y')), '');
+});
+
+ok('covered day on a 25-hour clock-change day: 50 charges from 2026-10-25T00:00:00+01:00 still derive the date', () => {
+  const c = Array.from({ length: 50 }, (_, i) => {
+    const t = Date.parse('2026-10-24T23:00:00Z') + i * 1800000;
+    return { start: i === 0 ? '2026-10-25T00:00:00+01:00' : new Date(t).toISOString(), end: new Date(t + 1800000).toISOString(), cost: 0.1 };
+  });
+  assert.equal(P.coveredDay({ charges: c }), 'Sun 25 Oct');
+  assert.equal(P.coveredDay({ charges: c.slice(0, 40) }), null, 'a partial list is still refused');
+  const r = P.render('energy-cost', {}, mk({ [`${EID}_cost`]: { state: '3.58', attributes: { unit_of_measurement: 'GBP', charges: c, total_without_standing_charge: 3.11, standing_charge: 0.46 } } }), NOW);
+  assert.match(r, /£3\.58<\/div><div[^>]*>Sun 25 Oct · – · incl\. standing charge</);
 });
 
 ok('cost card: published values labelled with their day, unavailable dashes, missing date says latest complete day', () => {
-  const e = { unit_of_measurement: 'GBP', charges: charges('2026-10-22T23:00:00Z').map((c, i) => (i === 0 ? { ...c, start: '2026-10-23T00:00:00+01:00' } : c)), total_cost_without_standing_charge: 2.9, standing_charge: 0.52 };
+  const e = { unit_of_measurement: 'GBP', charges: charges('2026-10-22T23:00:00Z').map((c, i) => (i === 0 ? { ...c, start: '2026-10-23T00:00:00+01:00' } : c)), total_without_standing_charge: 2.9, standing_charge: 0.52 };
   const hass = mk({ [`${EID}_cost`]: { state: '3.42', attributes: e }, [`${EID}_consumption`]: { state: '9.4', attributes: { unit_of_measurement: 'kWh' } }, [`${GID}_cost`]: { state: '1.2', attributes: { unit_of_measurement: 'GBP' } }, [`${GID}_consumption_kwh`]: { state: '10.04', attributes: { unit_of_measurement: 'kWh' } } });
   const html = P.render('energy-cost', {}, hass, NOW);
   assert.match(html, /Electricity<\/div><div class="v">£3\.42<\/div><div[^>]*>Fri 23 Oct · 9\.4 kWh · incl\. standing charge</);

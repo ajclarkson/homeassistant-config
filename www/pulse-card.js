@@ -892,14 +892,16 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return `${Math.abs(k) >= 100 ? Math.round(k) : k.toFixed(1)} kWh`;
   }
 
-  // Standing charge is only claimed when the attributes prove it: total == without + standing, or
-  // total == without (then it is explicitly excluded). Otherwise no claim.
+  // Standing charge is only claimed when the attributes prove it (total_without_standing_charge and
+  // standing_charge, as exposed by the Octopus sensors): total == without + standing within a penny and a
+  // half, or total == without (then it is explicitly excluded). Otherwise no claim.
   function standingNote(total, attrs) {
     const a = isObj(attrs) ? attrs : {};
-    const without = num(a.total_cost_without_standing_charge);
+    const without = num(a.total_without_standing_charge);
     const standing = num(a.standing_charge);
     if (total === null || without === null) return '';
-    if (standing !== null && Math.abs(total - (without + standing)) < 0.01) return 'incl. standing charge';
+    // Published figures are each rounded to the penny, so the sum can be a penny out (3.58 vs 3.11 + 0.46).
+    if (standing !== null && Math.abs(total - (without + standing)) <= 0.015) return 'incl. standing charge';
     if (Math.abs(total - without) < 0.005) return 'excl. standing charge';
     return '';
   }
