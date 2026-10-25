@@ -185,6 +185,11 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   ];
   const ALL_ROOM_KEYS = Object.keys(ROOMS);
 
+  // Where the dashboard is registered (url_path in configuration.yaml). Defined once: an unknown
+  // path silently falls back to the default dashboard, which is exactly the bug this avoids.
+  const DASH = '/pulse-dashboard';
+  const MOBILE = '/mobile-dashboard';
+
   // Wall-button and other manual sources, in plain words.
   const SOURCE_WORDS = { dashboard: 'dashboard', switch: 'wall switch', wall_button: 'wall button' };
 
@@ -350,7 +355,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return item.text;
   }
 
-  const roomPath = (key) => `/info-dashboard/room-${key}`;
+  const roomPath = (key) => `${DASH}/room-${key}`;
   const keyFromItem = (item) => (ROOMS[item.key] ? item.key : '');
 
   function activeScene(hass, key) {
@@ -467,8 +472,8 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       return `<div class="chip"><span class="dot${home ? '' : ' dim'}" style="width:8px;height:8px"></span>${esc(name)} · ${label}</div>`;
     };
     return `<div style="display:flex;align-items:center;gap:10px"><div style="font-size:28px;font-weight:700;letter-spacing:-.4px">Pulse</div>${pill}<div style="flex:1"></div>
-<a class="tap" data-act="nav" data-path="/mobile-dashboard" aria-label="Open Mobile controls" style="min-height:44px;min-width:44px;display:flex;align-items:center;justify-content:center;color:${TOKENS.text2}">${svg(ICON.sliders, 22)}</a></div>
-<div style="display:flex;gap:8px;flex-wrap:wrap">${person('person.adam', 'Adam', 'input_boolean.wfh_adam')}${person('person.sarah', 'Sarah', 'input_boolean.wfh_sarah')}<a class="chip tap" data-act="nav" data-path="/mobile-dashboard/mo" style="color:${TOKENS.text2}">Mo${moAte(hass, at) ? ' · ' + esc(moAte(hass, at)) : ''}</a></div>`;
+<a class="tap" data-act="nav" data-path="${MOBILE}" aria-label="Open Mobile controls" style="min-height:44px;min-width:44px;display:flex;align-items:center;justify-content:center;color:${TOKENS.text2}">${svg(ICON.sliders, 22)}</a></div>
+<div style="display:flex;gap:8px;flex-wrap:wrap">${person('person.adam', 'Adam', 'input_boolean.wfh_adam')}${person('person.sarah', 'Sarah', 'input_boolean.wfh_sarah')}<a class="chip tap" data-act="nav" data-path="${MOBILE}/mo" style="color:${TOKENS.text2}">Mo${moAte(hass, at) ? ' · ' + esc(moAte(hass, at)) : ''}</a></div>`;
   }
 
   function heatingRooms(hass) {
@@ -485,7 +490,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       return `<div class="card pad" style="display:flex;align-items:center;gap:10px"><span class="dot${hasData ? '' : ' dim'}"></span><div><div style="font-size:15px;font-weight:700">${hasData ? 'All good' : 'No attention report'}</div><div style="font-size:12px;color:${TOKENS.text2};margin-top:2px">${home} home · heating in ${n} ${plural(n, 'room', 'rooms')}${usable(mode) ? ' · ' + esc(mode) : ''}</div></div></div>`;
     }
     const first = items[0];
-    const path = ROOMS[first.key] ? roomPath(first.key) : '/mobile-dashboard';
+    const path = ROOMS[first.key] ? roomPath(first.key) : MOBILE;
     // The banner is the summary (room and what); the room row below carries the sentence.
     const shown = items.slice(0, 3).map((i) => `<div style="font-size:13px;margin-top:6px;line-height:1.4"><b>${esc(i.room)}</b> · ${esc(itemLabel(i, ROOMS[i.key] ? roomModel(hass, i.key) : null))}</div>`).join('');
     const more = items.length > 3 ? `<div style="font-size:12px;color:${TOKENS.text2};margin-top:4px">+${items.length - 3} more</div>` : '';
@@ -608,7 +613,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   }
 
   function sectionFooter(hass, now) {
-    return `<div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;color:${TOKENS.text3};padding:2px 4px"><span>Updated ${esc(hhmm(new Date(now).toISOString()))}</span><a class="link tap" data-act="nav" data-path="/mobile-dashboard">Open Mobile controls ›</a></div>`;
+    return `<div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;color:${TOKENS.text3};padding:2px 4px"><span>Updated ${esc(hhmm(new Date(now).toISOString()))}</span><a class="link tap" data-act="nav" data-path="${MOBILE}">Open Mobile controls ›</a></div>`;
   }
 
   // ── Room page sections ───────────────────────────────────────────────────────────────────────
@@ -623,7 +628,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       numbers = `<div class="two"><div class="card pad"><div class="lbl">Room</div><div class="big">${m.temp === null ? '–' : fmt1(m.temp) + '°'}</div><div style="font-size:12px;color:${TOKENS.text2};margin-top:2px">${m.humidity === null ? 'no humidity' : Math.round(m.humidity) + '% humidity'}</div></div>
 <div class="card pad"><div class="lbl">${differs ? 'Valve target' : 'Heating'}</div><div class="big" style="${differs ? 'color:' + TOKENS.amber : ''}">${m.target === null ? '–' : fmt1(m.target) + '°'}</div><div style="font-size:12px;color:${TOKENS.text2};margin-top:2px">${esc(sub2)}</div></div></div>`;
     }
-    return `<div style="display:flex;align-items:center;gap:4px"><a class="tap" data-act="nav" data-path="/info-dashboard/now" aria-label="Back to Now" style="min-height:44px;min-width:44px;display:flex;align-items:center;color:${TOKENS.text2}">${svg(ICON.back, 22)}</a><div style="font-size:28px;font-weight:700;letter-spacing:-.4px">${esc(m.cfg.name)}</div></div>${banner}${numbers}`;
+    return `<div style="display:flex;align-items:center;gap:4px"><a class="tap" data-act="nav" data-path="${DASH}/now" aria-label="Back to Now" style="min-height:44px;min-width:44px;display:flex;align-items:center;color:${TOKENS.text2}">${svg(ICON.back, 22)}</a><div style="font-size:28px;font-weight:700;letter-spacing:-.4px">${esc(m.cfg.name)}</div></div>${banner}${numbers}`;
   }
 
   function sectionWhy(hass, key, now) {
@@ -829,7 +834,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     }
   }
 
-  const api = { formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, ALL_ROOM_KEYS, ALLOWED, render, rateSeries, roomModel, attentionItems, handleAction, callService, num, parseList };
+  const api = { DASH, MOBILE, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, ALL_ROOM_KEYS, ALLOWED, render, rateSeries, roomModel, attentionItems, handleAction, callService, num, parseList };
   root.PulseLib = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 

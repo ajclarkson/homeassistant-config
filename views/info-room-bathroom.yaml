@@ -1,7 +1,7 @@
 title: Bathroom
 path: room-bathroom
 subview: true
-back_path: /info-dashboard/now
+back_path: /pulse-dashboard/now
 type: sections
 max_columns: 1
 background: '#12151a'
