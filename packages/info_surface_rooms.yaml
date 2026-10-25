@@ -97,23 +97,43 @@ template:
               {% set lights_on = is_state('group.' ~ k ~ '_lights', 'on') %}
               {% set active = states('sensor.' ~ k ~ '_active_heating') if c['he'] else '' %}
               {% set hvac = state_attr(c['cl'], 'hvac_action') if c['cl'] else none %}
+              {# Room sensor is the temperature everywhere on the dashboard; the TRV's own reading sits next to a hot radiator or a cold window and disagrees. #}
               {% set temp = states(tsens) | float(none) if c['cl'] else none %}
+              {% set temp = temp | round(1) if temp is not none else none %}
               {% set target = state_attr(c['cl'], 'temperature') if c['cl'] else none %}
+              {% set mode_targets = {'comfort': 'comfort', 'baseline_day': 'baseline_day', 'baseline_night': 'baseline_night', 'minimum': 'minimum'} %}
+              {% set mode_target = states('input_number.global_temperature_' ~ mode_targets[active]) | float(none) if active in mode_targets else none %}
+              {% set hvac_mode = states(c['cl']) if c['cl'] else '' %}
+              {# Why the TRV target differs from the mode's temperature, from data we can see. #}
+              {% set differs = target is not none and mode_target is not none and (target | float(0) - mode_target) | abs > 0.5 %}
+              {% if hvac_mode == 'off' %}{% set target_reason = 'TRV off' %}
+              {% elif differs and hs.ext_open %}{% set target_reason = 'window open' %}
+              {% elif differs and not is_state('input_boolean.house_heating_enabled', 'on') %}{% set target_reason = 'house heating off' %}
+              {% elif differs %}{% set target_reason = 'differs from mode' %}
+              {% else %}{% set target_reason = '' %}{% endif %}
               {% set scene = states('sensor.' ~ k ~ '_active_scene') %}
               {% set last = feed | selectattr('loc', 'eq', k) | list | first | default(none) %}
               {% set parts = [('Occupancy unavailable' if 'occupancy' in un.items else ('Occupied' if occupied else 'Empty'))] %}
               {% set parts = parts + [('lights on' if lights_on else 'lights off')] %}
-              {% if c['he'] and active not in ['', 'unknown', 'unavailable'] %}
+              {# Effective state: when the TRV target is not the mode's, say what it actually is. #}
+              {% if target_reason %}
+                {% set parts = parts + ['heating target ' ~ (target | float(0)) ~ '° (' ~ target_reason ~ ')'] %}
+              {% elif c['he'] and active not in ['', 'unknown', 'unavailable'] %}
                 {% set parts = parts + [heat_words.get(active, 'heating ' ~ (active | replace('_', ' ')))] %}
               {% endif %}
-              {% if labels %}{% set parts = parts + ['held by ' ~ (labels | join(' · '))] %}{% endif %}
+              {% set pres_labels = hs.items | selectattr('s', 'eq', 'presence') | map(attribute='label') | list %}
+              {% set heat_labels = hs.items | selectattr('s', 'eq', 'heating') | map(attribute='label') | list %}
+              {% if pres_labels %}{% set parts = parts + ['held occupied by ' ~ (pres_labels | join(' · '))] %}{% endif %}
+              {% if heat_labels and not target_reason %}{% set parts = parts + ['heating suspended: ' ~ (heat_labels | join(' · ') | lower)] %}{% endif %}
               {% if ovr %}{% set parts = parts + [ovr] %}{% endif %}
               {% set out.items = out.items + [{
                 'k': k, 'n': c['n'], 'nav': c['nav'],
                 'occupied': occupied,
                 'occupancy_unavailable': 'occupancy' in un.items,
                 'unavailable': un.items,
-                'temp': temp, 'target': target,
+                'temp': temp, 'target': target, 'mode_target': mode_target,
+                'target_reason': target_reason, 'mode_name': active | replace('_', ' '),
+                'pres_labels': pres_labels, 'heat_labels': heat_labels,
                 'humidity': (states('sensor.' ~ k ~ '_sensor_climate_humidity') | float(none)) if c['cl'] else none,
                 'hvac_action': hvac,
                 'heating_active': active,
@@ -175,13 +195,19 @@ template:
                   'text': 'Lights automation off', 'nav': g[2]}] %}
               {% endif %}
             {% endfor %}
-            {% for side in [['too_cold', 'too cold'], ['too_warm', 'too warm']] %}
-              {% set lst = state_attr('sensor.house_comfort_outliers', side[0]) %}
-              {% set lst = lst | from_json if lst is string else (lst or []) %}
-              {% for o in lst %}
-                {% set out.items = out.items + [{'room': o['name'], 'key': o['key'], 'kind': 'comfort_outlier',
-                  'text': (o['temp'] | string) ~ '° is ' ~ side[1], 'nav': o['nav']}] %}
-              {% endfor %}
+            {# Outliers use the room sensor (rooms[].temp), not the TRV reading that sensor.house_comfort_outliers uses.
+               A cold room is not an exception when a true window/door hold, a disabled heating automation or the house master switch explains it. #}
+            {% set band_min = state_attr('sensor.house_comfort_outliers', 'band_min') | float(17.0) %}
+            {% set band_max = state_attr('sensor.house_comfort_outliers', 'band_max') | float(21.5) %}
+            {% for r in rooms if r['temp'] is not none and r['k'] != 'foreign_office' %}
+              {% set explained = r['heat_labels'] or r['heating_enabled'] == false or not heating_master %}
+              {% if r['temp'] < band_min and not explained %}
+                {% set out.items = out.items + [{'room': r['n'], 'key': r['k'], 'kind': 'comfort_outlier',
+                  'text': r['temp'] ~ '° (room sensor) is too cold', 'nav': r['nav']}] %}
+              {% elif r['temp'] > band_max %}
+                {% set out.items = out.items + [{'room': r['n'], 'key': r['k'], 'kind': 'comfort_outlier',
+                  'text': r['temp'] ~ '° (room sensor) is too warm', 'nav': r['nav']}] %}
+              {% endif %}
             {% endfor %}
             {{ out.items | tojson }}
 
