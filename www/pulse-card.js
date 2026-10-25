@@ -329,6 +329,32 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     }));
   }
 
+  // Human label for an attention item. Comfort outliers say which way, and say "steamy" when the
+  // room's own data (humidity, or occupied with lights on) points at a shower.
+  function itemLabel(item, m) {
+    const t = item.text.toLowerCase();
+    switch (item.kind) {
+      case 'window_open_heating_on': return 'Window open, heating on';
+      case 'automation_disabled': return 'Automation off';
+      case 'hold_active': return 'Override on';
+      case 'sensor_unavailable': return 'Sensor unavailable';
+      case 'comfort_outlier': {
+        if (t.includes('too cold')) return 'Too cold';
+        if (t.includes('too warm')) {
+          const h = m ? m.humidity : null;
+          const shower = h !== null && (h >= 85 || (h >= 70 && m.occupied && m.lights_on > 0));
+          return shower ? 'Steamy' : 'Too warm';
+        }
+        return 'Outside comfort band';
+      }
+      default: return item.kind ? item.kind.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase()) : 'Needs attention';
+    }
+  }
+  function itemDetail(item, m) {
+    if (item.kind === 'comfort_outlier' && itemLabel(item, m) === 'Steamy') return `${item.text} · ${Math.round(m.humidity)}% humidity, probably a shower`;
+    return item.text;
+  }
+
   const roomPath = (key) => `${DASH}/room-${key}`;
   const keyFromItem = (item) => (ROOMS[item.key] ? item.key : '');
 
@@ -360,8 +386,20 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     }
     return out.sort((a, b) => (parseTs(b.ts) || 0) - (parseTs(a.ts) || 0)).slice(0, 6);
   }
+  // Consecutive identical sentences (a mashed button) become one row with a count. Entries are
+  // newest first, so the row carries the newest time.
+  function collapseFeed(entries) {
+    const out = [];
+    for (const e of entries) {
+      const last = out[out.length - 1];
+      if (last && str(last.sentence) === str(e.sentence)) last.count += 1;
+      else out.push({ ts: e.ts, sentence: e.sentence, count: 1 });
+    }
+    return out;
+  }
+  // The time column already says when; no second "just now".
   function feedRows(entries, now, limit) {
-    return entries.slice(0, limit).map((e) => `<div class="feed"><span class="a">${esc(hhmm(e.ts))}</span><span>${esc(e.sentence)}${ago(e.ts, now) === 'just now' ? ' · just now' : ''}</span></div>`).join('');
+    return collapseFeed(entries).slice(0, limit).map((e) => `<div class="feed"><span class="a">${esc(hhmm(e.ts))}</span><span>${esc(e.sentence)}${e.count > 1 ? ` <b>x${e.count}</b>` : ''}</span></div>`).join('');
   }
 
   // ── Icons ────────────────────────────────────────────────────────────────────────────────────
@@ -399,7 +437,8 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       parts.push(m.occupancy_unavailable ? 'occupancy unavailable' : m.occupied ? 'occupied' : 'empty');
     }
     if (m.target_reason && m.target !== null) parts.push(`heating target ${fmt1(m.target)}° (${m.target_reason})`);
-    else if (m.labels.length) parts.push(`held: ${m.labels.join(' · ')}`);
+    else if (m.heat_labels.length) parts.push(`heating held: ${m.heat_labels.join(' · ')}`);
+    if (m.pres_labels.length) parts.push(`kept occupied by ${m.pres_labels.join(' · ')}`);
     if (m.manual) parts.push(`manual (${SOURCE_WORDS[m.manual.source] || m.manual.source})`);
     return parts.join(' · ');
   }
@@ -413,7 +452,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       };
     }
     if (mine.length) {
-      return { warn: true, title: mine.length === 1 ? mine[0].text : `${mine.length} things need attention`, body: mine.length === 1 ? m.verdict : mine.map((i) => i.text).join('. ') };
+      return { warn: true, title: mine.length === 1 ? itemLabel(mine[0], m) : `${mine.length} things need attention`, body: mine.length === 1 ? itemDetail(mine[0], m) : mine.map((i) => itemDetail(i, m)).join('. ') };
     }
     if (m.cfg.report && !m.hasReport) return { warn: false, dim: true, title: 'No report yet', body: 'sensor.info_rooms has no entry for this room.' };
     if (!m.cfg.report) return { warn: false, title: 'Lights only', body: 'This area has scenes and a lights automation, no climate or presence report.' };
@@ -421,7 +460,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   }
 
   // ── Sections ─────────────────────────────────────────────────────────────────────────────────
-  function sectionNowHeader(hass) {
+  function sectionNowHeader(hass, at) {
     const mode = state(hass, 'sensor.house_active_mode');
     const mod = state(hass, 'input_select.house_active_mode_modifier');
     const pill = usable(mode) ? `<div class="tag ok" style="padding:3px 9px">● ${esc(mode.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase()))}${usable(mod) && mod !== 'none' ? ' · ' + esc(mod) : ''}</div>` : '';
@@ -432,10 +471,9 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       const label = !usable(s) ? 'Unknown' : home && w ? 'WFH' : home ? 'Home' : w ? 'Away · WFH' : 'Away';
       return `<div class="chip"><span class="dot${home ? '' : ' dim'}" style="width:8px;height:8px"></span>${esc(name)} · ${label}</div>`;
     };
-    const fed = hhmm(state(hass, 'input_text.mo_cooldown_eating'));
     return `<div style="display:flex;align-items:center;gap:10px"><div style="font-size:28px;font-weight:700;letter-spacing:-.4px">Pulse</div>${pill}<div style="flex:1"></div>
 <a class="tap" data-act="nav" data-path="${MOBILE}" aria-label="Open Mobile controls" style="min-height:44px;min-width:44px;display:flex;align-items:center;justify-content:center;color:${TOKENS.text2}">${svg(ICON.sliders, 22)}</a></div>
-<div style="display:flex;gap:8px;flex-wrap:wrap">${person('person.adam', 'Adam', 'input_boolean.wfh_adam')}${person('person.sarah', 'Sarah', 'input_boolean.wfh_sarah')}<div class="chip" style="color:${TOKENS.text2}">Mo${fed ? ' · eating alert ' + esc(fed) : ''}</div></div>`;
+<div style="display:flex;gap:8px;flex-wrap:wrap">${person('person.adam', 'Adam', 'input_boolean.wfh_adam')}${person('person.sarah', 'Sarah', 'input_boolean.wfh_sarah')}<a class="chip tap" data-act="nav" data-path="${MOBILE}/mo" style="color:${TOKENS.text2}">Mo${moAte(hass, at) ? ' · ' + esc(moAte(hass, at)) : ''}</a></div>`;
   }
 
   function heatingRooms(hass) {
@@ -453,7 +491,8 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     }
     const first = items[0];
     const path = ROOMS[first.key] ? roomPath(first.key) : MOBILE;
-    const shown = items.slice(0, 3).map((i) => `<div style="font-size:13px;margin-top:6px;line-height:1.4"><b>${esc(i.room)}</b> ${esc(i.text)}</div>`).join('');
+    // The banner is the summary (room and what); the room row below carries the sentence.
+    const shown = items.slice(0, 3).map((i) => `<div style="font-size:13px;margin-top:6px;line-height:1.4"><b>${esc(i.room)}</b> · ${esc(itemLabel(i, ROOMS[i.key] ? roomModel(hass, i.key) : null))}</div>`).join('');
     const more = items.length > 3 ? `<div style="font-size:12px;color:${TOKENS.text2};margin-top:4px">+${items.length - 3} more</div>` : '';
     return `<a class="card warn pad tap" data-act="nav" data-path="${esc(path)}" style="display:block"><div style="display:flex;align-items:center;gap:8px"><span class="dot warn"></span><span style="font-size:15px;font-weight:700;color:${TOKENS.amber}">${items.length} ${plural(items.length, 'needs', 'need')} attention</span></div>${shown}${more}</a>`;
   }
@@ -474,7 +513,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       const lines = [];
       if (m.target_reason && m.target !== null) lines.push(`<div class="l"><b>Heating</b><span>target ${fmt1(m.target)}° (${esc(m.target_reason)})${m.mode_name && m.mode_target !== null ? `. Normally ${esc(m.mode_name)}, ${fmt1(m.mode_target)}°.` : '.'}</span></div>`);
       if (m.pres_labels.length) lines.push(`<div class="l"><b>Held</b><span>occupied by ${esc(m.pres_labels.join(' · '))}</span></div>`);
-      for (const i of items.filter((x) => x.key === k)) lines.push(`<div class="l"><b>${esc(i.kind.replace(/_/g, ' '))}</b><span>${esc(i.text)}</span></div>`);
+      for (const i of items.filter((x) => x.key === k)) lines.push(`<div class="l"><b>${esc(itemLabel(i, m))}</b><span>${esc(itemDetail(i, m))}</span></div>`);
       const tags = m.labels.concat(m.heat_labels.filter((l) => !m.labels.includes(l))).map((l) => `<span class="tag">${esc(l)}</span>`).join('');
       if (tags) lines.push(`<div class="l">${tags}</div>`);
       return `<div class="row warn"><span class="dot warn" style="margin-top:6px"></span><div><div class="nm">${esc(m.cfg.short)}</div><div class="sub">${esc(m.verdict || rowSub(m, scene, now))}</div></div><div><div class="t"${tcolor}>${temp}</div><div class="rh">${esc(hum)}</div></div><div class="det">${lines.join('')}<a class="link tap" data-act="nav" data-path="${roomPath(k)}">${esc(m.cfg.short)} details ›</a></div></div>`;
@@ -482,27 +521,60 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return `<div class="lbl" style="margin:4px 4px -10px">Rooms</div><div class="card">${rows.join('')}</div>`;
   }
 
+  // The meter sensor reports kW today but could be W: read the unit, never assume it. An unknown
+  // unit shows a dash, because a wrong unit is worse than no number.
+  function formatPower(value, unit) {
+    const v = num(value);
+    if (v === null) return '–';
+    const u = str(unit).trim().toLowerCase();
+    const w = u === 'kw' ? v * 1000 : u === 'w' ? v : null;
+    if (w === null) return '–';
+    return Math.abs(w) >= 1000 ? `${(w / 1000).toFixed(2)} kW` : `${Math.round(w)} W`;
+  }
+
+  // "ate 03:44" / "ate yesterday 18:05" / "ate Fri 18:05" from sensor.mo_timeline eating[0].ts
+  // (epoch ms, newest first, same source as views/mo.yaml). Empty when there is no data.
+  function moAte(hass, at) {
+    const list = attr(hass, 'sensor.mo_timeline', 'eating');
+    const first = Array.isArray(list) && isObj(list[0]) ? num(list[0].ts) : null;
+    if (first === null || first < 946684800000) return '';
+    const d = new Date(first);
+    const time = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    const day = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+    const diff = Math.round((day(new Date(at)) - day(d)) / 86400000);
+    if (diff <= 0) return `ate ${time}`;
+    if (diff === 1) return `ate yesterday ${time}`;
+    if (diff < 7) return `ate ${d.toLocaleDateString('en-GB', { weekday: 'short' })} ${time}`;
+    return `ate ${d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} ${time}`;
+  }
+
   const priceColor = (p) => (p === null ? TOKENS.text : p < CHEAP_P ? TOKENS.ok : p >= PEAK_P ? TOKENS.amber : TOKENS.text);
-  function sectionEnergy(hass) {
+  function sectionEnergy(hass, at) {
     const base = 'sensor.octopus_energy_electricity_24e8140196_1012483035417';
     const now = num(state(hass, `${base}_current_rate`));
     const next = num(state(hass, `${base}_next_rate`));
     const p = (v) => (v === null ? null : v * 100);
-    const watts = num(state(hass, 'sensor.glow_electricity_power'));
+    // A reading that has not updated for 10 minutes is stale (the meter reports every few seconds),
+    // so show a dash rather than a confident 0 W. A fresh 0 is shown as is.
+    const wState = stateObj(hass, 'sensor.glow_electricity_power');
+    const wAge = wState ? parseTs(wState.last_updated) : null;
+    const stale = wAge !== null && at - wAge > 600000;
+    const usageText = stale ? '–' : formatPower(state(hass, 'sensor.glow_electricity_power'), attr(hass, 'sensor.glow_electricity_power', 'unit_of_measurement'));
     const nowP = p(now);
     const nextP = p(next);
     return `<div class="lbl" style="margin:4px 4px -10px">Energy</div>
 <div class="card pad" style="border-bottom-left-radius:0;border-bottom-right-radius:0;padding-bottom:0"><div style="display:flex;gap:16px;align-items:flex-end">
 <div><div class="lbl">Now</div><div style="font-size:26px;font-weight:700;letter-spacing:-.5px;line-height:1.1">${nowP === null ? '–' : fmt1(nowP)}<span style="font-size:13px;font-weight:500;color:${TOKENS.text2}"> p/kWh</span></div></div>
 <div><div class="lbl">Next</div><div style="font-size:18px;font-weight:600;color:${priceColor(nextP)};line-height:1.5">${nextP === null ? '–' : fmt1(nextP) + 'p'}</div></div>
-<div style="flex:1"></div><div style="text-align:right"><div class="lbl">Usage</div><div style="font-size:18px;font-weight:600;line-height:1.5">${watts === null ? '–' : Math.round(watts) + ' W'}</div></div></div></div>`;
+<div style="flex:1"></div><div style="text-align:right"><div class="lbl">Usage</div><div style="font-size:18px;font-weight:600;line-height:1.5">${usageText}</div></div></div></div>`;
   }
 
   function sectionEnergyFoot(hass) {
     const s = state(hass, 'sensor.cheapest_2h_waking_start');
     const e = state(hass, 'sensor.cheapest_2h_waking_end');
     const avg = num(state(hass, 'sensor.cheapest_2h_waking_avg_rate'));
-    const cheapest = usable(s) && usable(e) ? `<div style="display:flex;align-items:center;gap:8px;font-size:13px"><span class="tag ok">Cheapest 2h</span><span>${esc(s)} → ${esc(e)}${avg !== null ? ' · avg ' + fmt1(avg) + 'p' : ''}</span></div>` : '';
+    const running = state(hass, 'binary_sensor.octopus_energy_target_cheapest_2h_waking_hours') === 'on';
+    const cheapest = running && usable(e) ? `<div style="display:flex;align-items:center;gap:8px;font-size:13px"><span class="tag ok">Cheapest 2h</span><span>Running now, until ${esc(e)}${avg !== null ? ' · avg ' + fmt1(avg) + 'p' : ''}</span></div>` : usable(s) && usable(e) ? `<div style="display:flex;align-items:center;gap:8px;font-size:13px"><span class="tag ok">Cheapest 2h</span><span>${esc(s)} → ${esc(e)}${avg !== null ? ' · avg ' + fmt1(avg) + 'p' : ''}</span></div>` : '';
     const tomorrowIn = state(hass, 'binary_sensor.octopus_tomorrow_data_available') === 'on';
     const free = state(hass, 'sensor.octopus_tomorrow_negative_windows');
     const hasFree = tomorrowIn && usable(free) && free !== '—' && free.trim() !== '';
@@ -682,10 +754,10 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 
   // ── Dispatcher ───────────────────────────────────────────────────────────────────────────────
   const MODES = {
-    'now-header': (h) => sectionNowHeader(h),
+    'now-header': (h, c, n) => sectionNowHeader(h, n),
     attention: (h) => sectionAttention(h),
     rooms: (h, c, n) => sectionRooms(h, n),
-    energy: (h) => sectionEnergy(h),
+    energy: (h, c, n) => sectionEnergy(h, n),
     'energy-foot': (h) => sectionEnergyFoot(h),
     bins: (h) => sectionBins(h),
     heating: (h) => sectionHeating(h),
@@ -726,9 +798,11 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       const v = Number(r.value_inc_vat) * 100;
       if (!Number.isFinite(start) || !Number.isFinite(end) || !Number.isFinite(v)) continue;
       let c;
-      if (end <= now) c = 'past';
+      const band = v < CHEAP_P ? 'cheap' : v >= PEAK_P ? 'peak' : 'mid';
+      // Past slots keep their band (drawn at 45% opacity) so the day's shape stays readable.
+      if (end <= now) c = `past_${band}`;
       else if (start <= now) c = 'current';
-      else c = v < CHEAP_P ? 'cheap' : v >= PEAK_P ? 'peak' : 'mid';
+      else c = band;
       out.push({ x: start, y: c === cat ? v : null });
     }
     return out;
@@ -760,7 +834,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     }
   }
 
-  const api = { DASH, MOBILE, TOKENS, ROOMS, ROOM_ORDER, ALL_ROOM_KEYS, ALLOWED, render, rateSeries, roomModel, attentionItems, handleAction, callService, num, parseList };
+  const api = { DASH, MOBILE, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, ALL_ROOM_KEYS, ALLOWED, render, rateSeries, roomModel, attentionItems, handleAction, callService, num, parseList };
   root.PulseLib = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 

@@ -3,6 +3,7 @@
 // Covers: every mode for all 10 rooms with full, sparse and missing report data; attention vs
 // calm; manual set/null; empty, 50-slot and garbage rate lists (via the data_generator strings
 // extracted from the real YAML); unknown rooms and disallowed services fail loudly.
+process.env.TZ = 'UTC';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -253,7 +254,7 @@ ok('dashboard YAML parses', () => {
 ok('price bar data_generators: empty, 48, 50 and garbage lists', () => {
   const gens = [];
   for (const f of readdirSync(root + 'views').filter((x) => x.startsWith('info-'))) walk(loadYaml('views/' + f), (o) => { if (typeof o.data_generator === 'string') gens.push(o.data_generator); });
-  assert.ok(gens.length >= 5, 'expected one generator per price category');
+  assert.equal(gens.length, 7, 'one generator per band: 3 past, current, 3 future');
   const slots = (count, startIso) => Array.from({ length: count }, (_, i) => {
     const s = Date.parse(startIso) + i * 1800000;
     return { start: new Date(s).toISOString().replace('Z', '+00:00'), end: new Date(s + 1800000).toISOString().replace('Z', '+00:00'), value_inc_vat: i % 7 === 0 ? 0.08 : i % 5 === 0 ? 0.42 : 0.25 };
@@ -289,11 +290,119 @@ ok('rateSeries marks the current slot and dims past', () => {
     { start: '2026-10-25T19:30:00+00:00', end: '2026-10-25T20:00:00+00:00', value_inc_vat: 0.45 },
   ];
   const y = (cat) => P.rateSeries(rates, cat, NOW).map((p) => p.y !== null);
-  assert.deepEqual(y('past'), [true, false, false, false]);
+  assert.deepEqual(y('past_mid'), [true, false, false, false]);
+  assert.deepEqual(y('past_cheap'), [false, false, false, false]);
   assert.deepEqual(y('current'), [false, true, false, false]);
   assert.deepEqual(y('cheap'), [false, false, true, false]);
   assert.deepEqual(y('peak'), [false, false, false, true]);
   assert.deepEqual(P.rateSeries('nope', 'cheap', NOW), []);
+});
+
+ok('past slots keep their band so they stay readable', () => {
+  const rates = [
+    { start: '2026-10-25T10:00:00+00:00', end: '2026-10-25T10:30:00+00:00', value_inc_vat: 0.05 },
+    { start: '2026-10-25T11:00:00+00:00', end: '2026-10-25T11:30:00+00:00', value_inc_vat: 0.5 },
+  ];
+  assert.deepEqual(P.rateSeries(rates, 'past_cheap', NOW).map((p) => p.y !== null), [true, false]);
+  assert.deepEqual(P.rateSeries(rates, 'past_peak', NOW).map((p) => p.y !== null), [false, true]);
+  const yaml = readFileSync(root + 'views/info-now.yaml', 'utf8');
+  assert.match(yaml, /height: 110/);
+  assert.match(yaml, /rgba\(111,207,151,0\.45\)/);
+});
+
+ok('feed collapses consecutive identical sentences and has no second "just now"', () => {
+  const s = 'Bathroom lights scene set · button pressed';
+  const e = (ts, sentence) => ({ loc: 'bathroom', ts, sentence, decision: 'activate_scene', auto: 'bathroom:lighting' });
+  const entries = [e('2026-10-25T18:11:50+00:00', s), e('2026-10-25T18:11:40+00:00', s), e('2026-10-25T18:11:30+00:00', s), e('2026-10-25T18:11:20+00:00', s), e('2026-10-25T18:05:00+00:00', 'Kitchen lights on'), e('2026-10-25T18:01:00+00:00', s)];
+  const hass = mk({ 'sensor.info_decision_feed': { state: 'x', attributes: { entries: JSON.stringify(entries), by_room: '[]' } } });
+  const html = P.render('feed', {}, hass, Date.parse('2026-10-25T18:11:55Z'));
+  assert.equal((html.match(/Bathroom lights scene set/g) || []).length, 2, 'four in a row collapse to one; the later one stays separate');
+  assert.match(html, /<b>x4<\/b>/);
+  assert.doesNotMatch(html, /just now/);
+  assert.doesNotMatch(html, /x1/);
+});
+
+ok('room rows split lights vs heating holds and avoid jargon', () => {
+  const m = { ...FULL('bedroom'), target_reason: '', pres_labels: ['Bed occupied'], heat_labels: ['Window open'], labels: ['Bed occupied', 'Window open'], lights_why: 'lights back to automatic', lights_ts: '2026-10-25T18:41:00+00:00' };
+  const html = P.render('rooms', {}, withRooms([m], []), NOW);
+  assert.match(html, /Off · lights back to automatic 1 min ago · heating held: Window open · kept occupied by Bed occupied/);
+  assert.doesNotMatch(html, /recent-off|(?<!heating )held: Window open/);
+});
+
+ok('attention: sentence once in the row, human labels, steamy only with humidity data', () => {
+  const item = { room: 'Bathroom', key: 'bathroom', kind: 'comfort_outlier', text: '22.4° (room sensor) is too warm', nav: '/x' };
+  const mk2 = (over) => withRooms([{ ...FULL('bathroom'), target_reason: '', labels: [], pres_labels: [], heat_labels: [], verdict: 'Empty · lights off', ...over }], [item]);
+  const warm = renderAll(mk2({ humidity: 50 }));
+  assert.match(warm.attention, /Bathroom<\/b> · Too warm/);
+  assert.doesNotMatch(warm.attention, /22\.4/);
+  assert.equal((warm.rooms.match(/22\.4° \(room sensor\) is too warm/g) || []).length, 1);
+  assert.doesNotMatch(warm.rooms, /comfort outlier|comfort_outlier/);
+  const steamy = renderAll(mk2({ humidity: 88 }));
+  assert.match(steamy.attention, /Steamy/);
+  assert.match(steamy.rooms, /probably a shower/);
+  const shower = renderAll(mk2({ humidity: 75, occupied: true, lights_on: 1 }));
+  assert.match(shower.attention, /Steamy/);
+  const dry = renderAll(mk2({ humidity: null }));
+  assert.match(dry.attention, /Too warm/);
+  const cold = P.render('attention', {}, withRooms([FULL('bathroom')], [{ ...item, text: '15.0° (room sensor) is too cold' }]), NOW);
+  assert.match(cold, /Too cold/);
+});
+
+ok('Mo chip is a plain link to the Mo page, no time', () => {
+  const html = P.render('now-header', {}, mk({ 'input_text.mo_cooldown_eating': { state: '2026-10-25T03:44:00+00:00', attributes: {} } }), NOW);
+  assert.match(html, /data-path="\/mobile-dashboard\/mo"[^>]*>Mo<\/a>/);
+  assert.doesNotMatch(html, /eating alert|03:44/);
+});
+
+ok('usage: reads the unit (kW -> W), keeps W, dashes for unavailable / missing unit / stale', () => {
+  const at = (state, attributes, extra = {}) => P.render('energy', {}, mk({ 'sensor.glow_electricity_power': { state, attributes, last_updated: '2026-10-25T18:41:50+00:00', ...extra } }), NOW);
+  assert.match(at('0.44', { unit_of_measurement: 'kW' }), /440 W/);
+  assert.match(at('412', { unit_of_measurement: 'W' }), /412 W/);
+  assert.match(at('1.5', { unit_of_measurement: 'kW' }), /1\.50 kW/);
+  assert.match(at('0', { unit_of_measurement: 'kW' }), /0 W/);
+  assert.match(at('unavailable', { unit_of_measurement: 'kW' }), /Usage<\/div><div[^>]*>–/);
+  assert.match(at('0.44', {}), /Usage<\/div><div[^>]*>–/);
+  assert.match(at('0.44', { unit_of_measurement: 'MW' }), /Usage<\/div><div[^>]*>–/);
+  assert.match(at('0.44', { unit_of_measurement: 'kW' }, { last_updated: '2026-10-25T17:00:00+00:00' }), /Usage<\/div><div[^>]*>–/);
+  assert.equal(P.formatPower('0.44', 'kW'), '440 W');
+  assert.equal(P.formatPower(null, 'kW'), '–');
+});
+
+ok('Mo chip: ate today / yesterday / weekday from sensor.mo_timeline, bare Mo without data', () => {
+  const chip = (eating) => P.render('now-header', {}, mk({ 'sensor.mo_timeline': { state: 'x', attributes: { eating } } }), NOW);
+  assert.match(chip([{ ts: Date.parse('2026-10-25T03:44:00Z') }, { ts: 1 }]), />Mo · ate 03:44<\/a>/);
+  assert.match(chip([{ ts: Date.parse('2026-10-24T18:05:00Z') }]), /Mo · ate yesterday 18:05/);
+  assert.match(chip([{ ts: Date.parse('2026-10-23T18:05:00Z') }]), /Mo · ate Fri 18:05/);
+  assert.match(chip([{ ts: String(Date.parse('2026-10-25T03:44:00Z')) }]), /Mo · ate 03:44/);
+  for (const bad of [[], undefined, 'nope', [{}], [{ ts: 'x' }], [null]]) assert.match(chip(bad), />Mo<\/a>/, JSON.stringify(bad));
+  assert.match(P.render('now-header', {}, mk(), NOW), />Mo<\/a>/);
+  assert.match(chip([{ ts: 1 }]), />Mo<\/a>/);
+});
+
+ok('negative-heavy 50-slot day: negatives are kept, banded cheap, one category per slot, zero line configured', () => {
+  const rates = Array.from({ length: 50 }, (_, i) => {
+    const s = Date.parse('2026-10-24T23:00:00Z') + i * 1800000;
+    const pence = i < 30 ? -7.54 + (i % 6) * 1.7 : i < 38 ? 31 : 12;
+    return { start: new Date(s).toISOString(), end: new Date(s + 1800000).toISOString(), value_inc_vat: pence / 100 };
+  });
+  const cats = ['past_cheap', 'past_mid', 'past_peak', 'current', 'cheap', 'mid', 'peak'];
+  const series = Object.fromEntries(cats.map((c) => [c, P.rateSeries(rates, c, NOW)]));
+  for (let i = 0; i < 50; i += 1) assert.equal(cats.filter((c) => series[c][i].y !== null).length, 1, `slot ${i}`);
+  const neg = series.past_cheap.filter((p) => p.y !== null && p.y < 0);
+  assert.ok(neg.length > 20, 'past negative slots are drawn, below zero, in the cheap (green) band');
+  assert.ok(series.past_cheap.every((p) => p.y === null || p.y < 15));
+  assert.equal(series.cheap.concat(series.mid, series.peak).filter((p) => p.y !== null && p.y < 0).length, series.cheap.filter((p) => p.y !== null && p.y < 0).length, 'future negatives are cheap too');
+  const yaml = readFileSync(root + 'views/info-now.yaml', 'utf8');
+  assert.match(yaml, /annotations:\n\s+yaxis:\n\s+- y: 0/);
+  assert.match(yaml, /stacked: true/); // one non-null series per x, so stacking only keeps full-width bars
+});
+
+ok('cheapest 2h line: shown with data, running now, hidden when unknown', () => {
+  assert.match(P.render('energy-foot', {}, mk(), NOW), /Cheapest 2h<\/span><span>02:00 → 04:00 · avg 9\.8p/);
+  const running = P.render('energy-foot', {}, mk({ 'binary_sensor.octopus_energy_target_cheapest_2h_waking_hours': { state: 'on', attributes: {} } }), NOW);
+  assert.match(running, /Running now, until 04:00/);
+  const none = P.render('energy-foot', {}, mk({ 'sensor.cheapest_2h_waking_start': { state: 'unknown', attributes: {} }, 'sensor.cheapest_2h_waking_end': { state: 'unknown', attributes: {} } }), NOW);
+  assert.doesNotMatch(none, /Cheapest 2h/);
 });
 
 console.log(`\n${n} test groups passed`);
