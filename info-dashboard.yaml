@@ -1,0 +1,6 @@
+# "Pulse": information-first dashboard. Read-only lens on homerun decisions; the only
+# controls are toggles of existing helpers (input_boolean / input_select) that homerun reads.
+# No service calls, no MQTT writes. Mobile (/mobile-dashboard) is untouched and linked from both views.
+views:
+  - !include views/info-now.yaml
+  - !include views/info-house.yaml

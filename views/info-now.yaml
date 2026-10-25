@@ -1,0 +1,58 @@
+title: Now
+path: now
+icon: mdi:home-heart
+type: panel
+cards:
+  - type: vertical-stack
+    cards:
+      - type: markdown
+        content: |-
+          {% set rooms = state_attr('sensor.info_rooms', 'rooms') %}
+          {% set rooms = rooms | from_json if rooms is string else (rooms or []) %}
+          {% set items = state_attr('sensor.info_attention', 'items') %}
+          {% set items = items | from_json if items is string else (items or []) %}
+          {% set home = ['person.adam', 'person.sarah'] | select('is_state', 'home') | list | length %}
+          {% set heating = rooms | selectattr('hvac_action', 'eq', 'heating') | list | length %}
+          {% set mode = states('sensor.house_active_mode') %}
+          {% if items | length == 0 %}
+          ## All good
+          {{ home }} home · heating in {{ heating }} room{{ '' if heating == 1 else 's' }} · mode {{ mode }}
+          {% else %}
+          ## {{ items | length }} thing{{ '' if items | length == 1 else 's' }} need{{ 's' if items | length == 1 else '' }} attention
+          {{ home }} home · heating in {{ heating }} room{{ '' if heating == 1 else 's' }} · mode {{ mode }}
+
+          {% for i in items %}
+          - **{{ i.room }}**: {{ i.text }} ([fix]({{ i.nav }}))
+          {% endfor %}
+          {% endif %}
+          {% if states('sensor.info_decision_feed') in ['unknown', 'unavailable'] %}
+          _Decision feed has not seen an event since HA started._
+          {% endif %}
+
+          [Open Mobile](/mobile-dashboard) · [House report](/info-dashboard/house)
+      - type: markdown
+        title: Rooms
+        content: |-
+          {% set rooms = state_attr('sensor.info_rooms', 'rooms') %}
+          {% set rooms = rooms | from_json if rooms is string else (rooms or []) %}
+          {% set items = state_attr('sensor.info_attention', 'items') %}
+          {% set items = items | from_json if items is string else (items or []) %}
+          {% set keys = items | map(attribute='key') | list %}
+          {# Rooms needing attention first, then the fixed order. now() refreshes ages each minute. #}
+          {% set _ = now() %}
+          {% set ordered = (rooms | selectattr('k', 'in', keys) | list) + (rooms | rejectattr('k', 'in', keys) | list) %}
+          {% for r in ordered %}
+          ### {{ r.n }}{% if r.k in keys %} (needs attention){% endif %}
+          {{ r.verdict }}
+
+          {% if r.temp is not none %}{{ r.temp }}°{% if r.target is not none %} of {{ r.target }}°{% endif %}{% if r.humidity is not none %} · {{ r.humidity | round(0) | int }}%{% endif %}{% endif %}{% if r.scene %} · scene {{ r.scene }}{% endif %}
+          {% if r.heating_source %}Heating: {{ r.heating_active | replace('_', ' ') }} ({{ r.heating_source | replace('_', ' ') }}){% endif %}
+
+          Automations: lights {{ 'on' if r.lights_enabled else '**off**' }}{% if r.heating_enabled is not none %} · heating {{ 'on' if r.heating_enabled else '**off**' }}{% endif %}{% if r.override %} · **override**{% endif %}
+
+          {% if r.last %}Last action: {{ r.last }}{% if r.last_ts %} ({{ relative_time(as_datetime(r.last_ts)) }} ago){% endif %}{% else %}Last action: none seen since HA started{% endif %}
+
+          [Room controls]({{ r.nav }})
+
+          ---
+          {% endfor %}

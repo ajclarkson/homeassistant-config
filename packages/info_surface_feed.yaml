@@ -1,0 +1,185 @@
+# Info surface ("Pulse" dashboard): live decision feed.
+#
+# Source is the homerun live events stream, `homerun/events` (not retained;
+# publisher: homerun/src/framework/event-publisher.ts, namespace `homerun`, dry runs
+# go to `homerun/dev/events` and are never subscribed here).
+# The per-room `<room>/occupied/decision` sensors in mqtt.yaml are NOT used: they subscribe
+# to a legacy topic that no longer receives data.
+#
+# One trigger-based sensor keeps:
+#   entries  last 8 meaningful decisions (not no_action / no_change), newest first
+#   by_room  newest meaningful decision per location (so quiet rooms keep their last action)
+#   aborts   last 5 notable aborts, de-duplicated by automation+kind+detail with a repeat count
+#
+# Aborts live in their own list so a burst of them can never push decisions out of the feed.
+# Noisy automations (see `noisy` below) are dropped before they are stored.
+#
+# Restart behaviour: the lists live in this entity's attributes. Whether HA restores
+# trigger-based template attributes after a restart is not asserted here; the dashboard
+# shows "since HA started" when the lists are empty instead of implying "nothing happened".
+template:
+  - trigger:
+      - platform: mqtt
+        topic: homerun/events
+      - platform: homeassistant
+        event: start
+    condition:
+      - condition: template
+        value_template: >-
+          {% set e = trigger.payload_json if trigger.payload_json is defined else none %}
+          {% set noisy = ['octopus', 'energy'] %}
+          {% if trigger.platform == 'homeassistant' %}
+            {{ true }}
+          {% elif e is not mapping %}
+            {{ false }}
+          {% elif e.get('schema') != 'home.events.v2' or e.get('dry_run') %}
+            {{ false }}
+          {% elif e.get('event_type') == 'decision' %}
+            {{ e.get('decision') is string and e.get('decision') not in ['no_action', 'no_change'] }}
+          {% elif e.get('event_type') == 'abort' %}
+            {% set aid = e.get('automation_id') | string %}
+            {{ e.get('abort_kind') in ['unavailable_input', 'guard', 'unhandled_error']
+               and not (noisy | select('in', aid) | list | length > 0) }}
+          {% else %}
+            {{ false }}
+          {% endif %}
+    action:
+      - variables:
+          # Previous lists, coerced because attributes may come back as JSON strings.
+          old_entries: >-
+            {% set x = state_attr('sensor.info_decision_feed', 'entries') %}
+            {{ (x | from_json if x is string else (x or [])) | tojson }}
+          old_by_room: >-
+            {% set x = state_attr('sensor.info_decision_feed', 'by_room') %}
+            {{ (x | from_json if x is string else (x or [])) | tojson }}
+          old_aborts: >-
+            {% set x = state_attr('sensor.info_decision_feed', 'aborts') %}
+            {{ (x | from_json if x is string else (x or [])) | tojson }}
+          # The only slug-to-sentence mapping on the dashboard. Unknown slugs fall back to a
+          # prettified slug; a missing mapping must never raise.
+          entry: >-
+            {% set e = trigger.payload_json if trigger.platform == 'mqtt' else none %}
+            {% if e is mapping and e.get('event_type') == 'decision' %}
+              {% set decisions = {
+                'turn_on': 'turned on', 'turn_off': 'turned off', 'on': 'turned on',
+                'activate_scene': 'scene set', 'set_occupied': 'marked occupied',
+                'clear_occupied': 'marked empty', 'notify': 'notification sent',
+                'join': 'joined the speaker group', 'unjoin': 'left the speaker group',
+                'exit_sleep': 'left sleep mode', 'clear_recent_auto_off': 'auto-off memory cleared'
+              } %}
+              {% set nouns = {'lighting': 'lights', 'occupied': 'occupancy', 'heating': 'heating'} %}
+              {% set reasons = {
+                'occupancy_on': 'room occupied', 'occupancy_off': 'room emptied',
+                'motion_detected': 'motion detected', 'kitchen_motion_detected': 'kitchen motion',
+                'normal_clear_timer': 'empty timer expired', 'timer_expired': 'timer expired',
+                'door_open_tighten_timer': 'door open, shorter timer',
+                'sunset': 'sunset', 'sunrise': 'sunrise', 'end_of_day': 'end of day',
+                'lux_low': 'getting dark', 'lux_high': 'bright enough',
+                'theme_changed': 'theme changed', 'theme_changed_while_off': 'theme changed while off',
+                'house_sleep_mode': 'house asleep', 'sleep_mode': 'sleep mode',
+                'already_in_sleep_mode': 'already asleep', 'not_in_sleep_mode': 'not asleep',
+                'house_away': 'house away', 'house_not_away': 'house not away',
+                'guest_mode_active': 'guest mode', 'away_but_guest_present': 'away but guest present',
+                'bed_occupied': 'bed occupied', 'bed_not_occupied': 'bed empty',
+                'button_off': 'button pressed off', 'button_cycle': 'button pressed',
+                'button_pressed': 'button pressed', 'button_double_press': 'button double press',
+                'strong_hold_active': 'held on', 'recent_auto_off': 'recently switched off',
+                'recent_auto_off_expired': 'recent-off window ended', 'startup_sync': 'startup sync',
+                'schedule_off': 'schedule', 'door_open_heating_on': 'door open while heating',
+                'door_closed_was_suspended': 'door closed, heating resumed',
+                'open_door': 'door opened', 'close_door': 'door closed',
+                'outside_morning_window': 'outside the morning window',
+                'contained_failsafe_wait': 'waiting on door failsafe',
+                'containment_failsafe_expired': 'door failsafe expired',
+                'parlour_active': 'parlour in use', 'overtemp_heater_on': 'over temperature'
+              } %}
+              {% set loc = e.get('location') | string %}
+              {% set sub = e.get('subsystem') | string %}
+              {% set dec = e.get('decision') | string %}
+              {% set rsn = e.get('reason') | string if e.get('reason') is string else '' %}
+              {% set stamp = as_datetime(e.get('timestamp')) if e.get('timestamp') is string else none %}
+              {% set verb = decisions.get(dec, dec | replace('_', ' ')) %}
+              {% set why = reasons.get(rsn, rsn | replace('_', ' ')) %}
+              {{ {
+                'ts': (stamp or now()).isoformat(),
+                'loc': loc,
+                'sub': sub,
+                'auto': e.get('automation_id') | string,
+                'decision': dec,
+                'reason': rsn,
+                'sentence': (loc | replace('_', ' ') | capitalize) ~ ' '
+                  ~ nouns.get(sub, sub | replace('_', ' ')) ~ ' ' ~ verb
+                  ~ ((' · ' ~ why) if why else '')
+              } | tojson }}
+            {% else %}
+              {}
+            {% endif %}
+          abort_entry: >-
+            {% set e = trigger.payload_json if trigger.platform == 'mqtt' else none %}
+            {% if e is mapping and e.get('event_type') == 'abort' %}
+              {% set kind = e.get('abort_kind') | string %}
+              {% set aid = e.get('automation_id') | string %}
+              {% set detail = (e.get('entity') or e.get('reason') or '') | string %}
+              {% set stamp = as_datetime(e.get('timestamp')) if e.get('timestamp') is string else none %}
+              {% set what = (aid.split(':')[-1] | replace('_', ' ')) %}
+              {% set where = (e.get('location') | string | replace('_', ' ') | capitalize) %}
+              {% if kind == 'unavailable_input' %}
+                {% set text = where ~ ' ' ~ what ~ ' could not run: ' ~ detail ~ ' unavailable' %}
+              {% elif kind == 'guard' %}
+                {% set text = where ~ ' ' ~ what ~ ' held back' ~ ((' · ' ~ (detail | replace('_', ' '))) if detail else '') %}
+              {% else %}
+                {% set text = where ~ ' ' ~ what ~ ' failed unexpectedly' %}
+              {% endif %}
+              {{ {
+                'ts': (stamp or now()).isoformat(),
+                'loc': e.get('location') | string,
+                'auto': aid,
+                'kind': kind,
+                'detail': detail,
+                'sentence': text,
+                'count': 1
+              } | tojson }}
+            {% else %}
+              {}
+            {% endif %}
+    sensor:
+      - name: Info Decision Feed
+        unique_id: info_decision_feed
+        icon: mdi:script-text-outline
+        # Time of the last accepted update, so the card can show how stale the feed is.
+        state: "{{ now().isoformat() }}"
+        device_class: timestamp
+        attributes:
+          entries: >-
+            {% set old = old_entries | from_json if old_entries is string else old_entries %}
+            {% set new = entry | from_json if entry is string else entry %}
+            {{ (([new] + old) if new else old)[:8] | tojson }}
+          by_room: >-
+            {% set old = old_by_room | from_json if old_by_room is string else old_by_room %}
+            {% set new = entry | from_json if entry is string else entry %}
+            {% if new %}
+              {{ ([new] + (old | selectattr('loc', 'ne', new.loc) | list))[:30] | tojson }}
+            {% else %}
+              {{ old | tojson }}
+            {% endif %}
+          aborts: >-
+            {% set old = old_aborts | from_json if old_aborts is string else old_aborts %}
+            {% set new = abort_entry | from_json if abort_entry is string else abort_entry %}
+            {% if new %}
+              {% set ns = namespace(rest=[], count=1) %}
+              {% for a in old %}
+                {% if a['auto'] == new['auto'] and a['kind'] == new['kind'] and a['detail'] == new['detail'] %}
+                  {% set ns.count = (a['count'] | int(1)) + 1 %}
+                {% else %}
+                  {% set ns.rest = ns.rest + [a] %}
+                {% endif %}
+              {% endfor %}
+              {% set merged = dict(new, count=ns.count) %}
+              {{ ([merged] + ns.rest)[:5] | tojson }}
+            {% else %}
+              {{ old | tojson }}
+            {% endif %}
+          # Last HA start this sensor saw; lets the card say "since HA started at 07:12".
+          started: >-
+            {% if trigger.platform == 'homeassistant' %}{{ now().isoformat() }}
+            {% else %}{{ state_attr('sensor.info_decision_feed', 'started') or '' }}{% endif %}

@@ -1,0 +1,197 @@
+# Info surface ("Pulse" dashboard): per-room status reports, hold reasons and attention list.
+#
+# `sensor.info_rooms`      one entry per room in attribute `rooms`: occupancy, climate, lights,
+#                          heating, automation flags, `holds` (every reason currently true),
+#                          `reason_text`, last meaningful decision and a one-line `verdict`.
+# `sensor.info_attention`  state = number of exceptions, attribute `items` = [{room, key, kind, text, nav}].
+#
+# The room table below is the single definition of rooms and hold reasons. Hold reasons are
+# seeded from the `presence_section` config in views/*.yaml (reason_N_*) and extended with the
+# `heating_hold_entity` window/door groups. They are listed here, not capped at two.
+# The presence override helper itself is not a reason: it is reported separately
+# (`override`), and "Override on (no active reason)" is shown when it is on and no reason is true.
+#
+# Attributes are emitted as JSON; consumers coerce with `x | from_json if x is string else x`
+# because HA parses JSON containing true/false/null to a string, other JSON to a list.
+template:
+  - sensor:
+      - name: Info Rooms
+        unique_id: info_rooms
+        icon: mdi:home-search-outline
+        state: "ok"
+        attributes:
+          rooms: >-
+            {# hold = [subsystem, entity, state that means "holding", label] #}
+            {% set cfg = [
+              {'k': 'parlour', 'n': 'Parlour', 'nav': '/mobile-dashboard/parlour',
+               'cl': 'climate.parlour_trv', 'he': true,
+               'holds': [
+                 ['presence', 'binary_sensor.parlour_occupied_contained', 'on', 'Doors closed'],
+                 ['presence', 'binary_sensor.parlour_sensor_sofa_occupancy', 'on', 'Sofa occupied'],
+                 ['presence', 'media_player.parlour', 'playing', 'Sonos playing'],
+                 ['heating', 'binary_sensor.parlour_external_openings', 'on', 'Door open']]},
+              {'k': 'kitchen', 'n': 'Kitchen', 'nav': '/mobile-dashboard/kitchen',
+               'cl': 'climate.kitchen_trv', 'he': true,
+               'holds': [
+                 ['presence', 'binary_sensor.kitchen_occupied_contained', 'on', 'Contained'],
+                 ['heating', 'binary_sensor.kitchen_external_openings', 'on', 'Window open']]},
+              {'k': 'hallway_downstairs', 'n': 'Hallway downstairs', 'nav': '/mobile-dashboard/hallway',
+               'cl': 'climate.hallway_downstairs_trv', 'he': true,
+               'holds': [
+                 ['heating', 'binary_sensor.hallway_downstairs_external_openings', 'on', 'Door open']]},
+              {'k': 'hallway_upstairs', 'n': 'Hallway upstairs', 'nav': '/mobile-dashboard/hallway',
+               'cl': '', 'he': false, 'holds': []},
+              {'k': 'bedroom', 'n': 'Bedroom', 'nav': '/mobile-dashboard/bedroom',
+               'cl': 'climate.bedroom_trv', 'he': true,
+               'holds': [
+                 ['presence', 'binary_sensor.bedroom_sensor_bed_occupancy', 'on', 'Bed occupied'],
+                 ['presence', 'binary_sensor.bedroom_occupied_contained', 'on', 'Doors closed'],
+                 ['heating', 'binary_sensor.bedroom_external_openings', 'on', 'Window open']]},
+              {'k': 'bathroom', 'n': 'Bathroom', 'nav': '/mobile-dashboard/bathroom',
+               'cl': 'climate.bathroom_trv', 'he': true,
+               'holds': [
+                 ['presence', 'binary_sensor.bathroom_occupied_contained', 'on', 'Doors closed'],
+                 ['heating', 'binary_sensor.bathroom_external_openings', 'on', 'Window open']]},
+              {'k': 'home_office', 'n': 'Home office', 'nav': '/mobile-dashboard/home-office',
+               'cl': 'climate.home_office_trv', 'he': true,
+               'holds': [
+                 ['presence', 'binary_sensor.home_office_occupied_contained', 'on', 'Doors closed'],
+                 ['presence', 'media_player.home_office', 'playing', 'Sonos playing'],
+                 ['presence', 'binary_sensor.home_office_monitor', 'on', 'Monitor on'],
+                 ['heating', 'binary_sensor.home_office_external_openings', 'on', 'Window open']]},
+              {'k': 'foreign_office', 'n': 'Foreign office', 'nav': '/mobile-dashboard/foreign-office',
+               'cl': 'climate.foreign_office', 'he': true,
+               'holds': [
+                 ['presence', 'binary_sensor.foreign_office_occupied_contained', 'on', 'Doors closed'],
+                 ['presence', 'binary_sensor.foreign_office_monitor', 'on', 'Monitor on'],
+                 ['heating', 'binary_sensor.foreign_office_external_openings', 'on', 'Door open']]}
+            ] %}
+            {% set feed = state_attr('sensor.info_decision_feed', 'by_room') %}
+            {% set feed = feed | from_json if feed is string else (feed or []) %}
+            {% set heat_words = {
+              'comfort': 'heating at comfort', 'baseline_day': 'heating at baseline',
+              'baseline_night': 'heating at night baseline', 'minimum': 'heating at frost minimum',
+              'off': 'heating off'} %}
+            {% set out = namespace(items=[]) %}
+            {% for c in cfg %}
+              {% set k = c['k'] %}
+              {% set occ = 'binary_sensor.' ~ k ~ '_occupied' %}
+              {% set tsens = 'sensor.' ~ k ~ '_sensor_climate_temperature' %}
+              {% set hs = namespace(items=[], presence=0, ext_open=false) %}
+              {% for h in c['holds'] %}
+                {% if states(h[1]) == h[2] %}
+                  {% set hs.items = hs.items + [{'s': h[0], 'label': h[3], 'entity': h[1]}] %}
+                  {% if h[0] == 'presence' %}{% set hs.presence = hs.presence + 1 %}{% endif %}
+                  {% if h[0] == 'heating' %}{% set hs.ext_open = true %}{% endif %}
+                {% endif %}
+              {% endfor %}
+              {% set override = is_state('input_boolean.' ~ k ~ '_automation_presence_override', 'on') %}
+              {% set labels = hs.items | map(attribute='label') | list %}
+              {# Override with no presence reason behind it must say so rather than look like a normal hold. #}
+              {% set ovr = ('Override on (no active reason)' if hs.presence == 0 else 'Override on') if override else '' %}
+              {% set reason_text = (labels + ([ovr] if ovr == 'Override on (no active reason)' else [])) | join(' · ') %}
+              {% set un = namespace(items=[]) %}
+              {% if c['cl'] and states(tsens) == 'unavailable' %}{% set un.items = un.items + ['temperature'] %}{% endif %}
+              {% if states(occ) == 'unavailable' %}{% set un.items = un.items + ['occupancy'] %}{% endif %}
+              {% set occupied = is_state(occ, 'on') %}
+              {% set lights_on = is_state('group.' ~ k ~ '_lights', 'on') %}
+              {% set active = states('sensor.' ~ k ~ '_active_heating') if c['he'] else '' %}
+              {% set hvac = state_attr(c['cl'], 'hvac_action') if c['cl'] else none %}
+              {% set temp = states(tsens) | float(none) if c['cl'] else none %}
+              {% set target = state_attr(c['cl'], 'temperature') if c['cl'] else none %}
+              {% set scene = states('sensor.' ~ k ~ '_active_scene') %}
+              {% set last = feed | selectattr('loc', 'eq', k) | list | first | default(none) %}
+              {% set parts = [('Occupancy unavailable' if 'occupancy' in un.items else ('Occupied' if occupied else 'Empty'))] %}
+              {% set parts = parts + [('lights on' if lights_on else 'lights off')] %}
+              {% if c['he'] and active not in ['', 'unknown', 'unavailable'] %}
+                {% set parts = parts + [heat_words.get(active, 'heating ' ~ (active | replace('_', ' ')))] %}
+              {% endif %}
+              {% if labels %}{% set parts = parts + ['held by ' ~ (labels | join(' · '))] %}{% endif %}
+              {% if ovr %}{% set parts = parts + [ovr] %}{% endif %}
+              {% set out.items = out.items + [{
+                'k': k, 'n': c['n'], 'nav': c['nav'],
+                'occupied': occupied,
+                'occupancy_unavailable': 'occupancy' in un.items,
+                'unavailable': un.items,
+                'temp': temp, 'target': target,
+                'humidity': (states('sensor.' ~ k ~ '_sensor_climate_humidity') | float(none)) if c['cl'] else none,
+                'hvac_action': hvac,
+                'heating_active': active,
+                'heating_source': states('sensor.' ~ k ~ '_heating_source') if c['he'] else '',
+                'lights_on': lights_on,
+                'scene': scene | replace(k ~ '_', '', 1) | replace('_', ' ') if scene not in ['unknown', 'unavailable', ''] else '',
+                'lights_enabled': not is_state('input_boolean.' ~ k ~ '_automation_lights_enabled', 'off'),
+                'heating_enabled': (not is_state('input_boolean.' ~ k ~ '_automation_heating_enabled', 'off')) if c['he'] else none,
+                'override': override,
+                'ext_open': hs.ext_open,
+                'holds': hs.items,
+                'reason_text': reason_text,
+                'override_text': ovr,
+                'labels': labels,
+                'last': last.sentence if last else '',
+                'last_ts': last.ts if last else '',
+                'verdict': parts | join(' · ')
+              }] %}
+            {% endfor %}
+            {{ out.items | tojson }}
+
+      # Helper: computes the exception list once so `sensor.info_attention` can expose its
+      # count as state and the list as an attribute without computing it twice or lagging.
+      - name: Info Attention Calc
+        unique_id: info_attention_calc
+        icon: mdi:alert-circle-outline
+        state: "ok"
+        attributes:
+          items: >-
+            {% set rooms = state_attr('sensor.info_rooms', 'rooms') %}
+            {% set rooms = rooms | from_json if rooms is string else (rooms or []) %}
+            {% set heating_master = is_state('input_boolean.house_heating_enabled', 'on') %}
+            {% set out = namespace(items=[]) %}
+            {% for r in rooms %}
+              {% if r['ext_open'] and r['hvac_action'] == 'heating' and heating_master %}
+                {% set out.items = out.items + [{'room': r['n'], 'key': r['k'], 'kind': 'window_open_heating_on',
+                  'text': 'Open window or door while heating is on', 'nav': r['nav']}] %}
+              {% endif %}
+              {% set off = [] %}
+              {% if not r['lights_enabled'] %}{% set off = off + ['lights'] %}{% endif %}
+              {% if r['heating_enabled'] == false %}{% set off = off + ['heating'] %}{% endif %}
+              {% if off %}
+                {% set out.items = out.items + [{'room': r['n'], 'key': r['k'], 'kind': 'automation_disabled',
+                  'text': (off | join(' and ') | capitalize) ~ ' automation off', 'nav': r['nav']}] %}
+              {% endif %}
+              {% if r['override'] %}
+                {% set out.items = out.items + [{'room': r['n'], 'key': r['k'], 'kind': 'hold_active',
+                  'text': r['override_text'] ~ (' · held by ' ~ (r['labels'] | join(' · ')) if r['labels'] else ''),
+                  'nav': r['nav']}] %}
+              {% endif %}
+              {% if r['unavailable'] %}
+                {% set out.items = out.items + [{'room': r['n'], 'key': r['k'], 'kind': 'sensor_unavailable',
+                  'text': (r['unavailable'] | join(' and ') | capitalize) ~ ' sensor unavailable', 'nav': r['nav']}] %}
+              {% endif %}
+            {% endfor %}
+            {% for g in [['back_garden', 'Back garden', '/mobile-dashboard/back-garden'], ['front_garden', 'Front garden', '/mobile-dashboard/front-garden']] %}
+              {% if is_state('input_boolean.' ~ g[0] ~ '_automation_lights_enabled', 'off') %}
+                {% set out.items = out.items + [{'room': g[1], 'key': g[0], 'kind': 'automation_disabled',
+                  'text': 'Lights automation off', 'nav': g[2]}] %}
+              {% endif %}
+            {% endfor %}
+            {% for side in [['too_cold', 'too cold'], ['too_warm', 'too warm']] %}
+              {% set lst = state_attr('sensor.house_comfort_outliers', side[0]) %}
+              {% set lst = lst | from_json if lst is string else (lst or []) %}
+              {% for o in lst %}
+                {% set out.items = out.items + [{'room': o['name'], 'key': o['key'], 'kind': 'comfort_outlier',
+                  'text': (o['temp'] | string) ~ '° is ' ~ side[1], 'nav': o['nav']}] %}
+              {% endfor %}
+            {% endfor %}
+            {{ out.items | tojson }}
+
+      - name: Info Attention
+        unique_id: info_attention
+        icon: mdi:alert-circle-outline
+        state: >-
+          {% set x = state_attr('sensor.info_attention_calc', 'items') %}
+          {{ (x | from_json if x is string else (x or [])) | length }}
+        attributes:
+          items: >-
+            {% set x = state_attr('sensor.info_attention_calc', 'items') %}
+            {{ (x | from_json if x is string else (x or [])) | tojson }}

@@ -1,0 +1,100 @@
+title: House
+path: house
+icon: mdi:home-analytics
+type: sections
+max_columns: 1
+sections:
+  - type: grid
+    cards:
+      - type: markdown
+        title: Recent decisions
+        content: |-
+          {% set f = state_attr('sensor.info_decision_feed', 'entries') %}
+          {% set f = f | from_json if f is string else (f or []) %}
+          {% set a = state_attr('sensor.info_decision_feed', 'aborts') %}
+          {% set a = a | from_json if a is string else (a or []) %}
+          {% set started = state_attr('sensor.info_decision_feed', 'started') %}
+          {% set _ = now() %}
+          {% if f | length == 0 %}
+          No decisions seen since HA started{% if started %} ({{ as_datetime(started).astimezone().strftime('%H:%M') }}){% endif %}. This list is rebuilt from live events and is empty after a restart until something happens.
+          {% endif %}
+          {% for e in f %}
+          - {{ e.sentence }} · {{ relative_time(as_datetime(e.ts)) }} ago
+          {% endfor %}
+          {% if a | length > 0 %}
+
+          **Held back or failed**
+          {% for e in a %}
+          - {{ e.sentence }}{% if e.count | int(1) > 1 %} (x{{ e.count }}){% endif %} · {{ relative_time(as_datetime(e.ts)) }} ago
+          {% endfor %}
+          {% endif %}
+      - type: markdown
+        title: House
+        content: |-
+          {% set rooms = state_attr('sensor.info_rooms', 'rooms') %}
+          {% set rooms = rooms | from_json if rooms is string else (rooms or []) %}
+          {% set heating = rooms | selectattr('hvac_action', 'eq', 'heating') | map(attribute='n') | list %}
+          Mode **{{ states('sensor.house_active_mode') }}** · modifier **{{ states('input_select.house_active_mode_modifier') }}**
+
+          People: Adam {{ states('person.adam') }} · Sarah {{ states('person.sarah') }}
+          · WFH: Adam {{ states('input_boolean.wfh_adam') }}, Sarah {{ states('input_boolean.wfh_sarah') }}
+
+          Heating: master {{ states('input_boolean.house_heating_enabled') }} · boiler {{ 'firing' if is_state('binary_sensor.house_heating_boiler_firing', 'on') else 'idle' }}
+          · calling in {{ heating | join(', ') if heating else 'no rooms' }}
+          {% if is_state('input_boolean.patio_door_heating_suspended', 'on') %}
+
+          Heating suspended: patio door open.
+          {% endif %}
+
+          Energy: {{ (states('sensor.octopus_energy_electricity_24e8140196_1012483035417_current_rate') | float(0) * 100) | round(1) }}p now
+          → {{ (states('sensor.octopus_energy_electricity_24e8140196_1012483035417_next_rate') | float(0) * 100) | round(1) }}p next
+          · {{ states('sensor.glow_electricity_power') }} W
+      - type: markdown
+        title: Look ahead
+        content: |-
+          Negative today: {{ states('sensor.octopus_today_negative_windows') }}
+
+          Cheap today: {{ states('sensor.octopus_today_cheap_windows') }}
+
+          {% if is_state('binary_sensor.octopus_tomorrow_data_available', 'on') %}
+          Negative tomorrow: {{ states('sensor.octopus_tomorrow_negative_windows') }}
+
+          Cheap tomorrow: {{ states('sensor.octopus_tomorrow_cheap_windows') }}
+          {% else %}
+          Tomorrow's rates are not in yet.
+          {% endif %}
+
+          Cheapest 2h waking: {{ states('sensor.cheapest_2h_waking_start') }} to {{ states('sensor.cheapest_2h_waking_end') }}
+
+          **Bins**
+          {% for b in ['food', 'paid_garden', 'recycling', 'refuse'] %}
+          - {{ b | replace('_', ' ') | capitalize }}: {{ states('sensor.st_albans_collect_domestic_' ~ b ~ '_next_collection_date') }} ({{ states('sensor.st_albans_collect_domestic_' ~ b ~ '_days_until_collection') }} days)
+          {% endfor %}
+      - type: entities
+        title: Controls (existing helpers)
+        entities:
+          - input_boolean.house_heating_enabled
+          - input_select.house_active_mode_modifier
+          - input_boolean.wfh_adam
+          - input_boolean.wfh_sarah
+          - type: section
+            label: Lights automation
+          - input_boolean.parlour_automation_lights_enabled
+          - input_boolean.kitchen_automation_lights_enabled
+          - input_boolean.hallway_downstairs_automation_lights_enabled
+          - input_boolean.hallway_upstairs_automation_lights_enabled
+          - input_boolean.bedroom_automation_lights_enabled
+          - input_boolean.bathroom_automation_lights_enabled
+          - input_boolean.home_office_automation_lights_enabled
+          - input_boolean.foreign_office_automation_lights_enabled
+          - type: section
+            label: Heating automation
+          - input_boolean.parlour_automation_heating_enabled
+          - input_boolean.kitchen_automation_heating_enabled
+          - input_boolean.hallway_downstairs_automation_heating_enabled
+          - input_boolean.bedroom_automation_heating_enabled
+          - input_boolean.bathroom_automation_heating_enabled
+          - input_boolean.home_office_automation_heating_enabled
+          - input_boolean.foreign_office_automation_heating_enabled
+      - type: markdown
+        content: '[Open Mobile](/mobile-dashboard) · [Back to rooms](/info-dashboard/now)'
