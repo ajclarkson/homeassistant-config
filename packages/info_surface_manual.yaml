@@ -1,0 +1,229 @@
+# Info surface: latest "manual" lighting change per room. HA-internal state only: no MQTT
+# publishes, no service calls. Read by sensor.info_rooms (`manual`).
+#
+# A change is manual when it is one of:
+#   dashboard   state change of a room light/switch/scene whose context.user_id is set and is
+#               not the homerun user (input_text.homerun_user_id)
+#   switch      same, but context.user_id and context.parent_id are both null (physical switch,
+#               Zigbee binding)
+#   wall_button homerun lighting decision on homerun/events with trigger.type 'button' and
+#               reason button_cycle / button_off (homerun issues the scene call itself, so the
+#               HA context alone cannot tell it from an automatic change)
+# A later homerun lighting decision for the room that is not button-driven and is not
+# no_action / no_change clears the marker.
+#
+# Noise filtered before anything is recorded:
+#   - attribute-only changes (state must differ)
+#   - to_state or from_state unavailable; from_state unknown/none (startup and re-adds), except
+#     scenes, whose first activation legitimately goes unknown -> timestamp
+#   - group entities (attribute entity_id present) which echo members with a fresh context;
+#     their members are listed instead so a tap on a group is still seen
+#   - changes whose parent_id is set (script/automation children)
+#   - 'switch' changes within 20 s after a homerun lighting decision for the room (devices report
+#     back with an empty context after homerun's own command)
+#   - a light change within 10 s of a dashboard/switch scene change in the same room (the
+#     scene is the cause, the light is its effect; the scene is kept)
+# Fails closed: if input_text.homerun_user_id is empty or unknown, no 'dashboard' changes are
+# recorded (otherwise every homerun call would look like a tap).
+#
+# Entity lists come from views/*.yaml and packages/groups.yaml. Not listed (gaps): back and front
+# garden lights have no individual light ids in the repo, so gardens are not tracked.
+template:
+  - trigger:
+      - platform: state
+        entity_id:
+          # parlour
+          - scene.parlour_off
+          - scene.parlour_lamps
+          - scene.parlour_dining
+          - scene.parlour_all
+          - light.parlour_light_floor_lamp
+          - light.parlour_light_ceiling_sofa
+          - light.parlour_light_ceiling_dining
+          - switch.parlour_plug_table_lamp
+          - switch.parlour_plug_donut_lamp
+          # kitchen
+          - scene.kitchen_off
+          - scene.kitchen_cabinets
+          - scene.kitchen_all
+          - light.kitchen_light_ceiling_1
+          - light.kitchen_light_ceiling_2
+          - light.kitchen_light_ceiling_3
+          - light.kitchen_light_cooker_1
+          - light.kitchen_light_cooker_2
+          - switch.kitchen_light_cabinets
+          # hallways
+          - scene.hallway_downstairs_off
+          - scene.hallway_downstairs_low
+          - scene.hallway_downstairs_daylight
+          - scene.hallway_upstairs_off
+          - scene.hallway_upstairs_low
+          - scene.hallway_upstairs_daylight
+          - light.hallway_downstairs_light_ceiling
+          - light.hallway_upstairs_light_ceiling
+          # bedroom
+          - scene.bedroom_off
+          - scene.bedroom_lamps
+          - scene.bedroom_all
+          - scene.bedroom_all_full
+          - light.bedroom_light_adam_lamp
+          - light.bedroom_light_sarah_lamp
+          - light.bedroom_light_ceiling
+          # bathroom
+          - scene.bathroom_off
+          - scene.bathroom_low
+          - scene.bathroom_full
+          - light.bathroom_light_ceiling
+          # home office
+          - scene.home_office_off
+          - scene.home_office_lamps
+          - scene.home_office_all
+          - light.home_office_light_ceiling
+          - light.home_office_light_desk_lamp
+          - light.home_office_light_floor_lamp
+          # foreign office
+          - scene.foreign_office_off
+          - scene.foreign_office_all
+          - light.dig_uno_v3
+      - platform: mqtt
+        topic: homerun/events
+    # Cheap rejection only; classification needs the room map and lives in `rec` below.
+    condition:
+      - condition: template
+        value_template: >-
+          {% if trigger.platform == 'state' %}
+            {% set f = trigger.from_state %}
+            {% set t = trigger.to_state %}
+            {% set is_scene = t is not none and t.entity_id.startswith('scene.') %}
+            {{ f is not none and t is not none
+               and f.state != t.state
+               and t.state not in ['unavailable', 'unknown']
+               and f.state != 'unavailable'
+               and (f.state != 'unknown' or is_scene)
+               and t.attributes.get('entity_id') is none }}
+          {% elif trigger.platform == 'mqtt' %}
+            {% set e = trigger.payload_json if trigger.payload_json is defined else none %}
+            {{ e is mapping
+               and e.get('schema') == 'home.events.v2'
+               and not e.get('dry_run')
+               and e.get('event_type') == 'decision'
+               and e.get('subsystem') == 'lighting'
+               and e.get('decision') is string
+               and e.get('decision') not in ['no_action', 'no_change'] }}
+          {% else %}
+            {{ false }}
+          {% endif %}
+    action:
+      - variables:
+          old_changes: >-
+            {% set x = state_attr('sensor.info_manual_changes', 'changes') %}
+            {{ (x | from_json if x is string else (x or [])) | tojson }}
+          old_auto: >-
+            {% set x = state_attr('sensor.info_manual_changes', 'auto') %}
+            {{ (x | from_json if x is string else (x or [])) | tojson }}
+          # rec = what this trigger means for one room, or {}.
+          #   {room, source, ts, what, kind, entity}   record a manual change
+          #   {room, clear: true, ts}                  homerun acted on the room (clears the marker)
+          rec: >-
+            {% set rooms = {
+              'parlour': ['scene.parlour_', 'light.parlour_', 'switch.parlour_'],
+              'kitchen': ['scene.kitchen_', 'light.kitchen_', 'switch.kitchen_'],
+              'hallway_downstairs': ['scene.hallway_downstairs_', 'light.hallway_downstairs_'],
+              'hallway_upstairs': ['scene.hallway_upstairs_', 'light.hallway_upstairs_'],
+              'bedroom': ['scene.bedroom_', 'light.bedroom_'],
+              'bathroom': ['scene.bathroom_', 'light.bathroom_'],
+              'home_office': ['scene.home_office_', 'light.home_office_'],
+              'foreign_office': ['scene.foreign_office_', 'light.dig_uno_v3']
+            } %}
+            {% set hid = states('input_text.homerun_user_id') | lower | trim %}
+            {% set hid_ok = hid not in ['', 'unknown', 'unavailable'] %}
+            {% set old = old_changes | from_json if old_changes is string else old_changes %}
+            {% set auto = old_auto | from_json if old_auto is string else old_auto %}
+            {% if trigger.platform == 'mqtt' %}
+              {% set e = trigger.payload_json %}
+              {% set loc = e.get('location') | string %}
+              {% set trg = e.get('trigger') %}
+              {% set reason = e.get('reason') | string if e.get('reason') is string else '' %}
+              {% set stamp = as_datetime(e.get('timestamp')) if e.get('timestamp') is string else none %}
+              {% if loc not in rooms %}
+                {}
+              {% elif trg is mapping and trg.get('type') == 'button' %}
+                {% if reason in ['button_cycle', 'button_off'] %}
+                  {{ {'room': loc, 'source': 'wall_button', 'kind': 'button', 'entity': trg.get('entity_id') | string,
+                      'ts': (stamp or now()).isoformat(),
+                      'what': 'Wall button: ' ~ ('lights off' if reason == 'button_off' else 'scene cycled')} | tojson }}
+                {% else %}
+                  {}
+                {% endif %}
+              {% else %}
+                {{ {'room': loc, 'clear': true, 'ts': (stamp or now()).isoformat()} | tojson }}
+              {% endif %}
+            {% else %}
+              {% set t = trigger.to_state %}
+              {% set eid = t.entity_id %}
+              {% set ns = namespace(room='') %}
+              {% for r, prefixes in rooms.items() %}
+                {% for p in prefixes %}
+                  {% if eid.startswith(p) and ns.room == '' %}{% set ns.room = r %}{% endif %}
+                {% endfor %}
+              {% endfor %}
+              {# hallway_downstairs_ must not be claimed by a shorter prefix; prefixes above are disjoint #}
+              {% set uid = t.context.user_id %}
+              {% set pid = t.context.parent_id %}
+              {% set src = namespace(v='') %}
+              {% if uid %}
+                {% if hid_ok and (uid | lower) != hid %}{% set src.v = 'dashboard' %}{% endif %}
+              {% elif not pid %}
+                {% set src.v = 'switch' %}
+                {% for a in auto if a.get('room') == ns.room and as_datetime(a.get('ts')) is not none
+                   and (now() - as_datetime(a.get('ts'))).total_seconds() < 20 %}
+                  {% set src.v = '' %}
+                {% endfor %}
+              {% endif %}
+              {% set is_scene = eid.startswith('scene.') %}
+              {% set short = eid.split('.')[1] | replace(ns.room ~ '_', '', 1) | replace('_', ' ') %}
+              {% if ns.room == '' or src.v == '' %}
+                {}
+              {% else %}
+                {% set shadow = namespace(skip=false) %}
+                {% if not is_scene %}
+                  {% for o in old if o.get('room') == ns.room and o.get('kind') == 'scene' and as_datetime(o.get('ts')) is not none
+                     and (now() - as_datetime(o.get('ts'))).total_seconds() < 10 %}
+                    {% set shadow.skip = true %}
+                  {% endfor %}
+                {% endif %}
+                {% if shadow.skip %}
+                  {}
+                {% else %}
+                  {{ {'room': ns.room, 'source': src.v, 'kind': 'scene' if is_scene else 'light', 'entity': eid,
+                      'ts': now().isoformat(),
+                      'what': (short ~ ' scene') if is_scene else (t.name ~ ' ' ~ t.state)} | tojson }}
+                {% endif %}
+              {% endif %}
+            {% endif %}
+    sensor:
+      - name: Info Manual Changes
+        unique_id: info_manual_changes
+        icon: mdi:hand-back-left-outline
+        state: "{{ now().isoformat() }}"
+        device_class: timestamp
+        attributes:
+          changes: >-
+            {% set old = old_changes | from_json if old_changes is string else old_changes %}
+            {% set r = rec | from_json if rec is string else rec %}
+            {% if r and r.get('clear') %}
+              {{ old | rejectattr('room', 'eq', r.get('room')) | list | tojson }}
+            {% elif r and r.get('source') %}
+              {{ ([r] + (old | rejectattr('room', 'eq', r.get('room')) | list))[:10] | tojson }}
+            {% else %}
+              {{ old | tojson }}
+            {% endif %}
+          # Rooms homerun recently acted on (any lighting decision or wall-button press), for the 'switch' echo guard.
+          auto: >-
+            {% set old = old_auto | from_json if old_auto is string else old_auto %}
+            {% set r = rec | from_json if rec is string else rec %}
+            {% if r and (r.get('clear') or r.get('source') == 'wall_button') %}
+              {{ ([{'room': r.get('room'), 'ts': r.get('ts')}] + (old | rejectattr('room', 'eq', r.get('room')) | list))[:10] | tojson }}
+            {% else %}
+              {{ old | tojson }}
+            {% endif %}

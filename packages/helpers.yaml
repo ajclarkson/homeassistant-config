@@ -370,3 +370,10 @@ input_text:
     mo_cooldown_spotted_home_office:
         name: Mo Notification Cooldown - Spotted Home Office (last sent timestamp)
         max: 25
+    # Info surface: HA user id that the homerun token acts as. sensor.info_manual_changes uses it
+    # to tell dashboard taps from homerun's own service calls. UNVERIFIED: confirm in
+    # Settings > People > Users, and edit here (initial: resets any UI edit on restart).
+    homerun_user_id:
+        name: Homerun HA User Id
+        initial: "FE82418EA48C47F6A5B7441E61D0330E"
+        max: 64
