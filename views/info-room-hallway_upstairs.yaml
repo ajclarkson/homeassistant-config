@@ -14,3 +14,5 @@ sections:
           room: hallway_upstairs
           climate: climate.hallway_upstairs_trv
           temp: sensor.hallway_upstairs_sensor_climate_temperature
+      # Bottom tab bar: fixed when HA's ancestors allow it, otherwise an in-flow bar (see pulse-card.js).
+      - {type: custom:pulse-card, mode: tabbar, active: now}

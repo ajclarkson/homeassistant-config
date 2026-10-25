@@ -5,7 +5,7 @@
 // extracted from the real YAML); unknown rooms and disallowed services fail loudly.
 process.env.TZ = 'UTC';
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync, readdirSync, writeFileSync, unlinkSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import * as yaml from 'js-yaml';
@@ -63,7 +63,7 @@ const withRooms = (rooms, attention, extra = {}) => mk({
   ...extra,
 });
 const NOISE = /undefined|NaN|\[object|null/;
-const ALL_MODES = ['now-header', 'status', 'rooms', 'bins-heating', 'feed', 'footer', 'energy-head', 'energy-day', 'energy-cost', 'energy-history', 'energy-usage'];
+const ALL_MODES = ['now-header', 'status', 'rooms', 'bins-heating', 'feed', 'footer', 'tabbar', 'energy-head', 'energy-day', 'energy-cost', 'energy-history', 'energy-usage'];
 const ROOM_MODES = ['room-head', 'why', 'scenes', 'lights', 'media', 'automations', 'room-feed'];
 const renderAll = (hass) => {
   const out = {};
@@ -724,7 +724,7 @@ ok('Now v2 feed limited to 3 rows, collapse kept', () => {
 ok('Now v2 view layout: one status card first, groups, prices, bins/heating, feed, footer; no old modes', () => {
   const v = yaml.load(readFileSync(root + 'views/info-now.yaml', 'utf8'));
   const modes = v.sections[0].cards.map((c) => c.mode);
-  assert.deepEqual(modes, ['now-header', 'status', 'rooms', 'bins-heating', 'feed', 'footer']);
+  assert.deepEqual(modes, ['now-header', 'status', 'rooms', 'bins-heating', 'feed', 'footer', 'tabbar']);
   for (const m of modes) assert.ok(P.render(m, {}, mk(), NOW) !== undefined);
   for (const old of ['attention', 'bins', 'heating', 'energy-foot', 'energy']) assert.throws(() => P.render(old, {}, mk(), NOW), /unknown mode/, old);
 });
@@ -992,7 +992,7 @@ ok('energy view is registered and adds no write paths', () => {
   assert.equal(v.path, 'energy');
   assert.equal(v.subview, true);
   assert.equal(v.back_path, '/pulse-dashboard/now');
-  assert.deepEqual(v.sections[0].cards.map((c) => c.mode), ['energy-head', 'energy-day', 'energy-cost', 'energy-history', 'energy-usage']);
+  assert.deepEqual(v.sections[0].cards.map((c) => c.mode), ['energy-head', 'energy-day', 'energy-cost', 'energy-history', 'energy-usage', 'tabbar']);
   assert.match(readFileSync(root + 'info-dashboard.yaml', 'utf8'), /views\/info-energy\.yaml/);
   assert.deepEqual(Object.keys(P.ALLOWED).sort(), ['input_boolean', 'light', 'media_player', 'scene', 'switch']);
   assert.match(readFileSync(root + 'packages/frontend.yaml', 'utf8'), /pulse-card\.js\?v=1\b/);
@@ -1327,12 +1327,11 @@ ok('Now v3 header is the title and mode pill only; no "Updated" text anywhere on
   assert.match(hdr, /● Normal/);
   assert.doesNotMatch(hdr, /<a |data-path|sliders/, 'no link or icon in the title row');
   for (const hass of [mk(), withRooms(calmRooms(), []), withRooms(P.ROOM_ORDER.map((k) => quietRoom(k, { occupied: true })), [attn('Bedroom', 'bedroom', 'automation_disabled', 't')]), { states: {} }]) assert.doesNotMatch(nowPage(hass), /Updated/);
-  const foot = P.render('footer', {}, mk(), NOW);
-  assert.match(foot, /data-path="\/mobile-dashboard"[^>]*>Open Mobile controls ›</);
-  assert.match(foot, /padding:4px 4px 24px/, 'bottom padding left for the later tab bar');
-  assert.equal(count(nowPage(mk()), /data-path="\/mobile-dashboard"/g), 1);
+  assert.equal(P.render('footer', {}, mk(), NOW), '', 'the Controls tab carries the Mobile link now');
+  assert.equal(count(nowPage(mk()), /data-path="\/mobile-dashboard"/g), 0);
+  assert.match(P.render('tabbar', { active: 'now' }, mk(), NOW, {}), /data-path="\/mobile-dashboard"[^>]*>[\s\S]*Controls/);
   const view = yaml.load(readFileSync(root + 'views/info-now.yaml', 'utf8'));
-  assert.deepEqual(view.sections[0].cards.map((c) => c.mode), ['now-header', 'status', 'rooms', 'bins-heating', 'feed', 'footer']);
+  assert.deepEqual(view.sections[0].cards.map((c) => c.mode), ['now-header', 'status', 'rooms', 'bins-heating', 'feed', 'footer', 'tabbar']);
 });
 
 ok('Now v3 status card: verdict row with the sentence right-aligned, ONE chip row (nowrap, 30px), price strip link, cheapest line', () => {
@@ -1450,6 +1449,169 @@ ok('Now v3 sparse and missing data: every Now mode renders cleanly', () => {
   }
 });
 
+// ── Tab bar ────────────────────────────────────────────────────────────────────────────────────
+const SNAP = (over = {}) => ({ name: 'div', transform: 'none', filter: 'none', perspective: 'none', contain: 'none', willChange: 'auto', backdropFilter: 'none', ...over });
+
+ok('tab bar renders three tabs for active=now and active=energy with aria-current on the active one only', () => {
+  for (const [active, label] of [['now', 'Now'], ['energy', 'Energy']]) {
+    const html = P.render('tabbar', { active }, mk(), NOW, {});
+    assert.match(html, /<nav class="tabs" aria-label="Pulse">/);
+    assert.equal(count(html, /<button type="button" class="tab"/g), 3);
+    assert.equal(count(html, /aria-current="page"/g), 1);
+    assert.match(html, new RegExp(`aria-current="page">[\\s\\S]*?<span>${label}</span>`));
+    for (const t of ['Now', 'Energy', 'Controls']) assert.match(html, new RegExp(`<span>${t}</span>`));
+    assert.equal(count(html, /<svg /g), 3, 'inline SVG icons');
+    noNoise({ html }, 'tabbar');
+  }
+  assert.match(P.render('tabbar', { active: 'bogus' }, mk(), NOW, {}), /aria-current="page">[\s\S]*?<span>Now<\/span>/, 'unknown active falls back to Now');
+  for (const cfg of [undefined, null, {}, { active: 5 }]) assert.doesNotMatch(P.render('tabbar', cfg, mk(), NOW, undefined), NOISE);
+  const css = readFileSync(root + 'www/pulse-card.js', 'utf8');
+  assert.match(css, /\.tab\{[^\n]*font-size:10\.5px[^\n]*min-height:44px/);
+  assert.match(css, /\.tab\[aria-current=page\]\{color:\$\{TOKENS\.sceneActive\}\}/);
+  assert.match(css, /\.tabs\{[^\n]*rgba\(18,21,26,\.94\)[^\n]*border-top:1px solid \$\{TOKENS\.divider\}/);
+  assert.equal(P.TOKENS.sceneActive, '#f2c46b');
+  assert.equal(P.TOKENS.text3, '#8f9aa8');
+});
+
+ok('tab bar nav paths use the DASH / MOBILE constants and match real views', () => {
+  const html = P.render('tabbar', { active: 'now' }, mk(), NOW, {});
+  const paths = [...html.matchAll(/data-path="([^"]*)"/g)].map((m) => m[1]);
+  assert.deepEqual(paths, ['/pulse-dashboard/now', '/pulse-dashboard/energy', '/mobile-dashboard']);
+  const viewPaths = readdirSync(root + 'views').filter((x) => x.startsWith('info-')).map((f) => yaml.load(readFileSync(root + 'views/' + f, 'utf8')).path);
+  for (const p of paths) if (p.startsWith(P.DASH)) assert.ok(viewPaths.includes(p.slice(P.DASH.length + 1)), p); else assert.equal(p, P.MOBILE);
+  assert.ok(P.TABS.every((t) => t.path.startsWith(P.DASH) || t.path === P.MOBILE));
+});
+
+ok('placement: fixed in-flow decision from ancestor snapshots, naming the offender', () => {
+  assert.deepEqual(P.tabbarPlacement([SNAP({ name: 'hui-card' }), SNAP({ name: 'body' })]), { mode: 'fixed', offender: null });
+  assert.deepEqual(P.tabbarPlacement([]), { mode: 'fixed', offender: null });
+  assert.deepEqual(P.tabbarPlacement(undefined), { mode: 'fixed', offender: null });
+  const cases = [
+    [{ transform: 'matrix(1, 0, 0, 1, 0, 0)' }, 'transform'],
+    [{ filter: 'blur(2px)' }, 'filter'],
+    [{ backdropFilter: 'blur(4px)' }, 'backdrop-filter'],
+    [{ perspective: '100px' }, 'perspective'],
+    [{ contain: 'layout' }, 'contain'],
+    [{ contain: 'strict' }, 'contain'],
+    [{ contain: 'content' }, 'contain'],
+    [{ contain: 'paint' }, 'contain'],
+    [{ willChange: 'transform' }, 'will-change'],
+    [{ willChange: 'opacity, filter' }, 'will-change'],
+  ];
+  for (const [over, why] of cases) {
+    const r = P.tabbarPlacement([SNAP({ name: 'a' }), SNAP({ name: 'hui-view#main', ...over }), SNAP({ name: 'body' })]);
+    assert.deepEqual(r, { mode: 'inflow', offender: `hui-view#main (${why})` }, JSON.stringify(over));
+  }
+  // harmless values do not trip it
+  for (const over of [{ contain: 'size' }, { contain: 'style' }, { willChange: 'opacity' }, { willChange: 'scroll-position' }, { transform: '' }, { filter: undefined }]) assert.equal(P.tabbarPlacement([SNAP(over)]).mode, 'fixed', JSON.stringify(over));
+  // the first offender is reported, garbage entries are skipped
+  assert.equal(P.tabbarPlacement([null, 5, SNAP({ name: 'x', filter: 'blur(1px)' }), SNAP({ name: 'y', transform: 'scale(1)' })]).offender, 'x (filter)');
+});
+
+ok('tab bar markup: in-flow by default (fail safe), fixed + spacer of the same height only when the probe says fixed', () => {
+  const inflow = P.render('tabbar', { active: 'now' }, mk(), NOW, {});
+  const inflow2 = P.render('tabbar', { active: 'now' }, mk(), NOW, { tb: 'inflow' });
+  assert.equal(inflow, inflow2);
+  assert.doesNotMatch(inflow, /tabbar-spacer|class="tabs fixed"/);
+  const fixed = P.render('tabbar', { active: 'now' }, mk(), NOW, { tb: 'fixed' });
+  assert.match(fixed, /<div class="tabbar-spacer" style="--tbh:calc\(58px \+ max\(10px, env\(safe-area-inset-bottom, 0px\)\)\)" aria-hidden="true"><\/div>/);
+  assert.match(fixed, /<nav class="tabs fixed" aria-label="Pulse">/);
+  const src = readFileSync(root + 'www/pulse-card.js', 'utf8');
+  const barH = src.match(/\.tabs\{--tbh:(calc\([^;]*\));/)[1];
+  const spacerH = fixed.match(/--tbh:(calc\(.*?\))" aria-hidden/)[1];
+  assert.equal(spacerH, barH, 'spacer height equals bar height');
+  assert.match(src, /\.tabs\{[^\n]*height:var\(--tbh\)/);
+  assert.match(src, /\.tabbar-spacer\{height:var\(--tbh\)\}/);
+  assert.match(src, /\.tabs\.fixed\{position:fixed;left:0;right:0;bottom:0;z-index:100\}/);
+  assert.match(src, /padding:8px 16px max\(10px, env\(safe-area-inset-bottom, 0px\)\)/);
+});
+
+ok('TABBAR_ENABLED=false renders nothing and brings the Now footer link back (one-line switch)', () => {
+  assert.equal(P.TABBAR_ENABLED, true);
+  const src = readFileSync(root + 'www/pulse-card.js', 'utf8');
+  assert.match(src, /^  const TABBAR_ENABLED = true;$/m, 'a single line to flip');
+  const off = src.replace(/^  const TABBAR_ENABLED = true;$/m, '  const TABBAR_ENABLED = false;');
+  const tmp = new URL('./pulse-card.tabbar-off.tmp.cjs', import.meta.url).pathname;
+  writeFileSync(tmp, off);
+  try {
+    const Off = require(tmp);
+    assert.equal(Off.TABBAR_ENABLED, false);
+    assert.equal(Off.render('tabbar', { active: 'now' }, mk(), NOW, { tb: 'fixed' }), '');
+    assert.match(Off.render('footer', {}, mk(), NOW), /Open Mobile controls ›/);
+  } finally { unlinkSync(tmp); }
+});
+
+ok('every non-classic Pulse view has exactly one tabbar card, last in its section; Classic has none', () => {
+  const files = readdirSync(root + 'views').filter((x) => x.startsWith('info-'));
+  assert.ok(files.length >= 13);
+  const modes = (node, out = []) => { if (Array.isArray(node)) node.forEach((x) => modes(x, out)); else if (node && typeof node === 'object') { if (node.mode === 'tabbar') out.push(node); Object.values(node).forEach((x) => modes(x, out)); } return out; };
+  for (const f of files) {
+    const v = yaml.load(readFileSync(root + 'views/' + f, 'utf8'));
+    const bars = modes(v);
+    if (f.startsWith('info-classic')) { assert.equal(bars.length, 0, f); continue; }
+    assert.equal(bars.length, 1, f);
+    const cards = v.sections[0].cards;
+    assert.equal(cards[cards.length - 1].mode, 'tabbar', `${f}: last card`);
+    assert.equal(bars[0].active, f === 'info-energy.yaml' ? 'energy' : 'now', f);
+    assert.equal(bars[0].type, 'custom:pulse-card');
+  }
+  assert.equal(files.filter((f) => !f.startsWith('info-classic')).length, 12); // now, energy, 10 rooms
+});
+
+ok('tab bar adds no write path and the module URL is untouched', () => {
+  assert.deepEqual(Object.keys(P.ALLOWED).sort(), ['input_boolean', 'light', 'media_player', 'scene', 'switch']);
+  assert.match(readFileSync(root + 'packages/frontend.yaml', 'utf8'), /pulse-card\.js\?v=1\b/);
+  const src = readFileSync(root + 'www/pulse-card.js', 'utf8');
+  assert.doesNotMatch(src.slice(src.indexOf('function sectionTabbar'), src.indexOf('function sectionTabbar') + 900), /callService|callWS/);
+});
+
+await okAsync('tab bar probe wiring (stubbed DOM): clean ancestors -> fixed with spacer; offending ancestor -> stays in-flow and warns once', async () => {
+  const saved = { HTMLElement: globalThis.HTMLElement, customElements: globalThis.customElements, window: globalThis.window, getComputedStyle: globalThis.getComputedStyle, warn: console.warn };
+  let Card;
+  const roots = [];
+  globalThis.HTMLElement = class { constructor() { this.style = {}; this.nodeType = 1; this.tagName = 'PULSE-CARD'; } attachShadow() { const r = { addEventListener() {}, querySelector() { return null; }, querySelectorAll() { return []; }, innerHTML: '' }; roots.push(r); return r; } };
+  globalThis.customElements = { get() { return undefined; }, define(n, c) { if (n === 'pulse-card') Card = c; } };
+  globalThis.window = { customCards: [] };
+  globalThis.getComputedStyle = (n) => n.__cs || {};
+  const warns = [];
+  console.warn = (...a) => warns.push(a.join(' '));
+  try {
+    const modPath = new URL('../www/pulse-card.js', import.meta.url).pathname;
+    delete require.cache[require.resolve(modPath)];
+    require(modPath);
+    const chain = (cs) => { const body = { nodeType: 1, tagName: 'BODY', id: '', parentNode: null, __cs: {} }; const view = { nodeType: 1, tagName: 'HUI-VIEW', id: 'main', parentNode: body, __cs: cs }; return { body, view }; };
+    const mk2 = (cs) => { const c = new Card(); const { view } = chain(cs); c.parentNode = view; Object.defineProperty(c, 'isConnected', { value: true }); c.setConfig({ mode: 'tabbar', active: 'now' }); c.hass = { states: {} }; return c; };
+    const flush = () => new Promise((r) => setTimeout(r, 20));
+    const ok1 = mk2({ transform: 'none', filter: 'none', contain: 'none', willChange: 'auto' });
+    assert.equal(ok1._ui.tb, 'inflow', 'in-flow until the probe has run (fail safe)');
+    assert.doesNotMatch(roots[roots.length - 1].innerHTML, /<nav class="tabs fixed"/);
+    await flush();
+    assert.equal(ok1._ui.tb, 'fixed');
+    assert.match(roots[roots.length - 1].innerHTML, /<div class="tabbar-spacer"/);
+    assert.match(roots[roots.length - 1].innerHTML, /nav class="tabs fixed"/);
+    assert.equal(warns.length, 0);
+    const bad = mk2({ transform: 'matrix(1, 0, 0, 1, 0, 0)' });
+    await flush();
+    assert.equal(bad._ui.tb, 'inflow');
+    assert.doesNotMatch(roots[roots.length - 1].innerHTML, /<nav class="tabs fixed"|<div class="tabbar-spacer"/);
+    assert.equal(warns.length, 1);
+    assert.match(warns[0], /hui-view#main \(transform\)/);
+    await new Promise((r) => setTimeout(r, 900)); // the second probe must not warn again
+    assert.equal(warns.length, 1, 'warns once');
+    bad.disconnectedCallback(); ok1.disconnectedCallback();
+    // other modes never probe
+    const other = new Card(); Object.defineProperty(other, 'isConnected', { value: true }); other.setConfig({ mode: 'rooms' }); other.hass = { states: {} };
+    await flush();
+    assert.equal(other._tbProbed, undefined);
+  } finally {
+    Object.assign(globalThis, { HTMLElement: saved.HTMLElement, customElements: saved.customElements, window: saved.window, getComputedStyle: saved.getComputedStyle });
+    for (const k of ['HTMLElement', 'customElements', 'window', 'getComputedStyle']) if (saved[k] === undefined) delete globalThis[k];
+    console.warn = saved.warn;
+    delete require.cache[require.resolve(new URL('../www/pulse-card.js', import.meta.url).pathname)];
+    require(new URL('../www/pulse-card.js', import.meta.url).pathname);
+  }
+});
+
 // ── Tile geometry (no clipping, left-aligned temperature, odd count) ────────────────────────────
 const cssRules = () => [...P.STYLE.matchAll(/^([^{\n]+)\{([^\n]*)\}$/gm)].map((m) => ({ sel: m[1].trim(), body: m[2] }));
 const decl = (body, prop) => { const m = body.match(new RegExp(`(?:^|;)${prop}:([^;]+)`)); return m ? m[1].trim() : null; };
@@ -1550,6 +1712,31 @@ ok('odd tile counts: the last tile spans both columns as a wide row; even counts
   assert.match(rule('.rt.wide .b').body, /grid-column:1 \/ -1/);
   assert.match(rule('.rt.wide .nm').body, /grid-column:1/);
   noNoise({ seven }, 'odd tiles');
+});
+
+ok('tab bar fixed height has its arithmetic: bar content area (49px) holds the 44px tab and its icon + label; spacer matches; audit knows the var() heights', () => {
+  const bar = rule('.tabs').body;
+  const base = Number(decl(bar, '--tbh').match(/calc\((\d+)px \+ max\((\d+)px/)[1]);
+  const minInset = Number(decl(bar, '--tbh').match(/max\((\d+)px/)[1]);
+  const pad = bar.match(/padding:(\d+)px (\d+)px max\((\d+)px/);
+  const top = Number(pad[1]);
+  const border = Number((bar.match(/border-top:(\d+)px/) || [])[1]);
+  assert.equal(minInset, Number(pad[3]), 'bottom padding uses the same max(...) as the height');
+  // height = base + bottomPad; content area = height - top padding - bottom padding - top border (the inset cancels out)
+  const content = base - top - border;
+  assert.equal(content, 49);
+  const tabMin = px(decl(rule('.tab').body, 'min-height'));
+  assert.ok(content >= tabMin, `${content}px content area holds a ${tabMin}px tab`);
+  const icon = 24;
+  const gap = px(decl(rule('.tab').body, 'gap'));
+  const label = Math.ceil(10.5 * 1.25); // generous line for a 10.5px label
+  assert.ok(icon + gap + label <= tabMin, 'icon + gap + label fit the tab');
+  assert.ok(decl(rule('.tabbar-spacer').body, 'height') === 'var(--tbh)' && decl(bar, 'height') === 'var(--tbh)', 'spacer and bar share --tbh');
+  // every var()-based height in the stylesheet is one of these two, and each has arithmetic above
+  const varHeights = cssRules().filter((r) => /(^|;)height:var\(/.test(r.body)).map((r) => r.sel).sort();
+  assert.deepEqual(varHeights, ['.tabbar-spacer', '.tabs']);
+  // the tab bar is the only fixed-position element and stays out of the tile/occupied card rules
+  assert.deepEqual(cssRules().filter((r) => /position:fixed/.test(r.body)).map((r) => r.sel), ['.tabs.fixed']);
 });
 
 console.log(`\n${n} test groups passed`);
