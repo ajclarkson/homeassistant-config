@@ -110,6 +110,20 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 .rgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 .rt{display:flex;flex-direction:column;justify-content:space-between;gap:6px;padding:12px 12px 10px;min-height:76px;background:${TOKENS.surface};border-radius:14px;text-decoration:none;color:inherit}
 .rt .b{display:flex;gap:6px;align-items:center;flex-wrap:wrap;color:#7d8794;font-size:11px;min-height:16px}
+.segs{display:flex;gap:8px;background:${TOKENS.surface};border-radius:14px;padding:4px}
+.seg{border:0;font:inherit;font-size:14px;font-weight:600;min-height:44px;border-radius:12px;cursor:pointer;flex:1;background:transparent;color:#cfd5dd}
+.seg.on{background:${TOKENS.sceneActive};color:${TOKENS.sceneActiveText}}
+.stat{flex:1;padding:12px;min-width:0}
+.stat .k{font-size:11px;color:${TOKENS.text3};font-weight:600;letter-spacing:.4px;text-transform:uppercase}
+.stat .v{font-size:19px;font-weight:700;letter-spacing:-.3px;margin-top:4px}
+.stat .s{font-size:11.5px;color:${TOKENS.text2};margin-top:2px}
+.wrow{display:flex;justify-content:space-between;align-items:center;gap:10px;min-height:48px;padding:6px 14px;border-top:1px solid ${TOKENS.divider};font-size:14px}
+.wrow:first-child{border-top:0}
+.wrow .r{font-size:13px;font-weight:600}
+.wrow .m{font-size:12px;color:${TOKENS.text2}}
+.u{padding:14px;flex:1;min-width:0}
+.u .v{font-size:22px;font-weight:700;letter-spacing:-.4px;margin-top:4px}
+.u .v span{font-size:12px;font-weight:500;color:${TOKENS.text2}}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .chart:focus-visible{outline:2px solid ${TOKENS.link};outline-offset:2px;border-radius:6px}
 .tip{position:absolute;top:-36px;left:0;pointer-events:none;background:${TOKENS.divider};border:1px solid #2f3843;border-radius:8px;padding:4px 8px;font-size:12px;line-height:1.3;white-space:nowrap;z-index:2}
@@ -508,7 +522,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 
   // Now / Next (graded colours) and Usage (unit-aware). A reading that has not updated for 10 minutes
   // is stale (the meter reports every few seconds), so it shows a dash rather than a confident 0 W.
-  function priceStrip(hass, at) {
+  function priceStrip(hass, at, bare) {
     const base = 'sensor.octopus_energy_electricity_24e8140196_1012483035417';
     const p = (v) => (v === null ? null : v * 100);
     const nowP = p(num(state(hass, `${base}_current_rate`)));
@@ -517,7 +531,8 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const wAge = wState ? parseTs(wState.last_updated) : null;
     const stale = wAge !== null && at - wAge > 600000;
     const usageText = stale ? '–' : formatPower(state(hass, 'sensor.glow_electricity_power'), attr(hass, 'sensor.glow_electricity_power', 'unit_of_measurement'));
-    return `<div style="display:flex;gap:16px;align-items:flex-end;margin-top:14px;padding-top:12px;border-top:1px solid ${TOKENS.divider}">
+    const edge = bare ? '' : `margin-top:14px;padding-top:12px;border-top:1px solid ${TOKENS.divider}`;
+    return `<div style="display:flex;gap:16px;align-items:flex-end;${edge}">
 <div><div class="lbl">Now</div><div style="font-size:26px;font-weight:700;letter-spacing:-.5px;line-height:1.15;color:${priceColour(nowP, { text: true })}">${nowP === null ? '–' : fmt1(nowP)}<span style="font-size:12px;font-weight:500;color:${TOKENS.text2}"> p/kWh</span></div></div>
 <div><div class="lbl">Next</div><div style="font-size:18px;font-weight:600;color:${priceColour(nextP, { text: true })};line-height:1.5">${nextP === null ? '–' : fmt1(nextP) + 'p'}</div></div>
 <div style="flex:1"></div><div style="text-align:right"><div class="lbl">Usage</div><div style="font-size:18px;font-weight:600;line-height:1.5">${usageText}</div></div></div>`;
@@ -714,7 +729,8 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   }
 
   const RATES_ENTITY = 'event.octopus_energy_electricity_24e8140196_1012483035417_current_day_rates';
-  const ratesOf = (hass) => attr(hass, RATES_ENTITY, 'rates');
+  const NEXT_RATES_ENTITY = 'event.octopus_energy_electricity_24e8140196_1012483035417_next_day_rates';
+  const ratesOf = (hass, day) => attr(hass, day === 'tomorrow' ? NEXT_RATES_ENTITY : RATES_ENTITY, 'rates');
   const SCRUB_HOLD_MS = 2000;
   const SCRUB_TAP_PX = 6;
 
@@ -744,7 +760,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return Math.max(0, Math.min(boxWidth - Math.max(0, tipWidth), centerPx - tipWidth / 2));
   }
 
-  function priceChart(rates, now) {
+  function priceChart(rates, now, day) {
     const slots = rateBands(rates, now);
     if (slots.length === 0) return `<div style="font-size:12px;color:${TOKENS.text2};margin-top:12px">No price data for today.</div>`;
     const n = slots.length;
@@ -775,7 +791,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const key = `<div style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:10px;color:${TOKENS.text3}" aria-hidden="true"><span style="display:inline-flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:3px;background:${PRICE_NEGATIVE}"></span>≤0p</span><span style="flex:1;display:flex;flex-direction:column;gap:2px"><span style="height:6px;border-radius:3px;background:linear-gradient(to right,${grad})"></span><span style="display:flex;justify-content:space-between"><span>${PRICE_KEY_P[0]}</span><span>${PRICE_KEY_P[1]}</span><span>${PRICE_KEY_P[2]}</span><span>${PRICE_KEY_P[3]}p+</span></span></span><span style="width:10px;height:10px;border-radius:3px;background:${PRICE_EXTREME}"></span></div>`;
     // The wrapper is the focusable, scrubbable chart (touch-action: pan-y keeps vertical page scroll;
     // horizontal drags scrub). Guide and tooltip are positioned by the element, not re-rendered.
-    return `<div class="chart" data-chart data-n="${n}" tabindex="0" role="img" aria-label="${esc(label)}" style="position:relative;margin-top:36px;touch-action:pan-y;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none"><svg viewBox="0 0 ${n * SLOT_W} ${PLOT_H}" preserveAspectRatio="none" width="100%" height="${PLOT_H}" aria-hidden="true" style="display:block">${bars}<line x1="0" x2="${n * SLOT_W}" y1="${y0.toFixed(1)}" y2="${y0.toFixed(1)}" stroke="${TOKENS.text3}" stroke-width=".8" vector-effect="non-scaling-stroke"/>${marker}</svg>
+    return `<div class="chart" data-chart data-day="${day === 'tomorrow' ? 'tomorrow' : 'today'}" data-n="${n}" tabindex="0" role="img" aria-label="${esc(label)}" style="position:relative;margin-top:36px;touch-action:pan-y;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none"><svg viewBox="0 0 ${n * SLOT_W} ${PLOT_H}" preserveAspectRatio="none" width="100%" height="${PLOT_H}" aria-hidden="true" style="display:block">${bars}<line x1="0" x2="${n * SLOT_W}" y1="${y0.toFixed(1)}" y2="${y0.toFixed(1)}" stroke="${TOKENS.text3}" stroke-width=".8" vector-effect="non-scaling-stroke"/>${marker}</svg>
 <span style="position:absolute;left:0;top:${Math.max(0, y0 - 14).toFixed(0)}px;font-size:10px;color:${TOKENS.text3};pointer-events:none">0</span><div data-guide style="display:none;position:absolute;top:0;bottom:0;width:1px;margin-left:-.5px;background:${TOKENS.text};opacity:.7;pointer-events:none"></div><div data-tip class="tip" style="display:none"></div></div><span class="sr" aria-live="polite" data-live></span>
 <div style="position:relative;height:14px;font-size:10px;color:${TOKENS.text3};margin-top:4px">${ticks}</div>${key}`;
   }
@@ -799,6 +815,169 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const details = cfg && cfg.details_path === ENERGY_PATH ? `<a class="link tap" data-act="nav" data-path="${ENERGY_PATH}" style="justify-content:flex-end">Details ›</a>` : '';
     return `<div class="lbl" style="margin:4px 4px -10px">Today's prices</div>
 <div class="card pad">${priceChart(rates, at)}${cheapest}<div style="font-size:12px;color:${TOKENS.text2};margin-top:8px">${note}</div>${details}</div>`;
+  }
+
+  // ── Energy page ───────────────────────────────────────────────────────────────────────────────
+  const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const localHm = (ms) => { const d = new Date(ms); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
+
+  // Cheapest / dearest slot and the time-weighted average price of a day's slots (rateBands entries).
+  // Weighted by slot length so a clock-change day (or any uneven slot) is right. Null when empty.
+  function energyStats(slots) {
+    const list = (Array.isArray(slots) ? slots : []).filter((x) => isObj(x) && Number.isFinite(x.start) && Number.isFinite(x.end) && Number.isFinite(x.v) && x.end > x.start);
+    if (list.length === 0) return null;
+    let min = list[0];
+    let max = list[0];
+    let sum = 0;
+    let span = 0;
+    for (const x of list) {
+      if (x.v < min.v) min = x;
+      if (x.v > max.v) max = x;
+      sum += x.v * (x.end - x.start);
+      span += x.end - x.start;
+    }
+    const at = (x) => ({ v: x.v, start: x.start, end: x.end, time: localHm(x.start) });
+    return { cheapest: at(min), dearest: at(max), avg: sum / span, slots: list.length };
+  }
+  const penceText = (v) => (Number.isFinite(v) ? `${v < 0 ? '−' : ''}${Math.abs(v).toFixed(1)}p` : '–');
+
+  // The window sensors publish "HH:MM–HH:MM (X.Xp) · ..." or "—" when empty (packages/templates.yaml).
+  function parseWindows(text) {
+    const t = typeof text === 'string' ? text.trim() : '';
+    if (t === '' || t === 'unknown' || t === 'unavailable') return { status: 'unknown', items: [] };
+    if (t === '—' || t === '-') return { status: 'none', items: [] };
+    const items = [];
+    for (const m of t.matchAll(/(\d\d:\d\d)\s*[–-]\s*(\d\d:\d\d)\s*\((-?\d+(?:\.\d+)?)p\)/g)) items.push({ from: m[1], to: m[2], avg: Number(m[3]) });
+    return items.length ? { status: 'ok', items } : { status: 'unknown', items: [] };
+  }
+  const windowLine = (w) => `${w.from} → ${w.to} · avg ${penceText(w.avg)}`;
+
+  // "Fri 23 Oct" from the ISO date part of a published timestamp, in the zone it was published in
+  // (not the viewer's), so the label is the day the provider meant.
+  function isoDayLabel(iso) {
+    const m = typeof iso === 'string' ? iso.match(/^(\d{4})-(\d\d)-(\d\d)/) : null;
+    if (!m) return null;
+    const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+    return Number.isNaN(d.getTime()) ? null : `${WEEKDAYS[d.getUTCDay()]} ${+m[3]} ${MONTHS[+m[2] - 1]}`;
+  }
+
+  // The day a "previous accumulative" sensor covers, from its charges list (first start, and the last
+  // end must be 22-26 h later so a partial list is not mistaken for a whole day). null = cannot tell.
+  function coveredDay(attrs) {
+    const charges = isObj(attrs) ? parseList(attrs.charges) : [];
+    const starts = charges.map((c) => ({ raw: c.start, t: Date.parse(c.start) })).filter((x) => Number.isFinite(x.t));
+    if (starts.length === 0) return null;
+    starts.sort((a, b) => a.t - b.t);
+    const ends = charges.map((c) => Date.parse(c.end)).filter(Number.isFinite);
+    if (ends.length) {
+      const span = Math.max(...ends) - starts[0].t;
+      if (span < 22 * 3600000 || span > 26 * 3600000) return null;
+    }
+    return isoDayLabel(starts[0].raw);
+  }
+
+  const money = (v, unit) => {
+    const n = num(v);
+    const u = str(unit).trim();
+    if (n === null || !(u === 'GBP' || u === '£')) return '–';
+    return `${n < 0 ? '−' : ''}£${Math.abs(n).toFixed(2)}`;
+  };
+  // kWh, Wh or MWh in -> "17.9 kWh". Anything else (or no unit) is a dash: a wrong unit is worse than none.
+  function energyText(value, unit) {
+    const n = num(value);
+    const f = { kwh: 1, wh: 0.001, mwh: 1000 }[str(unit).trim().toLowerCase()];
+    if (n === null || f === undefined) return '–';
+    const k = n * f;
+    return `${Math.abs(k) >= 100 ? Math.round(k) : k.toFixed(1)} kWh`;
+  }
+
+  // Standing charge is only claimed when the attributes prove it (total_without_standing_charge and
+  // standing_charge, as exposed by the Octopus sensors): total == without + standing within a penny and a
+  // half, or total == without (then it is explicitly excluded). Otherwise no claim.
+  function standingNote(total, attrs) {
+    const a = isObj(attrs) ? attrs : {};
+    const without = num(a.total_without_standing_charge);
+    const standing = num(a.standing_charge);
+    if (total === null || without === null) return '';
+    // Published figures are each rounded to the penny, so the sum can be a penny out (3.58 vs 3.11 + 0.46).
+    if (standing !== null && Math.abs(total - (without + standing)) <= 0.015) return 'incl. standing charge';
+    if (Math.abs(total - without) < 0.005) return 'excl. standing charge';
+    return '';
+  }
+
+  function costTile(hass, label, costId, kwhId) {
+    const a = isObj(stateObj(hass, costId) && stateObj(hass, costId).attributes) ? stateObj(hass, costId).attributes : {};
+    const total = usable(state(hass, costId)) ? num(state(hass, costId)) : null;
+    const day = coveredDay(a) || 'latest complete day';
+    const note = standingNote(total, a);
+    const kwh = usable(state(hass, kwhId)) ? energyText(state(hass, kwhId), attr(hass, kwhId, 'unit_of_measurement') || 'kWh') : '–';
+    return `<div class="card u"><div class="lbl" style="margin:0">${esc(label)}</div><div class="v">${usable(state(hass, costId)) ? money(state(hass, costId), a.unit_of_measurement) : '–'}</div><div style="font-size:11.5px;color:${TOKENS.text2};margin-top:2px">${esc(day)} · ${esc(kwh)}${note ? ' · ' + esc(note) : ''}</div></div>`;
+  }
+
+  function sectionEnergyHead(hass, at) {
+    return `<div style="display:flex;align-items:center;gap:4px"><a class="tap" data-act="nav" data-path="${DASH}/now" aria-label="Back to Now" style="min-height:44px;min-width:44px;display:flex;align-items:center;color:${TOKENS.text2}">${svg(ICON.back, 22)}</a><div style="font-size:28px;font-weight:700;letter-spacing:-.4px">Energy</div></div>
+<div class="card pad">${priceStrip(hass, at, true)}</div>`;
+  }
+
+  // Day segmented control, chart, stats and windows for the selected day. They share one element so
+  // the selected day survives hass updates (ui.day) and never needs re-rendering mid-scrub.
+  function sectionEnergyDay(hass, at, ui) {
+    const day = ui && ui.day === 'tomorrow' ? 'tomorrow' : 'today';
+    const seg = (id, label) => `<button class="seg${day === id ? ' on' : ''}" data-act="energy-day" data-day="${id}" aria-pressed="${day === id}">${label}</button>`;
+    const rates = ratesOf(hass, day);
+    const slots = rateBands(rates, at);
+    const control = `<div class="segs">${seg('today', 'Today')}${seg('tomorrow', 'Tomorrow')}</div>`;
+    if (slots.length === 0) {
+      const late = day === 'tomorrow';
+      return `${control}<div class="card pad"><div style="font-size:14px;font-weight:600">${late ? 'Tomorrow\'s rates are not in yet' : 'No price data for today'}</div><div style="font-size:12.5px;color:${TOKENS.text2};margin-top:4px;line-height:1.4">${late ? 'Tomorrow\'s rates are published late afternoon.' : 'The rates list is empty or unavailable.'}</div></div>${windowsCard(hass, day, false)}`;
+    }
+    const st = energyStats(slots);
+    const stat = (k, v, sub, col) => `<div class="card stat"><div class="k">${k}</div><div class="v" style="${col ? 'color:' + col : ''}">${v}</div><div class="s">${sub}</div></div>`;
+    const stats = `<div style="display:flex;gap:8px">${stat('Cheapest', penceText(st.cheapest.v), 'at ' + st.cheapest.time, priceColour(st.cheapest.v, { text: true }))}${stat('Dearest', penceText(st.dearest.v), 'at ' + st.dearest.time, priceColour(st.dearest.v, { text: true }))}${stat('Average', penceText(st.avg), 'per kWh', priceColour(st.avg, { text: true }))}</div>`;
+    return `${control}<div class="card pad">${priceChart(rates, at, day)}<div style="font-size:11.5px;color:${TOKENS.text3};margin-top:8px">Drag across the chart to read any half hour.</div></div>${stats}${windowsCard(hass, day, true)}`;
+  }
+
+  function windowsCard(hass, day, hasDay) {
+    const rows = [];
+    const s = state(hass, 'sensor.cheapest_2h_waking_start');
+    const e = state(hass, 'sensor.cheapest_2h_waking_end');
+    const avg = num(state(hass, 'sensor.cheapest_2h_waking_avg_rate'));
+    const running = state(hass, 'binary_sensor.octopus_energy_target_cheapest_2h_waking_hours') === 'on';
+    const row = (title, sub, right, col) => `<div class="wrow"><div><div style="font-weight:600">${title}</div><div class="m">${sub}</div></div>${right}</div>`;
+    const cheapestSub = usable(s) && usable(e) ? `${esc(s)} → ${esc(e)}${avg !== null ? ' · avg ' + esc(penceText(avg)) : ''}` : 'none upcoming';
+    rows.push(row('Next cheapest 2 hours', cheapestSub, running ? '<span class="tag ok">Running now</span>' : usable(s) && usable(e) ? '<span class="tag ok">Best</span>' : '', null));
+    if (hasDay) {
+      const pre = day === 'tomorrow' ? 'octopus_tomorrow' : 'octopus_today';
+      for (const [kind, id] of [['Negative', `sensor.${pre}_negative_windows`], ['Cheap', `sensor.${pre}_cheap_windows`]]) {
+        const w = parseWindows(state(hass, id));
+        if (w.status === 'unknown') rows.push(row(kind, '–', '', null));
+        else if (w.status === 'none') rows.push(row(kind, 'none', '', null));
+        else for (const it of w.items) rows.push(row(kind, `${it.from} → ${it.to}`, `<div class="r" style="color:${priceColour(it.avg, { text: true })}">avg ${esc(penceText(it.avg))}</div>`, null));
+      }
+    }
+    return `<div class="lbl" style="margin:4px 4px -10px">Windows</div><div class="card">${rows.join('')}</div>`;
+  }
+
+  // Real published data only, always labelled with the day it covers. Octopus publishes a day or two late.
+  function sectionEnergyCost(hass) {
+    const e = 'sensor.octopus_energy_electricity_24e8140196_1012483035417_previous_accumulative';
+    const g = 'sensor.octopus_energy_gas_e6s15257822462_2986733608_previous_accumulative';
+    return `<div class="lbl" style="margin:4px 4px -10px">Cost (latest published day)</div>
+<div style="display:flex;gap:8px">${costTile(hass, 'Electricity', `${e}_cost`, `${e}_consumption`)}${costTile(hass, 'Gas', `${g}_cost`, `${g}_consumption_kwh`)}</div>
+<div style="font-size:11.5px;color:${TOKENS.text3};margin:-6px 4px 0">Octopus publishes about 1-2 days late, so these cover an earlier day, not today.</div>`;
+  }
+
+  function sectionEnergyUsage(hass) {
+    const tile = (label, id) => {
+      const text = usable(state(hass, id)) ? energyText(state(hass, id), attr(hass, id, 'unit_of_measurement')) : '–';
+      const [v, u] = text === '–' ? ['–', ''] : text.split(' ');
+      return `<div class="card u"><div class="lbl" style="margin:0">${label}</div><div class="v">${esc(v)}${u ? ` <span>${u}</span>` : ''}</div></div>`;
+    };
+    return `<div class="lbl" style="margin:4px 4px -10px">Usage (smart meter, live)</div>
+<div style="display:flex;gap:8px">${tile('Electricity today', 'sensor.glow_electricity_today')}${tile('Gas today', 'sensor.glow_gas_today')}</div>
+<div style="display:flex;gap:8px">${tile('Electricity this month', 'sensor.glow_electricity_month')}${tile('Gas this month', 'sensor.glow_gas_month')}</div>
+<div style="font-size:11.5px;color:${TOKENS.text3};margin:-6px 4px 0">Live from the meter; the Octopus figures above are the supplier's, days late. They are not reconciled.</div>`;
   }
 
   // Bins (what is due next, and when) beside Heating (boiler state, inside/outside).
@@ -978,6 +1157,10 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     rooms: (h, c, n) => sectionRooms(h, n),
     energy: (h, c, n) => sectionEnergy(h, n, c),
     'bins-heating': (h) => sectionBinsHeating(h),
+    'energy-head': (h, c, n) => sectionEnergyHead(h, n),
+    'energy-day': (h, c, n, ui) => sectionEnergyDay(h, n, ui),
+    'energy-cost': (h) => sectionEnergyCost(h),
+    'energy-usage': (h) => sectionEnergyUsage(h),
     feed: (h, c, n) => sectionFeed(h, n),
     footer: (h, c, n) => sectionFooter(h, n),
     'room-head': (h, c) => sectionRoomHead(h, c.room),
@@ -1027,7 +1210,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     }
   }
 
-  const api = { ENERGY_PATH, roomGroups, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, MOBILE, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, ALL_ROOM_KEYS, ALLOWED, render, priceColour, PRICE_STOPS, PRICE_EXTREME_P, roomModel, attentionItems, handleAction, callService, num, parseList };
+  const api = { energyStats, parseWindows, windowLine, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, roomGroups, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, MOBILE, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, ALL_ROOM_KEYS, ALLOWED, render, priceColour, PRICE_STOPS, PRICE_EXTREME_P, roomModel, attentionItems, handleAction, callService, num, parseList };
   root.PulseLib = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 
@@ -1039,7 +1222,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         this._root = this.attachShadow({ mode: 'open' });
         this._html = null;
         this._busy = false;
-        this._ui = { open: false };
+        this._ui = { open: false, day: 'today' };
         this._scrub = { idx: null, slots: null, active: false, pending: null, timer: null };
         this._root.addEventListener('click', (ev) => this._click(ev));
         this._root.addEventListener('change', (ev) => this._change(ev));
@@ -1088,6 +1271,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         clearTimeout(this._scrub.timer);
         this._scrub.timer = setTimeout(() => this._chartClear(), SCRUB_HOLD_MS);
       }
+      _chartSlots(chart) { return rateBands(ratesOf(this._hass, chart.dataset.day), Date.now()); }
       _chartIdx(ev, chart) {
         const box = chart.getBoundingClientRect();
         const n = this._scrub.slots ? this._scrub.slots.length : 0;
@@ -1127,7 +1311,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       }
       _chartStart(ev, chart) {
         clearTimeout(this._scrub.timer);
-        this._scrub.slots = rateBands(ratesOf(this._hass), Date.now()); // frozen for the whole gesture
+        this._scrub.slots = this._chartSlots(chart); // frozen for the whole gesture
         this._scrub.active = true;
         try { chart.setPointerCapture(ev.pointerId); } catch (e) { /* capture is best effort */ }
       }
@@ -1156,7 +1340,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         this._scrub.pending = null;
         if (!this._scrub.active) {
           // A tap (no real movement) selects the slot under the finger.
-          this._scrub.slots = rateBands(ratesOf(this._hass), Date.now());
+          this._scrub.slots = this._chartSlots(pend.chart);
           const idx = this._chartIdx(ev, pend.chart);
           if (idx !== null) this._chartShow(idx, true);
         } else {
@@ -1180,7 +1364,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         if (!step && ev.key !== 'Home' && ev.key !== 'End') return;
         ev.preventDefault();
         clearTimeout(this._scrub.timer);
-        this._scrub.slots = rateBands(ratesOf(this._hass), Date.now());
+        this._scrub.slots = this._chartSlots(chart);
         const n = this._scrub.slots.length;
         if (n === 0) return;
         const cur = this._scrub.slots.findIndex((x) => x.state === 'current');
@@ -1197,6 +1381,12 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
             window.history.pushState(null, '', path);
             window.dispatchEvent(new CustomEvent('location-changed', { detail: { replace: false } }));
           }
+          return;
+        }
+        if (el.dataset.act === 'energy-day') {
+          this._ui.day = el.dataset.day === 'tomorrow' ? 'tomorrow' : 'today';
+          this._chartClear();
+          this._paint();
           return;
         }
         if (el.dataset.act === 'lights-toggle') {

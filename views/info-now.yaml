@@ -16,9 +16,8 @@ sections:
       - {type: custom:pulse-card, mode: status}
       # Needs attention (full width), Occupied now (full width), Other rooms (2-column tiles).
       - {type: custom:pulse-card, mode: rooms}
-      # Today's prices: bars with scrub, Cheapest 2h, tomorrow note. Add `details_path:
-      # /pulse-dashboard/energy` here only once that view exists in info-dashboard.yaml.
-      - {type: custom:pulse-card, mode: energy}
+      # Today's prices: bars with scrub, Cheapest 2h, tomorrow note; Details opens the Energy page.
+      - {type: custom:pulse-card, mode: energy, details_path: /pulse-dashboard/energy}
       - {type: custom:pulse-card, mode: bins-heating}
       - {type: custom:pulse-card, mode: feed}
       - {type: custom:pulse-card, mode: footer}

@@ -60,7 +60,7 @@ const withRooms = (rooms, attention, extra = {}) => mk({
   ...extra,
 });
 const NOISE = /undefined|NaN|\[object|null/;
-const ALL_MODES = ['now-header', 'status', 'rooms', 'energy', 'bins-heating', 'feed', 'footer'];
+const ALL_MODES = ['now-header', 'status', 'rooms', 'energy', 'bins-heating', 'feed', 'footer', 'energy-head', 'energy-day', 'energy-cost', 'energy-usage'];
 const ROOM_MODES = ['room-head', 'why', 'scenes', 'lights', 'media', 'automations', 'room-feed'];
 const renderAll = (hass) => {
   const out = {};
@@ -496,7 +496,7 @@ ok('tooltipLeft: centred, clamped inside the chart, never negative, bad input is
 
 ok('chart markup: focusable, pan-y, one summary label, live region, guide and tooltip hooks; empty rates have none', () => {
   const html = energyAt(real, Date.parse('2026-10-25T18:29:00Z'));
-  assert.match(html, /<div class="chart" data-chart data-n="50" tabindex="0" role="img" aria-label="Half-hourly electricity price, 50 slots\./);
+  assert.match(html, /<div class="chart" data-chart data-day="today" data-n="50" tabindex="0" role="img" aria-label="Half-hourly electricity price, 50 slots\./);
   assert.match(html, /touch-action:pan-y/);
   assert.equal((html.match(/role="img"/g) || []).length, 1, 'the summary is announced once (svg is aria-hidden)');
   assert.match(html, /<svg[^>]*aria-hidden="true"/);
@@ -682,6 +682,214 @@ ok('Now v2 view layout: one status card first, groups, prices, bins/heating, fee
 });
 
 ok('Now v2 changes nothing HA only reads at startup', () => {
+  assert.match(readFileSync(root + 'packages/frontend.yaml', 'utf8'), /pulse-card\.js\?v=1\b/);
+});
+
+// ── Energy page ──────────────────────────────────────────────────────────────────────────────
+const tomorrow = JSON.parse(readFileSync(root + 'tests/fixtures/rates-2026-10-26-tomorrow.json', 'utf8'));
+const EID = 'sensor.octopus_energy_electricity_24e8140196_1012483035417_previous_accumulative';
+const GID = 'sensor.octopus_energy_gas_e6s15257822462_2986733608_previous_accumulative';
+const day = (start, n = 48) => Array.from({ length: n }, (_, i) => ({ start: new Date(Date.parse(start) + i * 1800000).toISOString().replace('.000Z', '+00:00'), end: new Date(Date.parse(start) + (i + 1) * 1800000).toISOString().replace('.000Z', '+00:00'), value_inc_vat: 0.2 }));
+const charges = (startIso, hours = 24, n = 48) => Array.from({ length: n }, (_, i) => ({ start: new Date(Date.parse(startIso) + i * (hours * 3600000 / n)).toISOString(), end: new Date(Date.parse(startIso) + (i + 1) * (hours * 3600000 / n)).toISOString(), cost: 0.1 }));
+const energyHass = (extra = {}, todayRates = real, tomorrowRates = tomorrow) => mk({
+  'event.octopus_energy_electricity_24e8140196_1012483035417_current_day_rates': { state: 'x', attributes: { rates: todayRates } },
+  'event.octopus_energy_electricity_24e8140196_1012483035417_next_day_rates': { state: 'x', attributes: { rates: tomorrowRates } },
+  'sensor.octopus_today_negative_windows': { state: '00:00–14:30 (-3.4p) · 22:00–23:00 (-0.5p)', attributes: {} },
+  'sensor.octopus_today_cheap_windows': { state: '19:00–23:30 (4.9p)', attributes: {} },
+  'sensor.octopus_tomorrow_negative_windows': { state: '—', attributes: {} },
+  'sensor.octopus_tomorrow_cheap_windows': { state: '07:00–09:30 (6.1p)', attributes: {} },
+  ...extra,
+});
+
+ok('energyStats: cheapest, dearest, time-weighted average (negatives, clock-change day, uneven slots)', () => {
+  const t = P.energyStats(P.rateBands(real, Date.parse('2026-10-25T12:00:00Z')));
+  assert.equal(t.slots, 50);
+  assert.ok(Math.abs(t.cheapest.v - -7.54) < 1e-9);
+  assert.match(t.cheapest.time, /^\d\d:\d\d$/);
+  assert.ok(Math.abs(t.dearest.v - 33.35) < 1e-9);
+  assert.equal(t.dearest.time, '17:00');
+  const mean = real.reduce((a, r) => a + r.value_inc_vat * 100, 0) / real.length;
+  assert.ok(Math.abs(t.avg - mean) < 1e-9, 'equal slots: weighted == simple mean');
+  const tom = P.energyStats(P.rateBands(tomorrow, NOW));
+  assert.equal(tom.slots, 46);
+  // uneven slots: 1h at 10p and 30min at -10p -> (10*60 + -10*30)/90 = 3.33p
+  const w = P.energyStats([{ start: 0, end: 3600000, v: 10 }, { start: 3600000, end: 5400000, v: -10 }]);
+  assert.ok(Math.abs(w.avg - 10 / 3) < 1e-9);
+  assert.equal(w.cheapest.v, -10);
+  assert.equal(P.energyStats([]), null);
+  assert.equal(P.energyStats(undefined), null);
+  assert.equal(P.energyStats([null, {}, { start: 1, end: 1, v: 1 }]), null);
+  assert.equal(P.penceText(-7.54), '−7.5p');
+  assert.equal(P.penceText(NaN), '–');
+});
+
+ok('windows: parse empty / none / one / many / garbage and format', () => {
+  assert.deepEqual(P.parseWindows('—'), { status: 'none', items: [] });
+  for (const u of ['', 'unknown', 'unavailable', undefined, null, 5, 'garbage']) assert.equal(P.parseWindows(u).status, 'unknown', String(u));
+  const one = P.parseWindows('19:00–23:30 (4.9p)');
+  assert.deepEqual(one, { status: 'ok', items: [{ from: '19:00', to: '23:30', avg: 4.9 }] });
+  const many = P.parseWindows('00:00–14:30 (-3.4p) · 22:00–23:00 (-0.5p)');
+  assert.equal(many.items.length, 2);
+  assert.equal(P.windowLine(many.items[0]), '00:00 → 14:30 · avg −3.4p');
+});
+
+ok('energy page: head has back link, Now/Next/Usage', () => {
+  const html = P.render('energy-head', {}, energyHass({ 'sensor.glow_electricity_power': { state: '0.44', attributes: { unit_of_measurement: 'kW' }, last_updated: '2026-10-25T18:41:50+00:00' } }), NOW);
+  assert.match(html, /data-path="\/pulse-dashboard\/now" aria-label="Back to Now"/);
+  assert.match(html, />Energy</);
+  assert.ok(html.includes(`color:${P.priceColour(34.8, { text: true })}`));
+  assert.match(html, />Usage<\/div><div[^>]*>440 W/);
+});
+
+ok('energy page day toggle: Today (50 slots) <-> Tomorrow (46 slots), pressed state, no now marker tomorrow', () => {
+  const hass = energyHass();
+  const t = P.render('energy-day', {}, hass, Date.parse('2026-10-25T18:29:00Z'), {});
+  assert.match(t, /class="seg on" data-act="energy-day" data-day="today" aria-pressed="true"/);
+  assert.match(t, /data-day="tomorrow" aria-pressed="false"/);
+  assert.equal(rect(t).length, 50);
+  assert.match(t, /data-chart data-day="today" data-n="50"/);
+  assert.match(t, /stroke-dasharray="2 2"/, 'now marker today');
+  const m = P.render('energy-day', {}, hass, Date.parse('2026-10-25T18:29:00Z'), { day: 'tomorrow' });
+  assert.match(m, /class="seg on" data-act="energy-day" data-day="tomorrow" aria-pressed="true"/);
+  assert.equal(rect(m).length, 46);
+  assert.match(m, /data-day="tomorrow" data-n="46"/);
+  assert.doesNotMatch(m, /stroke-dasharray="2 2"[^>]*vector-effect/, 'no now marker on tomorrow');
+  assert.ok(rect(m).every((b) => b.op === 1), 'nothing is dimmed as past tomorrow');
+  assert.match(m, /viewBox="0 0 276 96"/); // 46 slots x 6
+  noNoise({ t, m }, 'energy day');
+  assert.equal(P.render('energy-day', {}, hass, NOW, { day: 'bogus' }).includes('data-day="today" aria-pressed="true"'), true);
+});
+
+ok('energy page stats tiles follow the selected day', () => {
+  const hass = energyHass();
+  const t = P.render('energy-day', {}, hass, NOW, {});
+  assert.match(t, /Cheapest<\/div><div class="v" style="color:#[0-9a-f]{6}">−7\.5p<\/div><div class="s">at \d\d:\d\d/);
+  assert.match(t, /Dearest<\/div><div class="v"[^>]*>33\.4p<\/div><div class="s">at 17:00/);
+  assert.match(t, /Average<\/div><div class="v"[^>]*>[−\d.]+p<\/div><div class="s">per kWh/);
+  const m = P.render('energy-day', {}, hass, NOW, { day: 'tomorrow' });
+  const st = P.energyStats(P.rateBands(tomorrow, NOW));
+  assert.ok(m.includes(`>${P.penceText(st.dearest.v)}<`));
+  assert.ok(m.includes(`at ${st.dearest.time}`));
+});
+
+ok('energy page windows: next cheapest 2h + negative/cheap for the selected day, none/unknown honest', () => {
+  const hass = energyHass();
+  const t = P.render('energy-day', {}, hass, NOW, {});
+  assert.match(t, /Next cheapest 2 hours[\s\S]*02:00 → 04:00 · avg 9\.8p/);
+  assert.match(t, /Negative[\s\S]*00:00 → 14:30[\s\S]*avg −3\.4p/);
+  assert.match(t, /22:00 → 23:00/);
+  assert.match(t, /Cheap[\s\S]*19:00 → 23:30[\s\S]*avg 4\.9p/);
+  const m = P.render('energy-day', {}, hass, NOW, { day: 'tomorrow' });
+  assert.match(m, /Negative<\/div><div class="m">none</);
+  assert.match(m, /07:00 → 09:30/);
+  assert.doesNotMatch(m, /14:30/);
+  const un = P.render('energy-day', {}, energyHass({ 'sensor.octopus_today_negative_windows': { state: 'unavailable', attributes: {} } }), NOW, {});
+  assert.match(un, /Negative<\/div><div class="m">–</);
+  assert.match(P.render('energy-day', {}, energyHass({ 'binary_sensor.octopus_energy_target_cheapest_2h_waking_hours': { state: 'on', attributes: {} } }), NOW, {}), /Running now/);
+  const none = P.render('energy-day', {}, energyHass({ 'sensor.cheapest_2h_waking_start': { state: 'unknown', attributes: {} }, 'sensor.cheapest_2h_waking_end': { state: 'unknown', attributes: {} } }), NOW, {});
+  assert.match(none, /none upcoming/);
+});
+
+ok('energy page: tomorrow missing / empty / unavailable shows the honest empty state', () => {
+  for (const rates of [[], undefined, 'unavailable', [null], 'x']) {
+    const html = P.render('energy-day', {}, energyHass(rates === undefined ? { 'event.octopus_energy_electricity_24e8140196_1012483035417_next_day_rates': null } : {}, real, rates), NOW, { day: 'tomorrow' });
+    assert.match(html, /Tomorrow's rates are not in yet/);
+    assert.match(html, /published late afternoon/);
+    assert.doesNotMatch(html, /<rect|data-chart|Cheapest<\/div>/);
+    assert.match(html, /class="seg on" data-act="energy-day" data-day="tomorrow"/);
+    noNoise({ html }, 'tomorrow empty');
+  }
+  const todayEmpty = P.render('energy-day', {}, energyHass({}, [], tomorrow), NOW, {});
+  assert.match(todayEmpty, /No price data for today/);
+  assert.doesNotMatch(P.render('energy-day', {}, { states: {} }, NOW, {}), NOISE);
+});
+
+ok('covered day: derived from charges, otherwise "latest complete day"; never guessed', () => {
+  assert.equal(P.isoDayLabel('2026-10-23T00:00:00+01:00'), 'Fri 23 Oct');
+  assert.equal(P.isoDayLabel('2026-10-23'), 'Fri 23 Oct');
+  for (const bad of [null, undefined, 5, 'x', '2026-13-45']) assert.ok([null, 'Fri 23 Oct'].includes(P.isoDayLabel(bad)) || typeof P.isoDayLabel(bad) === 'string');
+  const full = { charges: charges('2026-10-22T23:00:00Z') };
+  full.charges = full.charges.map((c, i) => (i === 0 ? { ...c, start: '2026-10-23T00:00:00+01:00' } : c));
+  assert.equal(P.coveredDay(full), 'Fri 23 Oct');
+  assert.equal(P.coveredDay({ charges: charges('2026-10-22T23:00:00Z', 5, 10).map((c, i) => (i === 0 ? { ...c, start: '2026-10-23T00:00:00+01:00' } : c)) }), null, 'a partial day is not labelled');
+  for (const bad of [undefined, null, {}, { charges: [] }, { charges: 'x' }, { charges: [{ start: 'nope' }] }]) assert.equal(P.coveredDay(bad), null);
+});
+
+ok('standing charge is only claimed when the attributes prove it (live shapes: rounding tolerant)', () => {
+  const at = (without, standing) => ({ total_without_standing_charge: without, standing_charge: standing });
+  assert.equal(P.standingNote(3.58, at(3.11, 0.46)), 'incl. standing charge'); // live electricity: sum is 3.57
+  assert.equal(P.standingNote(2.84, at(2.56, 0.28)), 'incl. standing charge'); // live gas: exact
+  assert.equal(P.standingNote(3.58, at(3.11, 0.46)), P.standingNote(3.57, at(3.11, 0.46)));
+  assert.equal(P.standingNote(3.9, at(3.11, 0.46)), '', 'a genuinely different total makes no claim');
+  assert.equal(P.standingNote(2.9, at(2.9, 0.52)), 'excl. standing charge');
+  assert.equal(P.standingNote(3.58, { total_without_standing_charge: 3.11 }), '', 'standing charge missing');
+  assert.equal(P.standingNote(3.58, { standing_charge: 0.46 }), '', 'without-standing missing');
+  assert.equal(P.standingNote(3.58, {}), '');
+  assert.equal(P.standingNote(null, at(3.11, 0.46)), '');
+  assert.equal(P.standingNote(3.58, undefined), '');
+  assert.equal(P.standingNote(3.58, at('x', 'y')), '');
+});
+
+ok('covered day on a 25-hour clock-change day: 50 charges from 2026-10-25T00:00:00+01:00 still derive the date', () => {
+  const c = Array.from({ length: 50 }, (_, i) => {
+    const t = Date.parse('2026-10-24T23:00:00Z') + i * 1800000;
+    return { start: i === 0 ? '2026-10-25T00:00:00+01:00' : new Date(t).toISOString(), end: new Date(t + 1800000).toISOString(), cost: 0.1 };
+  });
+  assert.equal(P.coveredDay({ charges: c }), 'Sun 25 Oct');
+  assert.equal(P.coveredDay({ charges: c.slice(0, 40) }), null, 'a partial list is still refused');
+  const r = P.render('energy-cost', {}, mk({ [`${EID}_cost`]: { state: '3.58', attributes: { unit_of_measurement: 'GBP', charges: c, total_without_standing_charge: 3.11, standing_charge: 0.46 } } }), NOW);
+  assert.match(r, /£3\.58<\/div><div[^>]*>Sun 25 Oct · – · incl\. standing charge</);
+});
+
+ok('cost card: published values labelled with their day, unavailable dashes, missing date says latest complete day', () => {
+  const e = { unit_of_measurement: 'GBP', charges: charges('2026-10-22T23:00:00Z').map((c, i) => (i === 0 ? { ...c, start: '2026-10-23T00:00:00+01:00' } : c)), total_without_standing_charge: 2.9, standing_charge: 0.52 };
+  const hass = mk({ [`${EID}_cost`]: { state: '3.42', attributes: e }, [`${EID}_consumption`]: { state: '9.4', attributes: { unit_of_measurement: 'kWh' } }, [`${GID}_cost`]: { state: '1.2', attributes: { unit_of_measurement: 'GBP' } }, [`${GID}_consumption_kwh`]: { state: '10.04', attributes: { unit_of_measurement: 'kWh' } } });
+  const html = P.render('energy-cost', {}, hass, NOW);
+  assert.match(html, /Electricity<\/div><div class="v">£3\.42<\/div><div[^>]*>Fri 23 Oct · 9\.4 kWh · incl\. standing charge</);
+  assert.match(html, /Gas<\/div><div class="v">£1\.20<\/div><div[^>]*>latest complete day · 10\.0 kWh</);
+  assert.doesNotMatch(html, /Gas[\s\S]*standing/);
+  assert.match(html, /Octopus publishes about 1-2 days late/);
+  const dash = P.render('energy-cost', {}, mk({ [`${EID}_cost`]: { state: 'unavailable', attributes: {} } }), NOW);
+  assert.equal(count(dash, /class="v">–</g), 2);
+  assert.match(dash, /latest complete day · –/);
+  assert.match(P.render('energy-cost', {}, mk({ [`${EID}_cost`]: { state: '3.42', attributes: { unit_of_measurement: 'USD' } } }), NOW), /class="v">–</);
+  noNoise({ html, dash }, 'cost');
+  assert.equal(P.money(-1.5, 'GBP'), '−£1.50');
+});
+
+ok('usage card: unit-aware kWh, dashes for unavailable / unknown units, labelled as live meter', () => {
+  const g = (v, u) => ({ state: v, attributes: u ? { unit_of_measurement: u } : {} });
+  const html = P.render('energy-usage', {}, mk({ 'sensor.glow_electricity_today': g('17.9', 'kWh'), 'sensor.glow_electricity_month': g('142.33', 'kWh'), 'sensor.glow_gas_today': g('3100', 'Wh'), 'sensor.glow_gas_month': g('unavailable', 'kWh') }), NOW);
+  assert.match(html, /Electricity today<\/div><div class="v">17\.9 <span>kWh<\/span>/);
+  assert.match(html, /Electricity this month<\/div><div class="v">142 <span>kWh<\/span>/);
+  assert.match(html, /Gas today<\/div><div class="v">3\.1 <span>kWh<\/span>/);
+  assert.match(html, /Gas this month<\/div><div class="v">–</);
+  assert.match(html, /smart meter, live/);
+  const nounit = P.render('energy-usage', {}, mk({ 'sensor.glow_electricity_today': g('17.9') }), NOW);
+  assert.match(nounit, /Electricity today<\/div><div class="v">–</);
+  assert.equal(P.energyText('1', 'MWh'), '1000 kWh');
+  assert.equal(P.energyText(null, 'kWh'), '–');
+  noNoise({ html, nounit }, 'usage');
+});
+
+ok('energy page: sparse / missing / garbage data never throws or leaks noise in any energy mode', () => {
+  for (const hass of [{ states: {} }, mk(), energyHass({ 'sensor.glow_gas_today': { state: 'x', attributes: null }, [`${EID}_cost`]: { state: '1', attributes: { charges: 5 } } }), energyHass({}, 'junk', 7)]) {
+    for (const m of ['energy-head', 'energy-day', 'energy-cost', 'energy-usage']) for (const ui of [{}, { day: 'tomorrow' }, undefined]) noNoise({ x: P.render(m, {}, hass, NOW, ui) }, m);
+  }
+});
+
+ok('energy view is registered, linked from Now with the guarded Details link, and adds no write paths', () => {
+  const v = yaml.load(readFileSync(root + 'views/info-energy.yaml', 'utf8'));
+  assert.equal(v.path, 'energy');
+  assert.equal(v.subview, true);
+  assert.equal(v.back_path, '/pulse-dashboard/now');
+  assert.deepEqual(v.sections[0].cards.map((c) => c.mode), ['energy-head', 'energy-day', 'energy-cost', 'energy-usage']);
+  assert.match(readFileSync(root + 'info-dashboard.yaml', 'utf8'), /views\/info-energy\.yaml/);
+  const now = yaml.load(readFileSync(root + 'views/info-now.yaml', 'utf8'));
+  const card = now.sections[0].cards.find((c) => c.mode === 'energy');
+  assert.equal(card.details_path, P.ENERGY_PATH);
+  assert.match(P.render('energy', card, mk(), NOW), /data-path="\/pulse-dashboard\/energy"[^>]*>Details ›/);
+  assert.deepEqual(Object.keys(P.ALLOWED).sort(), ['input_boolean', 'light', 'media_player', 'scene', 'switch']);
   assert.match(readFileSync(root + 'packages/frontend.yaml', 'utf8'), /pulse-card\.js\?v=1\b/);
 });
 

@@ -9,6 +9,7 @@ streamline_templates: !include info_templates.yaml
 
 views:
   - !include views/info-now.yaml
+  - !include views/info-energy.yaml
   - !include views/info-room-parlour.yaml
   - !include views/info-room-kitchen.yaml
   - !include views/info-room-hallway_downstairs.yaml
