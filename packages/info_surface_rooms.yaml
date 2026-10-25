@@ -68,10 +68,8 @@ template:
             ] %}
             {% set feed = state_attr('sensor.info_decision_feed', 'by_room') %}
             {% set feed = feed | from_json if feed is string else (feed or []) %}
-            {% set heat_words = {
-              'comfort': 'heating at comfort', 'baseline_day': 'heating at baseline',
-              'baseline_night': 'heating at night baseline', 'minimum': 'heating at frost minimum',
-              'off': 'heating off'} %}
+            {% set lx = state_attr('sensor.info_decision_feed', 'lights') %}
+            {% set lights_feed = lx | from_json if lx is string else (lx or []) %}
             {% set out = namespace(items=[]) %}
             {% for c in cfg %}
               {% set k = c['k'] %}
@@ -120,11 +118,11 @@ template:
               {% set last = lasts.v %}
               {% set parts = [('Occupancy unavailable' if 'occupancy' in un.items else ('Occupied' if occupied else 'Empty'))] %}
               {% set parts = parts + [('lights on' if lights_on else 'lights off')] %}
-              {# Effective state: when the TRV target is not the mode's, say what it actually is. #}
+              {# Effective state: only said when the TRV target is not what the mode implies; otherwise the mode is noise. #}
+              {% set lw = namespace(v=none) %}
+              {% for f in lights_feed if lw.v is none and f.get('loc') == k %}{% set lw.v = f %}{% endfor %}
               {% if target_reason %}
                 {% set parts = parts + ['heating target ' ~ (target | float(0)) ~ '° (' ~ target_reason ~ ')'] %}
-              {% elif c['he'] and active not in ['', 'unknown', 'unavailable'] %}
-                {% set parts = parts + [heat_words.get(active, 'heating ' ~ (active | replace('_', ' ')))] %}
               {% endif %}
               {% set pres_labels = hs.items | selectattr('s', 'eq', 'presence') | map(attribute='label') | list %}
               {% set heat_labels = hs.items | selectattr('s', 'eq', 'heating') | map(attribute='label') | list %}
@@ -153,6 +151,8 @@ template:
                 'reason_text': reason_text,
                 'override_text': ovr,
                 'labels': labels,
+                'lights_why': (lw.v.get('why') or '') if lw.v else '',
+                'lights_ts': (lw.v.get('ts') or '') if lw.v else '',
                 'last': last.get('sentence') if last else '',
                 'last_ts': last.get('ts') if last else '',
                 'verdict': parts | join(' · ')

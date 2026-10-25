@@ -26,8 +26,9 @@ cards:
           - **{{ i.get('room') }}**: {{ i.get('text') }} ([fix]({{ i.get('nav') or '/mobile-dashboard' }}))
           {% endfor %}
           {% endif %}
-          {% if states('sensor.info_decision_feed') in ['unknown', 'unavailable'] %}
-          _Decision feed has not seen an event since HA started._
+          {% set fe = state_attr('sensor.info_decision_feed', 'entries') %}
+          {% if not fe or (fe is string and (fe | from_json) | length == 0) %}
+          _No decisions seen since HA started, so room cards show no reasons yet._
           {% endif %}
 
           [Open Mobile](/mobile-dashboard) · [House report](/info-dashboard/house)
@@ -48,12 +49,16 @@ cards:
           ### {{ r.get('n') }}{% if r.get('k') in keys %} (needs attention){% endif %}
           {{ r.get('verdict') or '' }}
 
-          {% if r.get('temp') is not none %}Room sensor {{ r.get('temp') }}°{% if r.get('target') is not none %} · TRV target {{ r.get('target') }}°{% if r.get('target_reason') %} ({{ r.get('target_reason') }}){% endif %}{% endif %}{% if r.get('mode_name') and r.get('mode_target') is not none %} · mode {{ r.get('mode_name') }} ({{ r.get('mode_target') }}°){% endif %}{% if r.get('humidity') is not none %} · {{ r.get('humidity') | round(0) | int }}%{% endif %}{% endif %}{% if r.get('scene') %} · scene {{ r.get('scene') }}{% endif %}
-          {% if r.get('heating_source') %}Heating source: {{ r.get('heating_source') | replace('_', ' ') }}{% endif %}
+          {% set lw = r.get('lights_why') %}{% set sc = r.get('scene') %}
+          {% if r.get('lights_on') and sc and sc != 'off' %}Lights: {{ sc }} scene{% if lw %} · {{ lw }}{% endif %}{% elif lw %}Lights: {{ 'on' if r.get('lights_on') else 'off' }} · {{ lw }}{% endif %}{% if lw and r.get('lights_ts') %} ({{ 'just now' if (now() - as_datetime(r.get('lights_ts'))).total_seconds() < 60 else relative_time(as_datetime(r.get('lights_ts'))) ~ ' ago' }}){% endif %}
 
-          Automations: lights {{ 'on' if r.get('lights_enabled') else '**off**' }}{% if r.get('heating_enabled') is not none %} · heating {{ 'on' if r.get('heating_enabled') else '**off**' }}{% endif %}{% if r.get('override') %} · **override**{% endif %}
+          {# One temperature: the room sensor. TRV target and mode only when they explain something. #}
+          {% if r.get('temp') is not none %}Room {{ r.get('temp') }}°{% if r.get('humidity') is not none %} · {{ r.get('humidity') | round(0) | int }}%{% endif %}{% if r.get('target_reason') and r.get('target') is not none %} · TRV target {{ r.get('target') }}° ({{ r.get('target_reason') }}){% if r.get('mode_name') and r.get('mode_target') is not none %} · mode {{ r.get('mode_name') }} ({{ r.get('mode_target') }}°){% endif %}{% endif %}{% endif %}
+          {% set src = r.get('heating_source') %}{% if src and src not in ['schedule', 'unknown', 'unavailable'] %}Heating source: {{ src | replace('_', ' ') }}{% endif %}
 
-          {% if r.get('last') %}Last action: {{ r.get('last') }}{% if r.get('last_ts') %} ({{ 'just now' if (now() - as_datetime(r.get('last_ts'))).total_seconds() < 60 else relative_time(as_datetime(r.get('last_ts'))) ~ ' ago' }}){% endif %}{% else %}Last action: none seen since HA started{% endif %}
+          {% if not r.get('lights_enabled', true) or r.get('heating_enabled') == false or r.get('override') %}Automations: lights {{ 'on' if r.get('lights_enabled', true) else '**off**' }}{% if r.get('heating_enabled') is not none %} · heating {{ 'on' if r.get('heating_enabled') else '**off**' }}{% endif %}{% if r.get('override') %} · **override**{% endif %}{% endif %}
+
+          {% if r.get('last') %}Last action: {{ r.get('last') }}{% if r.get('last_ts') %} ({{ 'just now' if (now() - as_datetime(r.get('last_ts'))).total_seconds() < 60 else relative_time(as_datetime(r.get('last_ts'))) ~ ' ago' }}){% endif %}{% endif %}
 
           [Room controls]({{ r.get('nav') or '/mobile-dashboard' }})
 
