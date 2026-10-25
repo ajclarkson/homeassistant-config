@@ -15,6 +15,7 @@ const P = require('../www/pulse-card.js');
 const root = new URL('..', import.meta.url).pathname;
 let n = 0;
 const ok = (name, fn) => { fn(); n += 1; console.log('ok', name); };
+const okAsync = async (name, fn) => { await fn(); n += 1; console.log('ok', name); };
 
 const NOW = Date.parse('2026-10-25T18:42:00Z');
 const BASE = 'sensor.octopus_energy_electricity_24e8140196_1012483035417';
@@ -61,7 +62,7 @@ const withRooms = (rooms, attention, extra = {}) => mk({
   ...extra,
 });
 const NOISE = /undefined|NaN|\[object|null/;
-const ALL_MODES = ['now-header', 'status', 'rooms', 'bins-heating', 'feed', 'footer', 'energy-head', 'energy-day', 'energy-cost', 'energy-usage'];
+const ALL_MODES = ['now-header', 'status', 'rooms', 'bins-heating', 'feed', 'footer', 'energy-head', 'energy-day', 'energy-cost', 'energy-history', 'energy-usage'];
 const ROOM_MODES = ['room-head', 'why', 'scenes', 'lights', 'media', 'automations', 'room-feed'];
 const renderAll = (hass) => {
   const out = {};
@@ -941,7 +942,7 @@ ok('usage card: unit-aware kWh, dashes for unavailable / unknown units, labelled
 
 ok('energy page: sparse / missing / garbage data never throws or leaks noise in any energy mode', () => {
   for (const hass of [{ states: {} }, mk(), energyHass({ 'sensor.glow_gas_today': { state: 'x', attributes: null }, [`${EID}_cost`]: { state: '1', attributes: { charges: 5 } } }), energyHass({}, 'junk', 7)]) {
-    for (const m of ['energy-head', 'energy-day', 'energy-cost', 'energy-usage']) for (const ui of [{}, { day: 'tomorrow' }, undefined]) noNoise({ x: P.render(m, {}, hass, NOW, ui) }, m);
+    for (const m of ['energy-head', 'energy-day', 'energy-cost', 'energy-history', 'energy-usage']) for (const ui of [{}, { day: 'tomorrow' }, undefined]) noNoise({ x: P.render(m, {}, hass, NOW, ui) }, m);
   }
 });
 
@@ -950,10 +951,251 @@ ok('energy view is registered and adds no write paths', () => {
   assert.equal(v.path, 'energy');
   assert.equal(v.subview, true);
   assert.equal(v.back_path, '/pulse-dashboard/now');
-  assert.deepEqual(v.sections[0].cards.map((c) => c.mode), ['energy-head', 'energy-day', 'energy-cost', 'energy-usage']);
+  assert.deepEqual(v.sections[0].cards.map((c) => c.mode), ['energy-head', 'energy-day', 'energy-cost', 'energy-history', 'energy-usage']);
   assert.match(readFileSync(root + 'info-dashboard.yaml', 'utf8'), /views\/info-energy\.yaml/);
   assert.deepEqual(Object.keys(P.ALLOWED).sort(), ['input_boolean', 'light', 'media_player', 'scene', 'switch']);
   assert.match(readFileSync(root + 'packages/frontend.yaml', 'utf8'), /pulse-card\.js\?v=1\b/);
+});
+
+// ── Daily cost history ───────────────────────────────────────────────────────────────────────
+const ECOST = P.COST_STAT.electricity;
+const GCOST = P.COST_STAT.gas;
+// Known-good electricity series from the recorder spike: last_reset UTC instant -> cost (covered local day = UTC date + 1).
+const KNOWN = [['2026-10-13T23:00:00Z', 3.07], ['2026-10-14T23:00:00Z', 3.15], ['2026-10-15T23:00:00Z', 3.43], ['2026-10-16T23:00:00Z', 3.16], ['2026-10-17T23:00:00Z', 2.78], ['2026-10-18T23:00:00Z', 3.18], ['2026-10-19T23:00:00Z', 3.56], ['2026-10-20T23:00:00Z', 3.61], ['2026-10-21T23:00:00Z', 2.75], ['2026-10-22T23:00:00Z', 3.58]];
+// hourly rows for one covered day: the rows' own `start` is ~27 h after last_reset onward (NOT the covered day)
+const hourly = (resetIso, cost, count = 24, form = 'ms') => Array.from({ length: count }, (_, i) => {
+  const reset = Date.parse(resetIso);
+  const start = reset + (27 + i) * 3600000;
+  // the same instant written three ways: Z, +00:00 and the local +01:00 form
+  const iso = [new Date(reset).toISOString(), new Date(reset).toISOString().replace('.000Z', '+00:00'), new Date(reset + 3600000).toISOString().replace('.000Z', '+01:00')][i % 3];
+  return { start: form === 'iso' ? new Date(start).toISOString() : start, end: start + 3600000, state: cost, last_reset: form === 'iso' ? iso : reset, sum: 100 + i, change: i === 0 ? cost : 0 };
+});
+const knownRows = (form) => KNOWN.flatMap(([r, c]) => hourly(r, c, 24, form));
+const TZ = 'Europe/London';
+
+ok('history: groups by last_reset INSTANT (mixed +00:00 / +01:00 / Z / ms / seconds forms are one group)', () => {
+  const reset = Date.parse('2026-10-22T23:00:00Z');
+  const forms = [reset, reset / 1000, '2026-10-22T23:00:00Z', '2026-10-22T23:00:00+00:00', '2026-10-23T00:00:00+01:00'];
+  const rows = forms.flatMap((f) => hourly('2026-10-22T23:00:00Z', 3.58, 5).map((r) => ({ ...r, last_reset: f })));
+  const d = P.groupDailyCost(rows, TZ, { minRows: 20 });
+  assert.equal(d.length, 1);
+  assert.equal(d[0].rows, 25);
+  assert.equal(d[0].date, '2026-10-23');
+  assert.equal(d[0].cost, 3.58);
+  assert.equal(P.instantMs('2026-10-23T00:00:00+01:00'), P.instantMs('2026-10-22T23:00:00+00:00'));
+  assert.equal(P.instantMs(1792885200), 1792885200000);
+});
+
+ok('history: the known-good electricity fixture gives covered days 14..23 Oct with the right costs (ms and ISO inputs)', () => {
+  for (const form of ['ms', 'iso']) {
+    const d = P.groupDailyCost(knownRows(form), TZ);
+    assert.deepEqual(d.map((x) => x.date), ['2026-10-14', '2026-10-15', '2026-10-16', '2026-10-17', '2026-10-18', '2026-10-19', '2026-10-20', '2026-10-21', '2026-10-22', '2026-10-23'], form);
+    assert.deepEqual(d.map((x) => x.cost), KNOWN.map((k) => k[1]));
+    assert.ok(d.every((x) => x.rows === 24));
+  }
+  // `change` on a group's first row equals the new state (sanity, not displayed)
+  const rows = hourly('2026-10-22T23:00:00Z', 3.58);
+  assert.equal(rows[0].change, rows[0].state);
+});
+
+ok('history: covered date across BST, GMT and both clock changes (no last_reset + 1h arithmetic)', () => {
+  const date = (iso) => P.localDate(Date.parse(iso), TZ);
+  assert.equal(date('2026-10-22T23:00:00Z'), '2026-10-23'); // BST midnight
+  assert.equal(date('2026-10-24T23:00:00Z'), '2026-10-25'); // local midnight 25 Oct (still BST)
+  assert.equal(date('2026-10-26T00:00:00Z'), '2026-10-26'); // local midnight 26 Oct (GMT)
+  assert.equal(date('2026-11-10T00:00:00Z'), '2026-11-10'); // winter
+  assert.equal(date('2027-03-28T00:00:00Z'), '2027-03-28'); // spring: local midnight 28 Mar (GMT)
+  assert.equal(date('2027-03-28T23:00:00Z'), '2027-03-29'); // local midnight 29 Mar (BST)
+  // the 25 Oct day is 25 h long; its group and the next group are different days
+  const rows = [...hourly('2026-10-24T23:00:00Z', 4.1, 25), ...hourly('2026-10-26T00:00:00Z', 3.3, 24)];
+  const d = P.groupDailyCost(rows, TZ);
+  assert.deepEqual(d.map((x) => x.date), ['2026-10-25', '2026-10-26']);
+  assert.equal(P.localDate(Date.parse('2026-10-22T23:00:00Z'), 'Not/AZone'), P.localDate(Date.parse('2026-10-22T23:00:00Z'), undefined), 'bad zone falls back');
+});
+
+ok('history: partial groups are dropped except the newest (still open); fewer than 14 days just shows fewer', () => {
+  const rows = [...hourly('2026-10-19T23:00:00Z', 3.56), ...hourly('2026-10-20T23:00:00Z', 9.99, 5), ...hourly('2026-10-21T23:00:00Z', 2.75), ...hourly('2026-10-22T23:00:00Z', 3.58, 3)];
+  const d = P.groupDailyCost(rows, TZ);
+  assert.deepEqual(d.map((x) => [x.date, x.cost]), [['2026-10-20', 3.56], ['2026-10-22', 2.75], ['2026-10-23', 3.58]]);
+  assert.equal(P.groupDailyCost(hourly('2026-10-22T23:00:00Z', 3.58, 1), TZ).length, 1, 'a lone newest group is kept');
+  const many = Array.from({ length: 30 }, (_, i) => hourly(new Date(Date.parse('2026-09-01T23:00:00Z') + i * 86400000).toISOString(), 3 + i / 100)).flat();
+  const d14 = P.groupDailyCost(many, TZ);
+  assert.equal(d14.length, 14);
+  assert.equal(d14[13].cost, 3.29, 'the most recent 14 days');
+});
+
+ok('history: empty / garbage / missing inputs never throw or invent days', () => {
+  for (const bad of [undefined, null, 5, 'x', {}, [], [null], [{}], [{ state: 'x', last_reset: 'y' }], [{ state: 3, last_reset: null }], [{ state: null, last_reset: 5 }]]) assert.deepEqual(P.groupDailyCost(bad, TZ), [], JSON.stringify(bad));
+  assert.deepEqual(P.dailyCostFromWS(undefined, TZ), { electricity: [], gas: [] });
+  assert.deepEqual(P.dailyCostFromWS({ [ECOST]: 'x', [GCOST]: [{ junk: 1 }] }, TZ), { electricity: [], gas: [] });
+  const both = P.dailyCostFromWS({ [ECOST]: hourly('2026-10-22T23:00:00Z', 3.58), [GCOST]: hourly('2026-10-23T23:00:00Z', 2.84) }, TZ);
+  assert.equal(both.electricity[0].date, '2026-10-23');
+  assert.equal(both.gas[0].date, '2026-10-24');
+});
+
+ok('history request is a read-only recorder statistics call for the two cost sensors (hourly, 21 days)', () => {
+  const r = P.histRequest(Date.parse('2026-10-25T12:00:00Z'));
+  assert.equal(r.type, 'recorder/statistics_during_period');
+  assert.equal(r.period, 'hour');
+  assert.deepEqual(r.statistic_ids, [ECOST, GCOST]);
+  assert.ok(r.statistic_ids.every((id) => id.startsWith('sensor.') && !id.startsWith('octopus_energy:')));
+  assert.equal(r.start_time, '2026-10-04T12:00:00.000Z');
+  assert.deepEqual(r.types, ['state', 'last_reset', 'sum', 'change']);
+  assert.deepEqual(Object.keys(P.ALLOWED).sort(), ['input_boolean', 'light', 'media_player', 'scene', 'switch']);
+  assert.ok(!('recorder' in P.ALLOWED) && !('mqtt' in P.ALLOWED));
+});
+
+const histUi = (fuel, e, g, statusE = 'ok', statusG = 'ok') => ({ fuel, hist: { electricity: { status: statusE, days: e || [] }, gas: { status: statusG, days: g || [] } } });
+const elecDays = () => P.groupDailyCost(knownRows('ms'), TZ);
+
+ok('history section: bars, scaling, latest highlighted, ticks, summary, readout text', () => {
+  const days = elecDays();
+  const hass = mk({ [ECOST]: { state: '3.58', attributes: { unit_of_measurement: 'GBP', total_without_standing_charge: 3.11, standing_charge: 0.46 } } });
+  const html = P.render('energy-history', {}, hass, NOW, histUi('electricity', days));
+  assert.match(html, />Daily cost</);
+  assert.match(html, /class="seg on" data-act="cost-fuel" data-fuel="electricity" aria-pressed="true"/);
+  assert.match(html, /data-fuel="gas" aria-pressed="false"/);
+  const bars = [...html.matchAll(/<rect x="(\d+)" y="([\d.]+)" width="(\d+)" height="([\d.]+)" rx="2" fill="#7aa7ff" opacity="([\d.]+)"\/>/g)].map((m) => ({ y: +m[2], h: +m[4], op: +m[5] }));
+  assert.equal(bars.length, 10);
+  assert.equal(bars[9].op, 1);
+  assert.ok(bars.slice(0, 9).every((b) => b.op === 0.55));
+  const base = Number(html.match(/<line x1="0" x2="240" y1="([\d.]+)"/)[1]);
+  assert.ok(bars.every((b) => Math.abs(b.y + b.h - base) < 0.06), 'every bar grows from the zero baseline');
+  const hmax = Math.max(...bars.map((b) => b.h));
+  assert.ok(Math.abs(bars[7].h / hmax - 1) < 1e-6, 'the dearest day (3.61) is the tallest');
+  assert.ok(Math.abs(bars[8].h / hmax - 2.75 / 3.61) < 0.02, 'heights are proportional from zero');
+  assert.match(html, /viewBox="0 0 240 96"/);
+  assert.match(html, /data-chart data-kind="cost" data-n="10"/);
+  assert.match(html, />Fri 23</);
+  assert.match(html, /aria-label="Daily cost, 10 days\. Highest £3\.61 on Wed 21 Oct, lowest £2\.75 on Thu 22 Oct, latest £3\.58 on Fri 23 Oct\."/);
+  assert.match(html, /10-day average £3\.23 · incl\. standing charge/);
+  assert.match(html, /Published about 1-2 days late/);
+  const noClaim = P.render('energy-history', {}, mk({ [ECOST]: { state: '3.58', attributes: { unit_of_measurement: 'GBP' } } }), NOW, histUi('electricity', days));
+  assert.match(noClaim, /10-day average £3\.23</);
+  assert.doesNotMatch(noClaim, /standing/);
+  const r = P.dayReadout({ date: '2026-10-23', v: 3.58, state: 'current' });
+  assert.equal(`${r.range} · ${r.price}`, 'Fri 23 Oct · £3.58');
+  assert.equal(r.note, 'latest');
+  assert.equal(P.dayReadout({ date: '2026-10-22', v: 3.58, state: 'past' }).note, '');
+  assert.equal(P.dayReadout({ date: 'nope', v: 1 }), null);
+  assert.equal(P.dayReadout({ date: '2026-10-23', v: NaN }), null);
+  assert.equal(P.dailySummary([], 'incl. standing charge'), '');
+  noNoise({ html }, 'history');
+});
+
+ok('history section: toggle shows gas, fewer than 14 days, loading / unavailable / empty are honest, never fake bars', () => {
+  const g = P.groupDailyCost(hourly('2026-10-23T23:00:00Z', 2.84), TZ);
+  const hass = mk({});
+  const gas = P.render('energy-history', {}, hass, NOW, histUi('gas', elecDays(), g));
+  assert.match(gas, /class="seg on" data-act="cost-fuel" data-fuel="gas" aria-pressed="true"/);
+  assert.equal(count(gas, /<rect /g), 1);
+  assert.match(gas, /1-day average £2\.84/);
+  assert.match(gas, />Sat 24</);
+  const loading = P.render('energy-history', {}, hass, NOW, undefined);
+  assert.match(loading, /Loading history/);
+  assert.doesNotMatch(loading, /<rect/);
+  const loading2 = P.render('energy-history', {}, hass, NOW, histUi('electricity', [], [], 'loading', 'loading'));
+  assert.match(loading2, /Loading history/);
+  for (const ui of [histUi('electricity', [], [], 'unavailable'), histUi('electricity', [], [], 'ok'), { fuel: 'electricity', hist: 'junk' }, { fuel: 'weird', hist: null }]) {
+    const html = P.render('energy-history', {}, hass, NOW, ui);
+    assert.match(html, /History unavailable|Loading history/);
+    assert.doesNotMatch(html, /<rect|data-chart/);
+  }
+});
+
+await okAsync('history runtime: one WS call on mount, no call per hass update, 30 min refresh, no overlap, stale and unmount guarded, failures swallowed', async () => {
+  const saved = { HTMLElement: globalThis.HTMLElement, customElements: globalThis.customElements, window: globalThis.window, warn: console.warn, now: Date.now };
+  let Card;
+  globalThis.HTMLElement = class { constructor() { this.style = {}; } attachShadow() { return { addEventListener() {}, querySelector() { return null; }, querySelectorAll() { return []; }, innerHTML: '' }; } };
+  globalThis.customElements = { get() { return undefined; }, define(n, c) { if (n === 'pulse-card') Card = c; } };
+  globalThis.window = { customCards: [] };
+  const warns = [];
+  console.warn = (...a) => warns.push(a.join(' '));
+  let clock = Date.parse('2026-10-25T12:00:00Z');
+  Date.now = () => clock;
+  try {
+    const modPath = new URL('../www/pulse-card.js', import.meta.url).pathname;
+    delete require.cache[require.resolve(modPath)];
+    require(modPath);
+    assert.ok(Card, 'custom element registered');
+    const mkCard = (connected = true) => { const c = new Card(); Object.defineProperty(c, 'isConnected', { get: () => connected, configurable: true }); c.setConfig({ mode: 'energy-history' }); return c; };
+    const flush = () => new Promise((r) => setTimeout(r, 0));
+    const calls = [];
+    const gate = {};
+    const hassWith = (impl) => ({ states: {}, config: { time_zone: 'Europe/London' }, callWS: (req) => { calls.push(req); return impl(req); } });
+    const ok1 = { [ECOST]: hourly('2026-10-22T23:00:00Z', 3.58), [GCOST]: hourly('2026-10-23T23:00:00Z', 2.84) };
+
+    // mount -> exactly one call; repeated hass updates do not call again; data lands
+    let c = mkCard();
+    c.hass = hassWith(async () => ok1);
+    c.hass = hassWith(async () => ok1);
+    c.hass = hassWith(async () => ok1);
+    assert.equal(calls.length, 1, 'overlap guard + once on mount');
+    await flush();
+    assert.equal(c._ui.hist.electricity.status, 'ok');
+    assert.equal(c._ui.hist.electricity.days[0].date, '2026-10-23');
+    assert.equal(c._ui.hist.gas.days[0].date, '2026-10-24');
+    c.hass = hassWith(async () => ok1);
+    assert.equal(calls.length, 1, 'no call per hass update');
+    clock += 29 * 60000; c.hass = hassWith(async () => ok1);
+    assert.equal(calls.length, 1, 'not before 30 minutes');
+    clock += 2 * 60000; c.hass = hassWith(async () => ok1);
+    assert.equal(calls.length, 2, 'refresh after 30 minutes');
+    await flush();
+
+    // failure -> unavailable + console.warn, retry only after 5 minutes
+    calls.length = 0; warns.length = 0;
+    c = mkCard();
+    c.hass = hassWith(async () => { throw new Error('boom'); });
+    await flush();
+    assert.equal(c._ui.hist.electricity.status, 'unavailable');
+    assert.ok(warns.some((w) => /daily cost history unavailable/.test(w)));
+    clock += 60000; c.hass = hassWith(async () => ok1);
+    assert.equal(calls.length, 1, 'no hammering after a failure');
+    clock += 5 * 60000; c.hass = hassWith(async () => ok1);
+    assert.equal(calls.length, 2, 'retries after 5 minutes');
+    await flush();
+    assert.equal(c._ui.hist.electricity.status, 'ok');
+
+    // empty statistics -> unavailable, never fake bars
+    calls.length = 0;
+    c = mkCard();
+    c.hass = hassWith(async () => ({ [ECOST]: [], [GCOST]: [] }));
+    await flush();
+    assert.equal(c._ui.hist.electricity.status, 'unavailable');
+    assert.equal(c._ui.hist.electricity.days.length, 0);
+
+    // no callWS at all -> unavailable without throwing
+    c = mkCard();
+    c.hass = { states: {}, config: {} };
+    assert.equal(c._ui.hist.gas.status, 'unavailable');
+
+    // unmount while a call is in flight -> the late response is dropped
+    c = mkCard();
+    let release;
+    c.hass = hassWith(() => new Promise((r) => { release = () => r(ok1); }));
+    c.disconnectedCallback();
+    release();
+    await flush();
+    assert.equal(c._ui.hist.electricity.status, 'loading', 'stale response after unmount ignored');
+
+    // not connected / wrong mode -> no call
+    calls.length = 0;
+    const d = mkCard(false);
+    d.hass = hassWith(async () => ok1);
+    assert.equal(calls.length, 0);
+    const w = new Card(); Object.defineProperty(w, 'isConnected', { get: () => true }); w.setConfig({ mode: 'rooms' });
+    w.hass = hassWith(async () => ok1);
+    assert.equal(calls.length, 0, 'only the history card fetches');
+  } finally {
+    Object.assign(globalThis, { HTMLElement: saved.HTMLElement, customElements: saved.customElements, window: saved.window });
+    if (saved.HTMLElement === undefined) delete globalThis.HTMLElement;
+    if (saved.customElements === undefined) delete globalThis.customElements;
+    if (saved.window === undefined) delete globalThis.window;
+    console.warn = saved.warn; Date.now = saved.now;
+    delete require.cache[require.resolve(new URL('../www/pulse-card.js', import.meta.url).pathname)];
+    require(new URL('../www/pulse-card.js', import.meta.url).pathname);
+  }
 });
 
 console.log(`\n${n} test groups passed`);
