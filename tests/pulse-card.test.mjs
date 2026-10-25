@@ -434,4 +434,88 @@ ok('extreme prices (>= 45p) render in the extreme colour; zero and negative in t
   assert.deepEqual(bars.map((b) => b.fill), ['#2ee6c8', '#2ee6c8', P.priceColour(20), P.priceColour(44.9), '#c2003b', '#c2003b']);
 });
 
+const mkSlots = (n, startIso, f) => Array.from({ length: n }, (_, i) => { const t = Date.parse(startIso) + i * 1800000; return { start: new Date(t).toISOString(), end: new Date(t + 1800000).toISOString(), value_inc_vat: f(i) / 100 }; });
+
+ok('slotAt: x -> slot index, clamped, never assumes 48', () => {
+  assert.equal(P.slotAt(0, 300, 50), 0);
+  assert.equal(P.slotAt(299.9, 300, 50), 49);
+  assert.equal(P.slotAt(300, 300, 50), 49); // right edge clamps to the last slot
+  assert.equal(P.slotAt(150, 300, 50), 25);
+  assert.equal(P.slotAt(-20, 300, 50), 0);
+  assert.equal(P.slotAt(900, 300, 50), 49);
+  assert.equal(P.slotAt(150, 300, 46), 23);
+  assert.equal(P.slotAt(149.9, 300, 48), 23);
+  assert.equal(P.slotAt(10, 300, 1), 0);
+  for (const bad of [[NaN, 300, 50], [10, 0, 50], [10, -5, 50], [10, 300, 0], [10, 300, -1], [undefined, 300, 50], [10, NaN, 50], [10, 300, NaN], [10, Infinity, 50]]) assert.equal(P.slotAt(...bad), null, JSON.stringify(bad));
+  // every pixel maps to exactly its slot for a 50-slot day at 333px
+  const seen = new Set();
+  for (let x = 0; x < 333; x += 1) { const i = P.slotAt(x, 333, 50); assert.ok(i >= 0 && i <= 49); seen.add(i); }
+  assert.equal(seen.size, 50);
+});
+
+ok('slotReadout: local range, price, now / paid to use notes, bad input is null', () => {
+  const day = P.rateBands(real, Date.parse('2026-10-25T18:29:00Z'));
+  assert.equal(day.length, 50);
+  const r38 = P.slotReadout(day[38]);
+  assert.equal(r38.range, '18:00-18:30');
+  assert.equal(r38.price, '31.1p');
+  assert.equal(r38.note, 'now');
+  assert.equal(r38.colour, P.priceColour(day[38].v, { text: true }));
+  const r39 = P.slotReadout(day[39]);
+  assert.equal(r39.range, '18:30-19:00');
+  assert.equal(r39.price, '26.4p');
+  assert.equal(r39.note, '');
+  assert.match(r39.spoken, /^18:30 to 19:00, 26\.4 pence$/);
+  const neg = day.find((s) => s.v < 0);
+  const rn = P.slotReadout(neg);
+  assert.match(rn.price, /^-\d/);
+  assert.match(rn.note, /paid to use/);
+  assert.equal(rn.colour, P.priceColour(neg.v, { text: true }));
+  assert.equal(P.slotReadout(day[0]).range, '00:00-00:30'.replace('00:00', '23:00').replace('00:30', '23:30')); // first slot starts 23:00Z (00:00+01:00)
+  assert.equal(P.slotReadout(day[49]).range, '23:30-00:00'); // last slot ends at midnight
+  const both = P.slotReadout({ start: 0, end: 1800000, v: -2, state: 'current' });
+  assert.equal(both.note, 'now · paid to use');
+  assert.equal(P.slotReadout({ start: 0, end: 1800000, v: 0, state: 'past' }).note, 'free');
+  for (const bad of [null, undefined, {}, 5, { start: 'x', end: 1, v: 1 }, { start: 0, end: 1, v: NaN }]) assert.equal(P.slotReadout(bad), null);
+});
+
+ok('slotReadout works on a 46-slot (short) day too', () => {
+  const day = P.rateBands(mkSlots(46, '2026-03-29T00:00:00Z', (i) => i - 10), Date.parse('2026-03-29T05:10:00Z'));
+  assert.equal(day.length, 46);
+  assert.equal(P.slotAt(299, 300, day.length), 45);
+  assert.equal(P.slotReadout(day[45]).range, '22:30-23:00');
+  assert.equal(P.slotReadout(day[10]).note, 'now · free');
+});
+
+ok('tooltipLeft: centred, clamped inside the chart, never negative, bad input is 0', () => {
+  assert.equal(P.tooltipLeft(150, 100, 300), 100);
+  assert.equal(P.tooltipLeft(5, 100, 300), 0); // left edge
+  assert.equal(P.tooltipLeft(299, 100, 300), 200); // right edge
+  assert.equal(P.tooltipLeft(150, 400, 300), 0); // wider than the box
+  assert.equal(P.tooltipLeft(150, 0, 300), 150);
+  for (const bad of [[NaN, 10, 300], [10, NaN, 300], [10, 10, 0], [10, 10, -1], [10, 10, NaN], [Infinity, 10, 300]]) assert.equal(P.tooltipLeft(...bad), 0, JSON.stringify(bad));
+  for (let c = -50; c < 400; c += 7) { const l = P.tooltipLeft(c, 120, 300); assert.ok(l >= 0 && l <= 180, `${c} -> ${l}`); }
+});
+
+ok('chart markup: focusable, pan-y, one summary label, live region, guide and tooltip hooks; empty rates have none', () => {
+  const html = energyAt(real, Date.parse('2026-10-25T18:29:00Z'));
+  assert.match(html, /<div class="chart" data-chart data-n="50" tabindex="0" role="img" aria-label="Half-hourly electricity price, 50 slots\./);
+  assert.match(html, /touch-action:pan-y/);
+  assert.equal((html.match(/role="img"/g) || []).length, 1, 'the summary is announced once (svg is aria-hidden)');
+  assert.match(html, /<svg[^>]*aria-hidden="true"/);
+  assert.match(html, /data-guide[^>]*display:none/);
+  assert.match(html, /data-tip class="tip" style="display:none"/);
+  assert.match(html, /<span class="sr" aria-live="polite" data-live><\/span>/);
+  assert.equal(rect(html).length, 50, 'bar markup unchanged');
+  const empty = energyAt([], NOW);
+  assert.doesNotMatch(empty, /data-chart|data-tip|aria-live/);
+  assert.equal(P.SCRUB_HOLD_MS, 2000);
+  const css = readFileSync(root + 'www/pulse-card.js', 'utf8');
+  assert.match(css, /\.sr\{position:absolute;width:1px;height:1px/);
+  assert.match(css, /\.chart:focus-visible/);
+  assert.match(css, /\.tip\{position:absolute;top:-36px/);
+});
+
+ok('module URL version is untouched', () => assert.match(readFileSync(root + 'packages/frontend.yaml', 'utf8'), /pulse-card\.js\?v=1\b/));
+
 console.log(`\n${n} test groups passed`);
