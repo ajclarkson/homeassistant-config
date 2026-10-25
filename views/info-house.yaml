@@ -17,14 +17,16 @@ sections:
           {% if f | length == 0 %}
           No decisions seen since HA started{% if started %} ({{ as_datetime(started).astimezone().strftime('%H:%M') }}){% endif %}. This list is rebuilt from live events and is empty after a restart until something happens.
           {% endif %}
-          {% for e in f %}
-          - {{ e.sentence }} · {{ 'just now' if (now() - as_datetime(e.ts)).total_seconds() < 60 else relative_time(as_datetime(e.ts)) ~ ' ago' }}
+          {# Entries stored before the plumbing filter existed may still be in the list; hide them here too. #}
+          {% set pl = ['update_external_temp', 'record'] %}
+          {% for e in f if e.get('decision') not in pl and 'room_temp_feed' not in (e.get('auto') or '') and 'outdoor_temp_history' not in (e.get('auto') or '') %}
+          - {{ e.get('sentence') }}{% if e.get('ts') %} · {{ 'just now' if (now() - as_datetime(e.get('ts'))).total_seconds() < 60 else relative_time(as_datetime(e.get('ts'))) ~ ' ago' }}{% endif %}
           {% endfor %}
           {% if a | length > 0 %}
 
           **Held back or failed**
           {% for e in a %}
-          - {{ e.sentence }}{% if e.count | int(1) > 1 %} (x{{ e.count }}){% endif %} · {{ 'just now' if (now() - as_datetime(e.ts)).total_seconds() < 60 else relative_time(as_datetime(e.ts)) ~ ' ago' }}
+          - {{ e.get('sentence') }}{% if (e.get('count') or 1) | int(1) > 1 %} (x{{ e.get('count') }}){% endif %}{% if e.get('ts') %} · {{ 'just now' if (now() - as_datetime(e.get('ts'))).total_seconds() < 60 else relative_time(as_datetime(e.get('ts'))) ~ ' ago' }}{% endif %}
           {% endfor %}
           {% endif %}
       - type: markdown
@@ -32,7 +34,8 @@ sections:
         content: |-
           {% set rooms = state_attr('sensor.info_rooms', 'rooms') %}
           {% set rooms = rooms | from_json if rooms is string else (rooms or []) %}
-          {% set heating = rooms | selectattr('hvac_action', 'eq', 'heating') | map(attribute='n') | list %}
+          {% set hn = namespace(n=[]) %}{% for r in rooms %}{% if r.get('hvac_action') == 'heating' %}{% set hn.n = hn.n + [r.get('n')] %}{% endif %}{% endfor %}
+          {% set heating = hn.n %}
           Mode **{{ states('sensor.house_active_mode') }}** · modifier **{{ states('input_select.house_active_mode_modifier') }}**
 
           People: Adam {{ states('person.adam') }} · Sarah {{ states('person.sarah') }}

@@ -112,7 +112,12 @@ template:
               {% elif differs %}{% set target_reason = 'differs from mode' %}
               {% else %}{% set target_reason = '' %}{% endif %}
               {% set scene = states('sensor.' ~ k ~ '_active_scene') %}
-              {% set last = feed | selectattr('loc', 'eq', k) | list | first | default(none) %}
+              {# Entries stored before the feed filtered plumbing may still be present; ignore them here too. #}
+              {% set lasts = namespace(v=none) %}
+              {% for f in feed if lasts.v is none and f.get('loc') == k and f.get('decision') not in ['update_external_temp', 'record'] and 'room_temp_feed' not in (f.get('auto') or '') %}
+                {% set lasts.v = f %}
+              {% endfor %}
+              {% set last = lasts.v %}
               {% set parts = [('Occupancy unavailable' if 'occupancy' in un.items else ('Occupied' if occupied else 'Empty'))] %}
               {% set parts = parts + [('lights on' if lights_on else 'lights off')] %}
               {# Effective state: when the TRV target is not the mode's, say what it actually is. #}
@@ -148,8 +153,8 @@ template:
                 'reason_text': reason_text,
                 'override_text': ovr,
                 'labels': labels,
-                'last': last.sentence if last else '',
-                'last_ts': last.ts if last else '',
+                'last': last.get('sentence') if last else '',
+                'last_ts': last.get('ts') if last else '',
                 'verdict': parts | join(' · ')
               }] %}
             {% endfor %}
