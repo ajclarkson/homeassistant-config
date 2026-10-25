@@ -20,6 +20,9 @@
 (function (root) {
   'use strict';
 
+  // Switch the bottom tab bar off in one line (renders nothing; the Now footer link comes back).
+  const TABBAR_ENABLED = true;
+
   // ── Style tokens (single definition) ─────────────────────────────────────────────────────────
   const TOKENS = {
     ground: '#12151a',
@@ -132,6 +135,12 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 .u{padding:14px;flex:1;min-width:0}
 .u .v{font-size:22px;font-weight:700;letter-spacing:-.4px;margin-top:4px}
 .u .v span{font-size:12px;font-weight:500;color:${TOKENS.text2}}
+.tabbar-spacer{height:var(--tbh)}
+.tabs{--tbh:calc(58px + max(10px, env(safe-area-inset-bottom, 0px)));box-sizing:border-box;height:var(--tbh);padding:8px 16px max(10px, env(safe-area-inset-bottom, 0px));display:flex;background:rgba(18,21,26,.94);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);border-top:1px solid ${TOKENS.divider}}
+.tabs.fixed{position:fixed;left:0;right:0;bottom:0;z-index:100}
+.tab{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font:inherit;font-size:10.5px;font-weight:600;color:${TOKENS.text3};min-height:44px;background:none;border:0;cursor:pointer;padding:0}
+.tab[aria-current=page]{color:${TOKENS.sceneActive}}
+.tab:focus-visible{outline:2px solid ${TOKENS.link};outline-offset:-2px;border-radius:10px}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .chart:focus-visible{outline:2px solid ${TOKENS.link};outline-offset:2px;border-radius:6px}
 .tip{position:absolute;top:-36px;left:0;pointer-events:none;background:${TOKENS.divider};border:1px solid #2f3843;border-radius:8px;padding:4px 8px;font-size:12px;line-height:1.3;white-space:nowrap;z-index:2}
@@ -486,6 +495,8 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     chev: 'M6 9l6 6 6-6',
     sliders: 'M4 12h10M18 12h2M4 6h4M12 6h8M4 18h12M20 18h0M16 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM10 4a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM18 16a2 2 0 1 0 0 4 2 2 0 0 0 0-4z',
     play: 'M8 5v14l11-7z',
+    home: 'M3 11l9-8 9 8M5 10v10h14V10',
+    bolt: 'M13 2L4 14h7l-1 8 9-12h-7z',
     hand: 'M8 13V5a1.5 1.5 0 0 1 3 0v6M11 10V4a1.5 1.5 0 0 1 3 0v6M14 10V6a1.5 1.5 0 0 1 3 0v8a6 6 0 0 1-6 6h-1a6 6 0 0 1-5-3l-2-4a1.5 1.5 0 0 1 2.5-1.5L8 14',
     window: 'M4 4h16v16H4zM12 4v16M4 12h16',
     pause: 'M7 5h4v14H7zM13 5h4v14h-4z',
@@ -1232,8 +1243,45 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return `<div class="lbl" style="margin:4px 4px -10px">What the house did</div><div class="card">${body}</div>`;
   }
 
+  // The Mobile link lives in the tab bar's Controls tab; the text link is the fallback when the bar is off.
   function sectionFooter() {
+    if (TABBAR_ENABLED) return '';
     return `<div style="padding:4px 4px 24px"><a class="link tap" data-act="nav" data-path="${MOBILE}">Open Mobile controls ›</a></div>`;
+  }
+
+  // ── Bottom tab bar ─────────────────────────────────────────────────────────────────────────────
+  // position:fixed only works if no ancestor creates a containing block for fixed descendants (transform,
+  // filter, perspective, contain, will-change, backdrop-filter). tabbarPlacement decides from computed-style
+  // snapshots of the ancestors: 'fixed' when none does, otherwise 'inflow' (a normal bar at the end of the
+  // page, still usable, never overlapping) and names the offender. The card probes after its first paint and
+  // defaults to 'inflow' until the probe says otherwise (fail safe).
+  const TABS = [
+    { id: 'now', label: 'Now', path: `${DASH}/now`, icon: 'home' },
+    { id: 'energy', label: 'Energy', path: ENERGY_PATH, icon: 'bolt' },
+    { id: 'controls', label: 'Controls', path: MOBILE, icon: 'sliders' },
+  ];
+  function tabbarPlacement(ancestors) {
+    const none = (v) => v === undefined || v === null || v === '' || v === 'none';
+    for (const a of Array.isArray(ancestors) ? ancestors : []) {
+      if (!isObj(a)) continue;
+      const name = str(a.name) || 'ancestor';
+      let why = '';
+      if (!none(a.transform)) why = 'transform';
+      else if (!none(a.filter)) why = 'filter';
+      else if (!none(a.backdropFilter)) why = 'backdrop-filter';
+      else if (!none(a.perspective)) why = 'perspective';
+      else if (/\b(paint|layout|strict|content)\b/.test(str(a.contain))) why = 'contain';
+      else if (/(transform|filter|perspective|contain)/.test(str(a.willChange))) why = 'will-change';
+      if (why) return { mode: 'inflow', offender: `${name} (${why})` };
+    }
+    return { mode: 'fixed', offender: null };
+  }
+  function sectionTabbar(cfg, ui) {
+    if (!TABBAR_ENABLED) return '';
+    const active = cfg && cfg.active === 'energy' ? 'energy' : 'now';
+    const fixed = ui && ui.tb === 'fixed';
+    const tabs = TABS.map((t) => `<button type="button" class="tab" data-act="nav" data-path="${t.path}"${t.id === active ? ' aria-current="page"' : ''}>${svg(ICON[t.icon], 24)}<span>${t.label}</span></button>`).join('');
+    return `${fixed ? '<div class="tabbar-spacer" style="--tbh:calc(58px + max(10px, env(safe-area-inset-bottom, 0px)))" aria-hidden="true"></div>' : ''}<nav class="tabs${fixed ? ' fixed' : ''}" aria-label="Pulse">${tabs}</nav>`;
   }
 
   // ── Room page sections ───────────────────────────────────────────────────────────────────────
@@ -1388,6 +1436,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     'energy-usage': (h) => sectionEnergyUsage(h),
     feed: (h, c, n) => sectionFeed(h, n),
     footer: () => sectionFooter(),
+    tabbar: (h, c, n, ui) => sectionTabbar(c, ui),
     'room-head': (h, c) => sectionRoomHead(h, c.room),
     why: (h, c, n) => sectionWhy(h, c.room, n),
     scenes: (h, c, n) => sectionScenes(h, c.room, n),
@@ -1435,7 +1484,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     }
   }
 
-  const api = { cheapestWindow, entrySentence, tidyVerdict, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, roomGroups, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, MOBILE, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, ALL_ROOM_KEYS, ALLOWED, render, priceColour, PRICE_STOPS, PRICE_EXTREME_P, roomModel, attentionItems, handleAction, callService, num, parseList };
+  const api = { TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, entrySentence, tidyVerdict, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, roomGroups, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, MOBILE, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, ALL_ROOM_KEYS, ALLOWED, render, priceColour, PRICE_STOPS, PRICE_EXTREME_P, roomModel, attentionItems, handleAction, callService, num, parseList };
   root.PulseLib = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 
@@ -1447,7 +1496,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         this._root = this.attachShadow({ mode: 'open' });
         this._html = null;
         this._busy = false;
-        this._ui = { open: false, day: 'today', fuel: 'electricity', hist: { electricity: { status: 'loading', days: [] }, gas: { status: 'loading', days: [] } } };
+        this._ui = { tb: 'inflow', open: false, day: 'today', fuel: 'electricity', hist: { electricity: { status: 'loading', days: [] }, gas: { status: 'loading', days: [] } } };
         this._histBusy = false;
         this._histSeq = 0;
         this._histAt = 0;
@@ -1477,8 +1526,16 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         this._histEnsure();
         this._paint();
       }
-      connectedCallback() { this._histEnsure(); }
-      disconnectedCallback() { this._histSeq += 1; this._histBusy = false; }
+      connectedCallback() {
+        this._histEnsure();
+        this._tabbarProbeLater();
+      }
+      disconnectedCallback() {
+        this._histSeq += 1;
+        this._histBusy = false;
+        for (const t of this._tbTimers || []) clearTimeout(t);
+        this._tbTimers = null;
+      }
       // Daily cost history: one read-only WS call when the Energy view mounts, then at most every 30
       // minutes (a failure retries after 5), never per hass update, never overlapping, and a response
       // that arrives after unmount is dropped (the sequence number moved on).
@@ -1528,8 +1585,41 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         this._html = html;
         this.style.display = html ? '' : 'none';
         this._root.innerHTML = `<style>${STYLE}</style>${html}`;
+        if (this._config.mode === 'tabbar' && !this._tbProbed) this._tabbarProbeLater();
         // The repaint replaced the chart nodes: put a live readout back instead of flickering it away.
         if (this._scrub.idx !== null) this._chartShow(this._scrub.idx, false);
+      }
+      // ── tab bar placement ──
+      _tabbarProbeLater() {
+        if (!this._config || this._config.mode !== 'tabbar' || this._tbTimers) return;
+        // After the first paint and again shortly after (HA builds its ancestors asynchronously).
+        this._tbTimers = [setTimeout(() => this._tabbarProbe(), 0), setTimeout(() => this._tabbarProbe(), 800)];
+      }
+      _tabbarProbe() {
+        if (!this.isConnected || typeof getComputedStyle !== 'function') return;
+        this._tbProbed = true;
+        const snaps = [];
+        let node = this;
+        while (node) {
+          if (node.nodeType === 1) {
+            const cs = getComputedStyle(node);
+            snaps.push({
+              name: `${node.tagName.toLowerCase()}${node.id ? '#' + node.id : ''}`,
+              transform: cs.transform, filter: cs.filter, perspective: cs.perspective, contain: cs.contain, willChange: cs.willChange,
+              backdropFilter: cs.backdropFilter || cs.webkitBackdropFilter,
+            });
+          }
+          node = node.assignedSlot || node.parentNode || node.host || null;
+        }
+        const res = tabbarPlacement(snaps);
+        if (res.mode === 'inflow' && !this._tbWarned) {
+          this._tbWarned = true;
+          console.warn(`pulse-card: tab bar placed in-flow because an ancestor breaks position:fixed: ${res.offender}`);
+        }
+        if (res.mode !== this._ui.tb) {
+          this._ui.tb = res.mode;
+          this._paint();
+        }
       }
       // ── chart scrubbing ──
       _chartEl() { return this._root.querySelector('[data-chart]'); }
@@ -1648,6 +1738,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         const el = ev.target && ev.target.closest ? ev.target.closest('[data-act]') : null;
         if (!el || !this._hass) return;
         if (el.dataset.act === 'nav') {
+          ev.preventDefault();
           const path = el.dataset.path || '';
           if (path.startsWith('/')) {
             window.history.pushState(null, '', path);
