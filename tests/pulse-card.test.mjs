@@ -6,6 +6,7 @@
 process.env.TZ = 'UTC';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import * as yaml from 'js-yaml';
 
@@ -60,7 +61,7 @@ const withRooms = (rooms, attention, extra = {}) => mk({
   ...extra,
 });
 const NOISE = /undefined|NaN|\[object|null/;
-const ALL_MODES = ['now-header', 'status', 'rooms', 'energy', 'bins-heating', 'feed', 'footer', 'energy-head', 'energy-day', 'energy-cost', 'energy-usage'];
+const ALL_MODES = ['now-header', 'status', 'rooms', 'bins-heating', 'feed', 'footer', 'energy-head', 'energy-day', 'energy-cost', 'energy-usage'];
 const ROOM_MODES = ['room-head', 'why', 'scenes', 'lights', 'media', 'automations', 'room-feed'];
 const renderAll = (hass) => {
   const out = {};
@@ -207,8 +208,8 @@ ok('bins + heating two-up: what is due next and when; boiler and inside/outside'
   assert.match(P.render('bins-heating', {}, mk({ 'input_boolean.house_heating_enabled': { state: 'off', attributes: {} } }), NOW), /Heating off/);
 });
 
-ok('energy (prices card) handles missing sensors', () => {
-  const html = P.render('energy', {}, { states: {} }, NOW);
+ok('energy page chart handles missing sensors', () => {
+  const html = P.render('energy-day', {}, { states: {} }, NOW, {});
   assert.match(html, /No price data for today/);
   assert.doesNotMatch(html, NOISE);
 });
@@ -283,22 +284,26 @@ ok('dashboard YAML parses', () => {
   for (const f of ['info-dashboard.yaml', 'info_templates.yaml', ...readdirSync(root + 'views').filter((x) => x.startsWith('info-')).map((x) => 'views/' + x)]) loadYaml(f);
 });
 
-ok('cheapest 2h line: shown with data, running now, hidden when unknown', () => {
-  assert.match(P.render('energy', {}, mk(), NOW), /Cheapest 2h<\/span><span>02:00 → 04:00 · avg 9\.8p/);
-  const running = P.render('energy', {}, mk({ 'binary_sensor.octopus_energy_target_cheapest_2h_waking_hours': { state: 'on', attributes: {} } }), NOW);
-  assert.match(running, /Running now, until 04:00/);
-  const none = P.render('energy', {}, mk({ 'sensor.cheapest_2h_waking_start': { state: 'unknown', attributes: {} }, 'sensor.cheapest_2h_waking_end': { state: 'unknown', attributes: {} } }), NOW);
-  assert.doesNotMatch(none, /Cheapest 2h/);
+ok('cheapest 2h: windows row on the Energy page and a small cue under the status strip, hidden when unknown', () => {
+  assert.match(P.render('energy-day', {}, mk(), NOW, {}), /Next cheapest 2 hours[\s\S]*02:00 → 04:00 · avg 9\.8p/);
+  const cue = P.render('status', {}, mk(), NOW);
+  assert.match(cue, /Cheapest 2h 02:00 → 04:00/);
+  const running = mk({ 'binary_sensor.octopus_energy_target_cheapest_2h_waking_hours': { state: 'on', attributes: {} } });
+  assert.match(P.render('status', {}, running, NOW), /Cheapest 2h running now, until 04:00/);
+  assert.match(P.render('energy-day', {}, running, NOW, {}), /Running now/);
+  const none = mk({ 'sensor.cheapest_2h_waking_start': { state: 'unknown', attributes: {} }, 'sensor.cheapest_2h_waking_end': { state: 'unknown', attributes: {} } });
+  assert.doesNotMatch(P.render('status', {}, none, NOW), /Cheapest 2h/);
+  assert.match(P.render('energy-day', {}, none, NOW, {}), /none upcoming/);
 });
 
 const rect = (html) => [...html.matchAll(/<rect x="(\d+)" y="([\d.]+)" width="(\d+)" height="([\d.]+)" rx="1" fill="([^"]+)" opacity="([\d.]+)"\/>/g)].map((m) => ({ x: +m[1], y: +m[2], h: +m[4], fill: m[5], op: +m[6] }));
 const real = JSON.parse(readFileSync(root + 'tests/fixtures/rates-2026-10-25-clock-change.json', 'utf8'));
-const energyAt = (rates, now) => P.render('energy', {}, mk({ 'event.octopus_energy_electricity_24e8140196_1012483035417_current_day_rates': { state: 'x', attributes: { rates } } }), now);
+const energyAt = (rates, now) => P.render('energy-day', {}, mk({ 'event.octopus_energy_electricity_24e8140196_1012483035417_current_day_rates': { state: 'x', attributes: { rates } } }), now, {});
 
 ok('energy block is one card with an SVG chart: every slot of the real 50-slot clock-change day is drawn', () => {
   assert.equal(real.length, 50);
   const html = energyAt(real, Date.parse('2026-10-25T18:29:00Z'));
-  assert.equal((html.match(/class="card/g) || []).length, 1, 'one surface, no inner cards');
+  assert.equal((html.match(/data-chart /g) || []).length, 1, 'one chart');
   assert.doesNotMatch(html, /border-radius:0|apexcharts/);
   const bars = rect(html);
   assert.equal(bars.length, 50);
@@ -649,19 +654,20 @@ ok('Now v2 tiles: unavailable occupancy keeps the dashed amber icon; rooms with 
   assert.match(css, /\.oc\{[^}]*min-height:64px/);
 });
 
-ok('Now v2 prices card: no Now/Next/Usage there, Details only when the path is configured and the view exists', () => {
-  const prices = P.render('energy', {}, mk(), NOW);
-  assert.doesNotMatch(prices, /p\/kWh|Usage|>Now<|>Next</);
-  assert.match(prices, /Today's prices/);
-  assert.doesNotMatch(prices, /Details ›/);
+ok('Now v2: the price strip is one 44px+ link to the Energy page; the chart is gone from Now; the energy view exists', () => {
+  const html = P.render('status', {}, mk(), NOW);
   assert.equal(P.ENERGY_PATH, '/pulse-dashboard/energy');
-  assert.match(P.render('energy', { details_path: P.ENERGY_PATH }, mk(), NOW), /Details ›/);
-  assert.doesNotMatch(P.render('energy', { details_path: '/elsewhere' }, mk(), NOW), /Details ›/);
-  // consistency: any card config naming the energy path must point at a registered view
+  const link = html.match(/<a class="tap" data-act="nav" data-path="\/pulse-dashboard\/energy" aria-label="Open energy details" style="[^"]*min-height:44px[^"]*">[\s\S]*?Energy ›<\/div><\/a>/);
+  assert.ok(link, 'strip is wrapped in one link');
+  for (const word of ['>Now<', '>Next<', '>Usage<', 'p/kWh', 'Energy ›']) assert.ok(link[0].includes(word), word);
+  assert.equal(count(html, /data-path="\/pulse-dashboard\/energy"/g), 1);
+  assert.doesNotMatch(html, /data-chart|<rect|Tomorrow's rates/);
+  // the Energy page's own head shows the same strip without linking to itself
+  assert.doesNotMatch(P.render('energy-head', {}, mk(), NOW), /Open energy details/);
   const viewPaths = readdirSync(root + 'views').filter((x) => x.startsWith('info-')).map((f) => yaml.load(readFileSync(root + 'views/' + f, 'utf8')).path);
-  const dash = readFileSync(root + 'info-dashboard.yaml', 'utf8');
-  const named = readFileSync(root + 'views/info-now.yaml', 'utf8').split('\n').filter((l) => !l.trim().startsWith('#')).join('\n').includes('details_path');
-  if (named) { assert.ok(viewPaths.includes('energy')); assert.match(dash, /info-energy\.yaml/); }
+  assert.ok(viewPaths.includes('energy'), 'the linked view exists');
+  assert.match(readFileSync(root + 'info-dashboard.yaml', 'utf8'), /views\/info-energy\.yaml/);
+  assert.throws(() => P.render('energy', {}, mk(), NOW), /unknown mode/);
 });
 
 ok('Now v2 feed limited to 3 rows, collapse kept', () => {
@@ -676,9 +682,9 @@ ok('Now v2 feed limited to 3 rows, collapse kept', () => {
 ok('Now v2 view layout: one status card first, groups, prices, bins/heating, feed, footer; no old modes', () => {
   const v = yaml.load(readFileSync(root + 'views/info-now.yaml', 'utf8'));
   const modes = v.sections[0].cards.map((c) => c.mode);
-  assert.deepEqual(modes, ['now-header', 'status', 'rooms', 'energy', 'bins-heating', 'feed', 'footer']);
+  assert.deepEqual(modes, ['now-header', 'status', 'rooms', 'bins-heating', 'feed', 'footer']);
   for (const m of modes) assert.ok(P.render(m, {}, mk(), NOW) !== undefined);
-  for (const old of ['attention', 'bins', 'heating', 'energy-foot']) assert.throws(() => P.render(old, {}, mk(), NOW), /unknown mode/, old);
+  for (const old of ['attention', 'bins', 'heating', 'energy-foot', 'energy']) assert.throws(() => P.render(old, {}, mk(), NOW), /unknown mode/, old);
 });
 
 ok('Now v2 changes nothing HA only reads at startup', () => {
@@ -723,14 +729,93 @@ ok('energyStats: cheapest, dearest, time-weighted average (negatives, clock-chan
   assert.equal(P.penceText(NaN), '–');
 });
 
-ok('windows: parse empty / none / one / many / garbage and format', () => {
-  assert.deepEqual(P.parseWindows('—'), { status: 'none', items: [] });
-  for (const u of ['', 'unknown', 'unavailable', undefined, null, 5, 'garbage']) assert.equal(P.parseWindows(u).status, 'unknown', String(u));
-  const one = P.parseWindows('19:00–23:30 (4.9p)');
-  assert.deepEqual(one, { status: 'ok', items: [{ from: '19:00', to: '23:30', avg: 4.9 }] });
-  const many = P.parseWindows('00:00–14:30 (-3.4p) · 22:00–23:00 (-0.5p)');
-  assert.equal(many.items.length, 2);
-  assert.equal(P.windowLine(many.items[0]), '00:00 → 14:30 · avg −3.4p');
+const winOn = (rates) => P.slotWindows(P.rateBands(rates, NOW), 'negative');
+const fmtWin = (w) => `${P.windowRange(w)} avg ${P.penceText(w.avg)}`;
+
+ok('windows from the slot list: real clock-change day gives ONE negative run, no overlaps or zero-length windows', () => {
+  const slots = P.rateBands(real, NOW);
+  const neg = P.slotWindows(slots, 'negative');
+  const cheap = P.slotWindows(slots, 'cheap');
+  for (const list of [neg, cheap]) {
+    list.forEach((w, i) => { assert.ok(w.end > w.start, 'never zero-length'); if (i) assert.ok(w.start > list[i - 1].end, 'no overlap and not adjacent (they would have merged)'); });
+  }
+  assert.equal(neg.length, 1);
+  assert.equal(neg[0].start, Date.parse('2026-10-24T23:00:00Z'));
+  assert.equal(neg[0].end, Date.parse('2026-10-25T14:30:00Z'), 'one negative run ending 14:30');
+  assert.ok(neg[0].avg < 0);
+  const expected = real.filter((r) => r.value_inc_vat < 0).length;
+  assert.equal(slots.filter((x) => x.v < 0 && x.end <= neg[0].end).length, expected);
+  // cheap = 0 <= p < 10: every cheap window sits outside the negative run and is bounded by dearer or negative slots
+  assert.ok(cheap.length >= 1);
+  assert.ok(cheap.every((w) => w.start >= neg[0].end || w.end <= neg[0].start));
+  // input order must not matter (the template bug was an order bug)
+  const shuffled = [...real].reverse();
+  assert.deepEqual(P.slotWindows(P.rateBands(shuffled, NOW), 'negative'), neg);
+  assert.deepEqual(P.slotWindows([...slots].sort(() => 0.5 - Math.random()), 'cheap').map((w) => w.start), cheap.map((w) => w.start));
+});
+
+ok('windows: tomorrow (46 slots), ordinary 48-slot day, empty, one slot, thresholds', () => {
+  const tom = P.rateBands(tomorrow, NOW);
+  for (const kind of ['negative', 'cheap']) for (const w of P.slotWindows(tom, kind)) assert.ok(w.end > w.start);
+  const ord = day('2026-03-02T00:00:00Z', 48).map((r, i) => ({ ...r, value_inc_vat: (i < 4 ? -0.02 : i < 8 ? 0.05 : i < 10 ? 0.1 : i === 12 ? -0.01 : 0.3) }));
+  const slots = P.rateBands(ord, Date.parse('2026-03-02T12:00:00Z'));
+  const neg = P.slotWindows(slots, 'negative');
+  assert.equal(neg.length, 2);
+  assert.deepEqual(neg.map((w) => (w.end - w.start) / 1800000), [4, 1]);
+  const cheap = P.slotWindows(slots, 'cheap');
+  assert.deepEqual(cheap.map((w) => (w.end - w.start) / 1800000), [4], '0.10 is not cheap (< 10p only); adjacent 0.05 slots merge');
+  assert.ok(Math.abs(neg[0].avg - -2) < 1e-9);
+  assert.ok(Math.abs(cheap[0].avg - 5) < 1e-9);
+  assert.deepEqual(P.slotWindows([], 'negative'), []);
+  assert.deepEqual(P.slotWindows(undefined, 'cheap'), []);
+  assert.deepEqual(P.slotWindows([null, {}, { start: 1, end: 1, v: -1 }], 'negative'), []);
+  assert.equal(P.slotWindows([{ start: 0, end: 1800000, v: -1 }], 'negative').length, 1);
+  // exactly zero is cheap, not negative
+  assert.equal(P.slotWindows([{ start: 0, end: 1800000, v: 0 }], 'negative').length, 0);
+  assert.equal(P.slotWindows([{ start: 0, end: 1800000, v: 0 }], 'cheap').length, 1);
+  // a gap in the list splits a window
+  assert.equal(P.slotWindows([{ start: 0, end: 1800000, v: -1 }, { start: 3600000, end: 5400000, v: -1 }], 'negative').length, 2);
+});
+
+ok('windows card renders them for the selected day with graded colour; none / empty days honest', () => {
+  const hass = energyHass();
+  const t = P.render('energy-day', {}, hass, NOW, {});
+  assert.equal(count(t, />Negative</g), 1, 'one negative run, not a scrambled list');
+  assert.match(t, /Negative<\/div><div class="m">23:00 → 14:30<\/div>[\s\S]*?avg −\d/); // TZ=UTC here; London shows 00:00 → 14:30 (child-process test)
+  assert.match(t, /Cheap<\/div><div class="m">/);
+  assert.equal(count(t, /→ 01:00/g), 0);
+  const m = P.render('energy-day', {}, hass, NOW, { day: 'tomorrow' });
+  assert.ok(/Negative<\/div><div class="m">none/.test(m) || /Negative<\/div><div class="m">\d\d:\d\d → \d\d:\d\d/.test(m));
+  const e = P.render('energy-day', {}, energyHass({}, real, []), NOW, { day: 'tomorrow' });
+  assert.doesNotMatch(e, />Negative<|>Cheap</);
+  const quiet = day('2026-03-02T00:00:00Z', 48);
+  const q = P.render('energy-day', {}, energyHass({}, quiet, quiet), Date.parse('2026-03-02T12:00:00Z'), {});
+  assert.match(q, /Negative<\/div><div class="m">none/);
+  assert.match(q, /Cheap<\/div><div class="m">none/);
+});
+
+ok('window labels in Europe/London on the real clock-change day (child process, TZ set before Date is used)', () => {
+  const script = `
+    const P = require(${JSON.stringify(root + 'www/pulse-card.js')});
+    const real = require(${JSON.stringify(root + 'tests/fixtures/rates-2026-10-25-clock-change.json')});
+    const tom = require(${JSON.stringify(root + 'tests/fixtures/rates-2026-10-26-tomorrow.json')});
+    const f = (r, k) => P.slotWindows(P.rateBands(r, 0), k).map((w) => P.windowRange(w));
+    console.log(JSON.stringify({ neg: f(real, 'negative'), cheap: f(real, 'cheap'), tneg: f(tom, 'negative'), tcheap: f(tom, 'cheap') }));
+  `;
+  const out = JSON.parse(execFileSync(process.execPath, ['-e', script], { env: { ...process.env, TZ: 'Europe/London' } }).toString());
+  assert.deepEqual(out.neg, ['00:00 → 14:30']);
+  for (const list of Object.values(out)) for (const label of list) { const [a, b] = label.split(' → '); assert.notEqual(a, b, label); assert.doesNotMatch(label, /NaN|undefined/); }
+});
+
+ok('windowRange: a window spanning the repeated hour is never printed zero-length', () => {
+  const script = `
+    const P = require(${JSON.stringify(root + 'www/pulse-card.js')});
+    const w = { start: Date.parse('2026-10-25T00:00:00Z'), end: Date.parse('2026-10-25T01:00:00Z') };
+    console.log(P.windowRange(w));
+  `;
+  const out = execFileSync(process.execPath, ['-e', script], { env: { ...process.env, TZ: 'Europe/London' } }).toString().trim();
+  assert.match(out, /^01:00 [A-Z+0-9:]+ → 01:00 [A-Z+0-9:]+$/);
+  assert.notEqual(out.split(' → ')[0], out.split(' → ')[1]);
 });
 
 ok('energy page: head has back link, Now/Next/Usage', () => {
@@ -770,24 +855,6 @@ ok('energy page stats tiles follow the selected day', () => {
   const st = P.energyStats(P.rateBands(tomorrow, NOW));
   assert.ok(m.includes(`>${P.penceText(st.dearest.v)}<`));
   assert.ok(m.includes(`at ${st.dearest.time}`));
-});
-
-ok('energy page windows: next cheapest 2h + negative/cheap for the selected day, none/unknown honest', () => {
-  const hass = energyHass();
-  const t = P.render('energy-day', {}, hass, NOW, {});
-  assert.match(t, /Next cheapest 2 hours[\s\S]*02:00 → 04:00 · avg 9\.8p/);
-  assert.match(t, /Negative[\s\S]*00:00 → 14:30[\s\S]*avg −3\.4p/);
-  assert.match(t, /22:00 → 23:00/);
-  assert.match(t, /Cheap[\s\S]*19:00 → 23:30[\s\S]*avg 4\.9p/);
-  const m = P.render('energy-day', {}, hass, NOW, { day: 'tomorrow' });
-  assert.match(m, /Negative<\/div><div class="m">none</);
-  assert.match(m, /07:00 → 09:30/);
-  assert.doesNotMatch(m, /14:30/);
-  const un = P.render('energy-day', {}, energyHass({ 'sensor.octopus_today_negative_windows': { state: 'unavailable', attributes: {} } }), NOW, {});
-  assert.match(un, /Negative<\/div><div class="m">–</);
-  assert.match(P.render('energy-day', {}, energyHass({ 'binary_sensor.octopus_energy_target_cheapest_2h_waking_hours': { state: 'on', attributes: {} } }), NOW, {}), /Running now/);
-  const none = P.render('energy-day', {}, energyHass({ 'sensor.cheapest_2h_waking_start': { state: 'unknown', attributes: {} }, 'sensor.cheapest_2h_waking_end': { state: 'unknown', attributes: {} } }), NOW, {});
-  assert.match(none, /none upcoming/);
 });
 
 ok('energy page: tomorrow missing / empty / unavailable shows the honest empty state', () => {
@@ -878,17 +945,13 @@ ok('energy page: sparse / missing / garbage data never throws or leaks noise in 
   }
 });
 
-ok('energy view is registered, linked from Now with the guarded Details link, and adds no write paths', () => {
+ok('energy view is registered and adds no write paths', () => {
   const v = yaml.load(readFileSync(root + 'views/info-energy.yaml', 'utf8'));
   assert.equal(v.path, 'energy');
   assert.equal(v.subview, true);
   assert.equal(v.back_path, '/pulse-dashboard/now');
   assert.deepEqual(v.sections[0].cards.map((c) => c.mode), ['energy-head', 'energy-day', 'energy-cost', 'energy-usage']);
   assert.match(readFileSync(root + 'info-dashboard.yaml', 'utf8'), /views\/info-energy\.yaml/);
-  const now = yaml.load(readFileSync(root + 'views/info-now.yaml', 'utf8'));
-  const card = now.sections[0].cards.find((c) => c.mode === 'energy');
-  assert.equal(card.details_path, P.ENERGY_PATH);
-  assert.match(P.render('energy', card, mk(), NOW), /data-path="\/pulse-dashboard\/energy"[^>]*>Details ›/);
   assert.deepEqual(Object.keys(P.ALLOWED).sort(), ['input_boolean', 'light', 'media_player', 'scene', 'switch']);
   assert.match(readFileSync(root + 'packages/frontend.yaml', 'utf8'), /pulse-card\.js\?v=1\b/);
 });
