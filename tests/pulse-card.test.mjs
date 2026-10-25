@@ -198,6 +198,33 @@ ok('unknown room and unknown mode fail loudly', () => {
   assert.throws(() => P.render('nope', {}, mk(), NOW), /unknown mode/);
 });
 
+ok('every nav path targets the registered dashboard (/pulse-dashboard) or Mobile, and each Pulse path is a real view', () => {
+  assert.equal(P.DASH, '/pulse-dashboard');
+  const viewPaths = new Set(['now', 'classic', 'classic-house']);
+  for (const f of readdirSync(root + 'views').filter((x) => x.startsWith('info-'))) {
+    const v = yaml.load(readFileSync(root + 'views/' + f, 'utf8'));
+    viewPaths.add(v.path);
+    if (v.back_path) assert.ok(v.back_path.startsWith(P.DASH + '/'), `${f} back_path ${v.back_path}`);
+    assert.doesNotMatch(readFileSync(root + 'views/' + f, 'utf8'), /\/info-dashboard/, f);
+  }
+  const rooms = P.ROOM_ORDER.map(FULL);
+  const items = P.ALL_ROOM_KEYS.map((k) => ({ room: k, key: k, kind: 'comfort_outlier', text: '20.0° is too warm', nav: '/x' }));
+  const hass = withRooms(rooms, items);
+  const out = renderAll(hass);
+  let seen = 0;
+  for (const [k, html] of Object.entries(out)) {
+    for (const m of html.matchAll(/data-path="([^"]*)"/g)) {
+      seen += 1;
+      const p = m[1];
+      if (p.startsWith(P.MOBILE)) { assert.match(p, /^\/mobile-dashboard(\/mo)?$/, `${k}: ${p}`); continue; }
+      assert.ok(p.startsWith(P.DASH + '/'), `${k}: ${p} must start with ${P.DASH}/`);
+      assert.ok(viewPaths.has(p.slice(P.DASH.length + 1)), `${k}: ${p} has no matching view path`);
+    }
+  }
+  assert.ok(seen > 15, 'expected nav links in the rendered output');
+  assert.doesNotMatch(readFileSync(root + 'www/pulse-card.js', 'utf8'), /\/info-dashboard/);
+});
+
 ok('write paths are whitelisted; others throw', () => {
   const calls = [];
   const hass = { states: { 'light.a': { state: 'off' }, 'media_player.b': { state: 'playing' } }, callService: (d, s, data) => calls.push([d, s, data]) };

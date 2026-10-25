@@ -31,7 +31,7 @@ cards:
           _No decisions seen since HA started, so room cards show no reasons yet._
           {% endif %}
 
-          [Open Mobile](/mobile-dashboard) · [House report](/info-dashboard/classic-house)
+          [Open Mobile](/mobile-dashboard) · [House report](/pulse-dashboard/classic-house)
       - type: markdown
         title: Rooms
         content: |-
