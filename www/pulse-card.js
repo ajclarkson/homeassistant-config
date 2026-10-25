@@ -59,6 +59,17 @@
   const PRICE_NEUTRAL = '#6b7684';
   const PRICE_KEY_P = [0, 15, 30, 45];
 
+  // Room tile geometry in ONE place. The tile has a fixed height, so the height must be at least what its
+  // rows need: top+bottom padding, the name line, the temperature line, the status line and the row gaps
+  // (tileNeededHeight). Every line has an explicit line-height so the arithmetic is exact, and nothing in
+  // the tile clips: the status line only ellipsises text, never icons or badges.
+  const TILE = { padY: 12, nameLine: 20, tempLine: 26, statusLine: 20, gap: 6 };
+  const TILE_H = 104;
+  const TILE_WIDE_H = 80;
+  const tileNeededHeight = (wide) => (wide
+    ? 2 * TILE.padY + Math.max(TILE.nameLine, TILE.tempLine) + TILE.gap + TILE.statusLine
+    : 2 * TILE.padY + TILE.nameLine + TILE.tempLine + TILE.statusLine + 2 * TILE.gap);
+
   const STYLE = `
 :host{display:block}
 *{box-sizing:border-box}
@@ -113,11 +124,18 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 .oc .t{text-align:right}
 .oc .sub{grid-column:2 / 4;display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:12px;color:#a3adba}
 .rgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
-.rt{display:grid;grid-template-rows:auto 1fr auto;gap:6px;padding:12px;height:92px;box-sizing:border-box;background:${TOKENS.surface};border-radius:14px;text-decoration:none;color:inherit;overflow:hidden}
-.rt .nm{display:flex;align-items:center;gap:6px;font-size:13.5px;font-weight:600;color:#cfd5dd;white-space:nowrap;min-width:0}
-.rt .t{align-self:center}
-.rt .b{display:flex;gap:6px;align-items:center;flex-wrap:nowrap;color:#8f9aa8;font-size:11.5px;min-height:20px;white-space:nowrap;overflow:hidden}
+.rt{display:grid;grid-template-rows:auto 1fr auto;row-gap:${TILE.gap}px;padding:${TILE.padY}px 12px;height:${TILE_H}px;box-sizing:border-box;background:${TOKENS.surface};border-radius:14px;text-decoration:none;color:inherit}
+.rt .nm{display:flex;align-items:center;gap:6px;font-size:13.5px;font-weight:600;line-height:${TILE.nameLine}px;color:#cfd5dd;white-space:nowrap;min-width:0}
+.rt .nm span{overflow:hidden;text-overflow:ellipsis}
+.rt .t{align-self:center;text-align:left;line-height:${TILE.tempLine}px}
+.rt .b{display:flex;gap:6px;align-items:center;flex-wrap:nowrap;color:#8f9aa8;font-size:11.5px;line-height:${TILE.statusLine}px;min-height:${TILE.statusLine}px;white-space:nowrap;min-width:0}
 .rt .b>*{flex:none}
+.rt .b>span:not(.badge){flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.rt .b .badge{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;line-height:14px}
+.rt.wide{grid-column:1 / -1;grid-template-columns:1fr auto;grid-template-rows:auto auto;height:${TILE_WIDE_H}px}
+.rt.wide .nm{grid-column:1;grid-row:1}
+.rt.wide .t{grid-column:2;grid-row:1;text-align:right}
+.rt.wide .b{grid-column:1 / -1;grid-row:2}
 .segs{display:flex;gap:8px;background:${TOKENS.surface};border-radius:14px;padding:4px}
 .seg{border:0;font:inherit;font-size:14px;font-weight:600;min-height:44px;border-radius:12px;cursor:pointer;flex:1;background:transparent;color:#cfd5dd}
 .seg.on{background:${TOKENS.sceneActive};color:${TOKENS.sceneActiveText}}
@@ -245,6 +263,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   // `details_path`, and only when that view exists in info-dashboard.yaml (tests enforce both).
   const ENERGY_PATH = `${DASH}/energy`;
   const RECENT_MS = 15 * 60 * 1000;
+
 
   // Wall-button and other manual sources, in plain words.
   const SOURCE_WORDS = { dashboard: 'dashboard', switch: 'wall switch', wall_button: 'wall button' };
@@ -674,9 +693,9 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     if (m.lights_on > 0) return scene && scene !== 'off' ? sceneLabel(scene) : 'On';
     return 'Off';
   }
-  function manualBadge(m, now) {
+  function manualBadge(m, now, short) {
     if (!m.manual) return '';
-    const a = ago(m.manual.ts, now);
+    const a = short ? '' : ago(m.manual.ts, now);
     const src = SOURCE_WORDS[m.manual.source] || m.manual.source;
     const label = `${src.replace(/^./, (c) => c.toUpperCase())}${a ? ' · ' + a : ''}`;
     return badge(`${sizedIcon(ICON.hand, 13)}${esc(label)}`, `color:${TOKENS.amber};background:${TOKENS.amberTag}`).replace('<span class="badge"', '<span class="badge" title="Manual change"');
@@ -710,14 +729,15 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 
   // Fixed-height tile: name / temperature (centred) / status line pinned to the bottom. The status line never
   // wraps; at most one badge (a hold wins over the manual marker) so it cannot grow the tile.
-  function roomTile(hass, k, now) {
+  function roomTile(hass, k, now, wide) {
     const m = roomModel(hass, k);
     const scene = activeScene(hass, k);
     const recent = recentNote(hass, k, now).replace(/^lights /, '');
     const holds = m.hasReport ? holdBadges(m) : '';
-    const extra = m.hasReport ? (holds || manualBadge(m, now) || (recent ? `<span>${esc(recent)}</span>` : '')) : '';
+    // One extra item at most, and the manual badge drops its age here: the tile must stay one line.
+    const extra = m.hasReport ? (holds || manualBadge(m, now, true) || (recent ? `<span>${esc(recent)}</span>` : '')) : '';
     const line = `${sizedIcon(ICON.bulb, 14)}<span>${m.hasReport ? esc(lightsBadgeText(m, scene)) : 'No report'}</span>${extra}`;
-    return `<a class="rt tap" data-act="nav" data-path="${roomPath(k)}"><div class="nm">${occIcon(m) || sizedIcon(ICON.person, 15, TOKENS.text3)}<span>${esc(m.cfg.short)}</span></div><div class="t">${tempBlock(m, 'font-size:20px;font-weight:700;letter-spacing:-.3px')}</div><div class="b">${line}</div></a>`;
+    return `<a class="rt tap${wide ? ' wide' : ''}" data-act="nav" data-path="${roomPath(k)}"><div class="nm">${occIcon(m) || sizedIcon(ICON.person, 15, TOKENS.text3)}<span>${esc(m.cfg.short)}</span></div><div class="t">${tempBlock(m, `font-size:20px;font-weight:700;letter-spacing:-.3px;line-height:${TILE.tempLine}px`)}</div><div class="b">${line}</div></a>`;
   }
 
   function sectionRooms(hass, now) {
@@ -726,7 +746,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const out = [];
     if (g.attention.length) out.push(`<div class="lbl" style="margin:4px 4px -10px">Needs attention</div>${g.attention.map((k) => attentionCard(hass, k, items)).join('')}`);
     if (g.occupied.length) out.push(`<div class="lbl" style="margin:4px 4px -10px">Occupied now</div>${g.occupied.map((k) => occupiedCard(hass, k, now)).join('')}`);
-    if (g.other.length) out.push(`<div class="lbl" style="margin:4px 4px -10px">${g.occupied.length || g.attention.length ? 'Other rooms' : 'Rooms'}</div><div class="rgrid">${g.other.map((k) => roomTile(hass, k, now)).join('')}</div>`);
+    if (g.other.length) out.push(`<div class="lbl" style="margin:4px 4px -10px">${g.occupied.length || g.attention.length ? 'Other rooms' : 'Rooms'}</div><div class="rgrid">${g.other.map((k, i) => roomTile(hass, k, now, g.other.length % 2 === 1 && i === g.other.length - 1)).join('')}</div>`);
     return out.join('');
   }
 
@@ -1435,7 +1455,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     }
   }
 
-  const api = { cheapestWindow, entrySentence, tidyVerdict, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, roomGroups, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, MOBILE, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, ALL_ROOM_KEYS, ALLOWED, render, priceColour, PRICE_STOPS, PRICE_EXTREME_P, roomModel, attentionItems, handleAction, callService, num, parseList };
+  const api = { TILE, TILE_H, TILE_WIDE_H, tileNeededHeight, STYLE, cheapestWindow, entrySentence, tidyVerdict, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, roomGroups, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, MOBILE, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, ALL_ROOM_KEYS, ALLOWED, render, priceColour, PRICE_STOPS, PRICE_EXTREME_P, roomModel, attentionItems, handleAction, callService, num, parseList };
   root.PulseLib = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 
