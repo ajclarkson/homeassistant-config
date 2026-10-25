@@ -102,7 +102,7 @@ sections:
           motion_enabled_entity: input_boolean.bedroom_sensor_motion_enabled
           override_entity: input_boolean.bedroom_automation_presence_override
           contained_entity: binary_sensor.bedroom_occupied_contained
-          reason_1_entity: binary_sensor.bedroom_bed_occupancy
+          reason_1_entity: binary_sensor.bedroom_sensor_bed_occupancy
           reason_1_state: 'on'
           reason_1_icon: m3of:bed
           reason_1_label: Bed occupied
