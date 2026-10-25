@@ -1,0 +1,16 @@
+title: Foreign office
+path: room-foreign_office
+subview: true
+back_path: /info-dashboard/now
+type: sections
+max_columns: 1
+background: '#12151a'
+sections:
+  - type: grid
+    cards:
+      - type: custom:streamline-card
+        template: pulse_room
+        variables:
+          room: foreign_office
+          climate: climate.foreign_office
+          temp: sensor.foreign_office_sensor_climate_temperature

@@ -1,6 +1,24 @@
-# "Pulse": information-first dashboard. Read-only lens on homerun decisions; the only
-# controls are toggles of existing helpers (input_boolean / input_select) that homerun reads.
-# No service calls, no MQTT writes. Mobile (/mobile-dashboard) is untouched and linked from both views.
+# "Pulse": information-first dashboard. Home Assistant is a read-only consumer of the homerun
+# event stream here: no MQTT publishes, no service calls to homerun.
+# Write paths (all from the dashboard, nothing else): scene.turn_on, light.turn_on/turn_off,
+# switch.turn_on/turn_off, media_player.media_play_pause/volume_set/turn_on/turn_off, and
+# input_boolean.turn_on/turn_off on existing automation-enabled helpers. The list is enforced in
+# www/pulse-card.js (ALLOWED); anything else throws.
+# Mobile (/mobile-dashboard) and the wallboard are untouched and linked from Now.
+streamline_templates: !include info_templates.yaml
+
 views:
   - !include views/info-now.yaml
-  - !include views/info-house.yaml
+  - !include views/info-room-parlour.yaml
+  - !include views/info-room-kitchen.yaml
+  - !include views/info-room-hallway_downstairs.yaml
+  - !include views/info-room-hallway_upstairs.yaml
+  - !include views/info-room-bedroom.yaml
+  - !include views/info-room-bathroom.yaml
+  - !include views/info-room-home_office.yaml
+  - !include views/info-room-foreign_office.yaml
+  - !include views/info-room-back_garden.yaml
+  - !include views/info-room-front_garden.yaml
+  # The phase 1 markdown views stay reachable until the owner removes them.
+  - !include views/info-classic-now.yaml
+  - !include views/info-classic-house.yaml

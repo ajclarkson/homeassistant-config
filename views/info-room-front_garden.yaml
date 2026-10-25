@@ -1,0 +1,16 @@
+title: Front garden
+path: room-front_garden
+subview: true
+back_path: /info-dashboard/now
+type: sections
+max_columns: 1
+background: '#12151a'
+sections:
+  - type: grid
+    cards:
+      - type: custom:streamline-card
+        template: pulse_room
+        variables:
+          room: front_garden
+          climate: climate.front_garden_trv
+          temp: sensor.front_garden_sensor_climate_temperature

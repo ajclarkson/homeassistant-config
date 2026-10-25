@@ -1,0 +1,16 @@
+title: Bedroom
+path: room-bedroom
+subview: true
+back_path: /info-dashboard/now
+type: sections
+max_columns: 1
+background: '#12151a'
+sections:
+  - type: grid
+    cards:
+      - type: custom:streamline-card
+        template: pulse_room
+        variables:
+          room: bedroom
+          climate: climate.bedroom_trv
+          temp: sensor.bedroom_sensor_climate_temperature

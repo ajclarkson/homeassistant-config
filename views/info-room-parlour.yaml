@@ -1,0 +1,16 @@
+title: Parlour
+path: room-parlour
+subview: true
+back_path: /info-dashboard/now
+type: sections
+max_columns: 1
+background: '#12151a'
+sections:
+  - type: grid
+    cards:
+      - type: custom:streamline-card
+        template: pulse_room
+        variables:
+          room: parlour
+          climate: climate.parlour_trv
+          temp: sensor.parlour_sensor_climate_temperature
