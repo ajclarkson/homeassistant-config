@@ -99,4 +99,4 @@ sections:
           - input_boolean.home_office_automation_heating_enabled
           - input_boolean.foreign_office_automation_heating_enabled
       - type: markdown
-        content: '[Open Mobile](/mobile-dashboard) · [Back to rooms](/info-dashboard/classic)'
+        content: '[Open Mobile](/mobile-dashboard) · [Back to rooms](/pulse-dashboard/classic)'
