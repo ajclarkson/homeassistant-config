@@ -111,6 +111,10 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 .tile.on{background:${TOKENS.sceneActive};color:${TOKENS.sceneActiveText}}
 .lt{display:grid;grid-template-columns:1fr 130px;gap:12px;align-items:center;min-height:56px;padding:6px 14px;border-top:1px solid ${TOKENS.divider}}
 .lt:first-child{border-top:0}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.chart:focus-visible{outline:2px solid ${TOKENS.link};outline-offset:2px;border-radius:6px}
+.tip{position:absolute;top:-36px;left:0;pointer-events:none;background:${TOKENS.divider};border:1px solid #2f3843;border-radius:8px;padding:4px 8px;font-size:12px;line-height:1.3;white-space:nowrap;z-index:2}
+.tip small{display:block;font-size:10px;color:${TOKENS.text2}}
 .lh{display:flex;justify-content:space-between;align-items:center;width:100%;min-height:52px;padding:0 14px;background:none;border:0;color:inherit;font:inherit;cursor:pointer}
 .lt input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:44px;margin:0;background:transparent;accent-color:${TOKENS.sceneActive}}
 .lt input[type=range]::-webkit-slider-runnable-track{height:6px;border-radius:3px;background:linear-gradient(to right,${TOKENS.sceneActive} var(--p,0%),${TOKENS.switchOff} var(--p,0%))}
@@ -642,6 +646,37 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return out.sort((x, y) => x.start - y.start);
   }
 
+  const RATES_ENTITY = 'event.octopus_energy_electricity_24e8140196_1012483035417_current_day_rates';
+  const ratesOf = (hass) => attr(hass, RATES_ENTITY, 'rates');
+  const SCRUB_HOLD_MS = 2000;
+  const SCRUB_TAP_PX = 6;
+
+  // Slot index under a pointer: x within a chart `width` px wide, n slots of equal width. Clamped to
+  // the first/last slot; null when there is nothing to hit (no slots, zero width, bad input).
+  function slotAt(x, width, n) {
+    if (!Number.isFinite(x) || !Number.isFinite(width) || !Number.isFinite(n) || width <= 0 || n < 1) return null;
+    return Math.max(0, Math.min(n - 1, Math.floor((x / width) * n)));
+  }
+
+  // What the tooltip says about one slot (a rateBands entry): local range, price, colour, short note.
+  function slotReadout(slot) {
+    if (!isObj(slot) || !Number.isFinite(slot.start) || !Number.isFinite(slot.end) || !Number.isFinite(slot.v)) return null;
+    const t = (ms) => { const d = new Date(ms); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
+    const notes = [];
+    if (slot.state === 'current') notes.push('now');
+    if (slot.v < 0) notes.push('paid to use');
+    else if (slot.v === 0) notes.push('free');
+    const price = `${fmt1(slot.v)}p`;
+    const range = `${t(slot.start)}-${t(slot.end)}`;
+    return { range, price, note: notes.join(' · '), colour: priceColour(slot.v, { text: true }), spoken: `${range.replace('-', ' to ')}, ${fmt1(slot.v)} pence${notes.length ? ', ' + notes.join(', ') : ''}` };
+  }
+
+  // Tooltip left edge: centred on the slot, clamped to stay inside the chart box.
+  function tooltipLeft(centerPx, tipWidth, boxWidth) {
+    if (![centerPx, tipWidth, boxWidth].every(Number.isFinite) || boxWidth <= 0) return 0;
+    return Math.max(0, Math.min(boxWidth - Math.max(0, tipWidth), centerPx - tipWidth / 2));
+  }
+
   function priceChart(rates, now) {
     const slots = rateBands(rates, now);
     if (slots.length === 0) return `<div style="font-size:12px;color:${TOKENS.text2};margin-top:12px">No price data for today.</div>`;
@@ -671,8 +706,10 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const label = `Half-hourly electricity price, ${n} slots. Cheapest ${fmt1(cheapest.v)}p at ${at(cheapest)}, dearest ${fmt1(dearest.v)}p at ${at(dearest)}.${cur >= 0 ? ` Now ${fmt1(slots[cur].v)}p.` : ''}`;
     const grad = [0, 15, 25, 35, 44.9].map((pp, i) => `${priceColour(pp)} ${(i / 4) * 100}%`).join(',');
     const key = `<div style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:10px;color:${TOKENS.text3}" aria-hidden="true"><span style="display:inline-flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:3px;background:${PRICE_NEGATIVE}"></span>≤0p</span><span style="flex:1;display:flex;flex-direction:column;gap:2px"><span style="height:6px;border-radius:3px;background:linear-gradient(to right,${grad})"></span><span style="display:flex;justify-content:space-between"><span>${PRICE_KEY_P[0]}</span><span>${PRICE_KEY_P[1]}</span><span>${PRICE_KEY_P[2]}</span><span>${PRICE_KEY_P[3]}p+</span></span></span><span style="width:10px;height:10px;border-radius:3px;background:${PRICE_EXTREME}"></span></div>`;
-    return `<div style="position:relative;margin-top:14px"><svg viewBox="0 0 ${n * SLOT_W} ${PLOT_H}" preserveAspectRatio="none" width="100%" height="${PLOT_H}" role="img" aria-label="${esc(label)}" style="display:block">${bars}<line x1="0" x2="${n * SLOT_W}" y1="${y0.toFixed(1)}" y2="${y0.toFixed(1)}" stroke="${TOKENS.text3}" stroke-width=".8" vector-effect="non-scaling-stroke"/>${marker}</svg>
-<span style="position:absolute;left:0;top:${Math.max(0, y0 - 14).toFixed(0)}px;font-size:10px;color:${TOKENS.text3}">0</span></div>
+    // The wrapper is the focusable, scrubbable chart (touch-action: pan-y keeps vertical page scroll;
+    // horizontal drags scrub). Guide and tooltip are positioned by the element, not re-rendered.
+    return `<div class="chart" data-chart data-n="${n}" tabindex="0" role="img" aria-label="${esc(label)}" style="position:relative;margin-top:36px;touch-action:pan-y;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none"><svg viewBox="0 0 ${n * SLOT_W} ${PLOT_H}" preserveAspectRatio="none" width="100%" height="${PLOT_H}" aria-hidden="true" style="display:block">${bars}<line x1="0" x2="${n * SLOT_W}" y1="${y0.toFixed(1)}" y2="${y0.toFixed(1)}" stroke="${TOKENS.text3}" stroke-width=".8" vector-effect="non-scaling-stroke"/>${marker}</svg>
+<span style="position:absolute;left:0;top:${Math.max(0, y0 - 14).toFixed(0)}px;font-size:10px;color:${TOKENS.text3};pointer-events:none">0</span><div data-guide style="display:none;position:absolute;top:0;bottom:0;width:1px;margin-left:-.5px;background:${TOKENS.text};opacity:.7;pointer-events:none"></div><div data-tip class="tip" style="display:none"></div></div><span class="sr" aria-live="polite" data-live></span>
 <div style="position:relative;height:14px;font-size:10px;color:${TOKENS.text3};margin-top:4px">${ticks}</div>${key}`;
   }
 
@@ -690,7 +727,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const usageText = stale ? '–' : formatPower(state(hass, 'sensor.glow_electricity_power'), attr(hass, 'sensor.glow_electricity_power', 'unit_of_measurement'));
     const nowP = p(now);
     const nextP = p(next);
-    const rates = attr(hass, `event.octopus_energy_electricity_24e8140196_1012483035417_current_day_rates`, 'rates');
+    const rates = ratesOf(hass);
     const s = state(hass, 'sensor.cheapest_2h_waking_start');
     const e = state(hass, 'sensor.cheapest_2h_waking_end');
     const avg = num(state(hass, 'sensor.cheapest_2h_waking_avg_rate'));
@@ -936,7 +973,7 @@ ${priceChart(rates, at)}${cheapest}<div style="font-size:12px;color:${TOKENS.tex
     }
   }
 
-  const api = { rateBands, DASH, MOBILE, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, ALL_ROOM_KEYS, ALLOWED, render, priceColour, PRICE_STOPS, PRICE_EXTREME_P, roomModel, attentionItems, handleAction, callService, num, parseList };
+  const api = { slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, MOBILE, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, ALL_ROOM_KEYS, ALLOWED, render, priceColour, PRICE_STOPS, PRICE_EXTREME_P, roomModel, attentionItems, handleAction, callService, num, parseList };
   root.PulseLib = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 
@@ -949,6 +986,7 @@ ${priceChart(rates, at)}${cheapest}<div style="font-size:12px;color:${TOKENS.tex
         this._html = null;
         this._busy = false;
         this._ui = { open: false };
+        this._scrub = { idx: null, slots: null, active: false, pending: null, timer: null };
         this._root.addEventListener('click', (ev) => this._click(ev));
         this._root.addEventListener('change', (ev) => this._change(ev));
         // Keep the track fill under the thumb while dragging (no re-render mid-drag).
@@ -956,6 +994,13 @@ ${priceChart(rates, at)}${cheapest}<div style="font-size:12px;color:${TOKENS.tex
         this._root.addEventListener('pointerdown', (ev) => { if (ev.target && ev.target.type === 'range') this._busy = true; });
         this._root.addEventListener('pointerup', () => { this._busy = false; });
         this._root.addEventListener('pointercancel', () => { this._busy = false; });
+        // Price chart scrubbing (see PR for the manual test list; not testable in node).
+        this._root.addEventListener('pointerdown', (ev) => this._chartDown(ev));
+        this._root.addEventListener('pointermove', (ev) => this._chartMove(ev));
+        this._root.addEventListener('pointerup', (ev) => this._chartUp(ev));
+        this._root.addEventListener('pointercancel', () => this._chartCancel());
+        this._root.addEventListener('keydown', (ev) => this._chartKey(ev));
+        this._root.addEventListener('focusout', (ev) => { if (ev.target && ev.target.closest && ev.target.closest('[data-chart]') && !this._scrub.active) this._chartClear(); });
       }
       setConfig(config) {
         validate(config);
@@ -967,7 +1012,8 @@ ${priceChart(rates, at)}${cheapest}<div style="font-size:12px;color:${TOKENS.tex
       }
       getCardSize() { return 3; }
       _paint() {
-        if (!this._config || !this._hass || this._busy) return;
+        // Never re-render under a finger: a slider drag or a chart scrub owns the DOM until release.
+        if (!this._config || !this._hass || this._busy || this._scrub.active) return;
         let html;
         try {
           html = render(this._config.mode, this._config, this._hass, Date.now(), this._ui);
@@ -979,6 +1025,114 @@ ${priceChart(rates, at)}${cheapest}<div style="font-size:12px;color:${TOKENS.tex
         this._html = html;
         this.style.display = html ? '' : 'none';
         this._root.innerHTML = `<style>${STYLE}</style>${html}`;
+        // The repaint replaced the chart nodes: put a live readout back instead of flickering it away.
+        if (this._scrub.idx !== null) this._chartShow(this._scrub.idx, false);
+      }
+      // ── chart scrubbing ──
+      _chartEl() { return this._root.querySelector('[data-chart]'); }
+      _chartHoldTimer() {
+        clearTimeout(this._scrub.timer);
+        this._scrub.timer = setTimeout(() => this._chartClear(), SCRUB_HOLD_MS);
+      }
+      _chartIdx(ev, chart) {
+        const box = chart.getBoundingClientRect();
+        const n = this._scrub.slots ? this._scrub.slots.length : 0;
+        return slotAt(ev.clientX - box.left, box.width, n);
+      }
+      _chartShow(idx, announce) {
+        const chart = this._chartEl();
+        const slots = this._scrub.slots;
+        if (!chart || !slots || slots.length === 0) return;
+        const i = Math.max(0, Math.min(slots.length - 1, idx));
+        const r = slotReadout(slots[i]);
+        if (!r) return;
+        this._scrub.idx = i;
+        const n = slots.length;
+        const guide = chart.querySelector('[data-guide]');
+        const tip = chart.querySelector('[data-tip]');
+        const boxW = chart.clientWidth;
+        guide.style.left = `${((i + 0.5) / n) * 100}%`;
+        guide.style.display = 'block';
+        chart.querySelectorAll('rect').forEach((b, k) => {
+          if (k === i) { b.setAttribute('stroke', TOKENS.text); b.setAttribute('stroke-width', '1.5'); b.setAttribute('vector-effect', 'non-scaling-stroke'); } else { b.removeAttribute('stroke'); b.removeAttribute('stroke-width'); }
+        });
+        tip.innerHTML = `${esc(r.range)} · <b style="color:${r.colour}">${esc(r.price)}</b>${r.note ? `<small>${esc(r.note)}</small>` : ''}`;
+        tip.style.display = 'block';
+        tip.style.left = `${tooltipLeft(((i + 0.5) / n) * boxW, tip.offsetWidth, boxW)}px`;
+        if (announce) { const live = this._root.querySelector('[data-live]'); if (live) live.textContent = r.spoken; }
+      }
+      _chartClear() {
+        clearTimeout(this._scrub.timer);
+        this._scrub.idx = null;
+        this._scrub.active = false;
+        const chart = this._chartEl();
+        if (!chart) return;
+        chart.querySelector('[data-guide]').style.display = 'none';
+        chart.querySelector('[data-tip]').style.display = 'none';
+        chart.querySelectorAll('rect').forEach((b) => { b.removeAttribute('stroke'); b.removeAttribute('stroke-width'); });
+      }
+      _chartStart(ev, chart) {
+        clearTimeout(this._scrub.timer);
+        this._scrub.slots = rateBands(ratesOf(this._hass), Date.now()); // frozen for the whole gesture
+        this._scrub.active = true;
+        try { chart.setPointerCapture(ev.pointerId); } catch (e) { /* capture is best effort */ }
+      }
+      _chartDown(ev) {
+        const chart = ev.target && ev.target.closest ? ev.target.closest('[data-chart]') : null;
+        if (!chart || !this._hass || (ev.pointerType === 'mouse' && ev.button !== 0)) return;
+        this._scrub.pending = { id: ev.pointerId, x: ev.clientX, y: ev.clientY, chart };
+        if (ev.pointerType === 'mouse') { this._chartStart(ev, chart); this._chartShow(this._chartIdx(ev, chart), false); }
+      }
+      _chartMove(ev) {
+        const pend = this._scrub.pending;
+        if (!pend || pend.id !== ev.pointerId) return;
+        if (!this._scrub.active) {
+          // Touch: only a mostly-horizontal drag scrubs; a vertical one is the page scrolling.
+          const dx = Math.abs(ev.clientX - pend.x);
+          const dy = Math.abs(ev.clientY - pend.y);
+          if (dx < SCRUB_TAP_PX || dx <= dy) return;
+          this._chartStart(ev, pend.chart);
+        }
+        const idx = this._chartIdx(ev, pend.chart);
+        if (idx !== null) this._chartShow(idx, false);
+      }
+      _chartUp(ev) {
+        const pend = this._scrub.pending;
+        if (!pend || pend.id !== ev.pointerId) return;
+        this._scrub.pending = null;
+        if (!this._scrub.active) {
+          // A tap (no real movement) selects the slot under the finger.
+          this._scrub.slots = rateBands(ratesOf(this._hass), Date.now());
+          const idx = this._chartIdx(ev, pend.chart);
+          if (idx !== null) this._chartShow(idx, true);
+        } else {
+          this._scrub.active = false;
+          this._chartShow(this._scrub.idx === null ? 0 : this._scrub.idx, true);
+        }
+        try { pend.chart.releasePointerCapture(ev.pointerId); } catch (e) { /* already released */ }
+        if (this._scrub.idx !== null) this._chartHoldTimer();
+      }
+      _chartCancel() {
+        // The browser took the gesture (vertical scroll): drop any readout at once.
+        if (!this._scrub.pending && !this._scrub.active) return;
+        this._scrub.pending = null;
+        this._chartClear();
+      }
+      _chartKey(ev) {
+        const chart = ev.target && ev.target.closest ? ev.target.closest('[data-chart]') : null;
+        if (!chart || !this._hass) return;
+        if (ev.key === 'Escape') { this._chartClear(); return; }
+        const step = ev.key === 'ArrowLeft' ? -1 : ev.key === 'ArrowRight' ? 1 : 0;
+        if (!step && ev.key !== 'Home' && ev.key !== 'End') return;
+        ev.preventDefault();
+        clearTimeout(this._scrub.timer);
+        this._scrub.slots = rateBands(ratesOf(this._hass), Date.now());
+        const n = this._scrub.slots.length;
+        if (n === 0) return;
+        const cur = this._scrub.slots.findIndex((x) => x.state === 'current');
+        const from = this._scrub.idx !== null ? this._scrub.idx : cur >= 0 ? cur : step < 0 ? n : -1;
+        const to = ev.key === 'Home' ? 0 : ev.key === 'End' ? n - 1 : from + step;
+        this._chartShow(Math.max(0, Math.min(n - 1, to)), true);
       }
       _click(ev) {
         const el = ev.target && ev.target.closest ? ev.target.closest('[data-act]') : null;
