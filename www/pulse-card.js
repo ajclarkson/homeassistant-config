@@ -413,8 +413,23 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 
   // ── Feed ─────────────────────────────────────────────────────────────────────────────────────
   // Stored entries from before the plumbing filter may still be present: drop them on read too.
+  // Entries that say nothing happened never reach the feed, whether stored before or after this check.
+  const NOOP_WORDS = /\b(no[_ ]?change|no[_ ]?action|maintain|maintained)\b/i;
   function isPlumbing(e) {
-    return PLUMBING_DECISIONS.includes(str(e.decision)) || PLUMBING_AUTOS.some((p) => str(e.auto).includes(p));
+    return PLUMBING_DECISIONS.includes(str(e.decision)) || PLUMBING_AUTOS.some((p) => str(e.auto).includes(p))
+      || NOOP_WORDS.test(str(e.decision)) || NOOP_WORDS.test(str(e.reason)) || NOOP_WORDS.test(str(e.sentence));
+  }
+  // Plain wording for decisions whose stored sentence is jargon ("heating set mode"). Everything else
+  // keeps the sensor's sentence. Uses the loc/sub/decision/reason the feed stores with each entry.
+  const DECISION_WORDS = { set_mode: 'mode changed', blocked: 'blocked by its automation switch', suspend: 'suspended', restore: 'restored', sync_window_external: 'window state synced', set_sleep: 'house set to sleep' };
+  const REASON_WORDS = { safety_window_open: 'window open', safety_heating_disabled: 'heating switched off', manual_override: 'manual setting', schedule: 'schedule', schedule_occupied: 'schedule, room occupied', house_mode_away: 'house away', house_mode_sleep: 'house asleep', house_mode_vacation: 'house on holiday', house_mode_normal: 'house at home', automation_disabled: 'automation off' };
+  function entrySentence(e) {
+    const d = str(e.decision);
+    if (!DECISION_WORDS[d] || !e.loc) return str(e.sentence);
+    const place = str(e.loc).replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
+    const noun = { heating: 'heating', lighting: 'lights', occupied: 'occupancy' }[str(e.sub)] || str(e.sub).replace(/_/g, ' ');
+    const why = REASON_WORDS[str(e.reason)] || str(e.why) || str(e.reason).replace(/_/g, ' ');
+    return `${place} ${noun ? noun + ' ' : ''}${DECISION_WORDS[d]}${why ? ' · ' + why : ''}`;
   }
   function feedEntries(hass) {
     return parseList(attr(hass, 'sensor.info_decision_feed', 'entries')).filter((e) => !isPlumbing(e));
@@ -438,8 +453,9 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const out = [];
     for (const e of entries) {
       const last = out[out.length - 1];
-      if (last && str(last.sentence) === str(e.sentence)) last.count += 1;
-      else out.push({ ts: e.ts, sentence: e.sentence, count: 1 });
+      const sentence = entrySentence(e);
+      if (last && last.sentence === sentence) last.count += 1;
+      else out.push({ ts: e.ts, sentence, count: 1 });
     }
     return out;
   }
@@ -483,6 +499,8 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return 'Off';
   }
 
+  // The sensor's verdict says "held occupied by Sofa occupied"; read it as "held occupied · Sofa occupied".
+  const tidyVerdict = (v) => str(v).replace(/held occupied by /gi, 'held occupied · ');
   function bannerFor(m, items) {
     const mine = items.filter((i) => i.key === m.key);
     if (m.target_reason === 'window open' && m.cfg.climate) {
@@ -496,7 +514,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     }
     if (m.cfg.report && !m.hasReport) return { warn: false, dim: true, title: 'No report yet', body: 'sensor.info_rooms has no entry for this room.' };
     if (!m.cfg.report) return { warn: false, title: 'Lights only', body: 'This area has scenes and a lights automation, no climate or presence report.' };
-    return { warn: false, title: 'All good', body: m.verdict || 'No reasons to show.' };
+    return { warn: false, title: 'All good', body: tidyVerdict(m.verdict) || 'No reasons to show.' };
   }
 
   // ── Sections ─────────────────────────────────────────────────────────────────────────────────
@@ -522,6 +540,37 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 
   // Now / Next (graded colours) and Usage (unit-aware). A reading that has not updated for 10 minutes
   // is stale (the meter reports every few seconds), so it shows a dash rather than a confident 0 W.
+  // The next cheapest-2h window, read from the target-rate binary sensor itself (next_time keeps its date;
+  // the template sensors print HH:MM only, so a window on tomorrow's evening looked like today's).
+  const CHEAPEST_ID = 'binary_sensor.octopus_energy_target_cheapest_2h_waking_hours';
+  function cheapestWindow(hass, now) {
+    const st = stateObj(hass, CHEAPEST_ID);
+    if (!st || !isObj(st.attributes)) return { status: 'none' };
+    const a = st.attributes;
+    const running = st.state === 'on';
+    const hm = localHm;
+    if (running) {
+      let end = instantMs(a.current_end);
+      const cs = instantMs(a.current_start);
+      const dur = num(a.current_duration_in_hours);
+      if (end === null && cs !== null && dur !== null && dur > 0) end = cs + dur * 3600000;
+      return { status: 'running', end, endText: end !== null ? hm(end) : '' };
+    }
+    const start = instantMs(a.next_time);
+    const dur = num(a.next_duration_in_hours);
+    if (start === null || dur === null || dur <= 0) return { status: 'none' };
+    const end = start + dur * 3600000;
+    if (end <= now) return { status: 'none' }; // already past: never advertise it
+    const avgRaw = num(a.next_average_value);
+    const avg = avgRaw === null ? null : avgRaw * 100;
+    const today = localDate(now);
+    const startDay = localDate(start);
+    const dayMs = (d) => Date.parse(`${d}T00:00:00Z`);
+    const diff = Math.round((dayMs(startDay) - dayMs(today)) / 86400000);
+    const dayWord = start <= now ? 'Now' : diff === 0 ? 'Today' : diff === 1 ? 'Tomorrow' : (isoDayLabel(startDay) || startDay);
+    return { status: 'upcoming', start, end, avg, dayWord, range: `${hm(start)} → ${hm(end)}`, text: `${dayWord} ${hm(start)} → ${hm(end)}` };
+  }
+
   function priceStrip(hass, at, bare, link) {
     const base = 'sensor.octopus_energy_electricity_24e8140196_1012483035417';
     const p = (v) => (v === null ? null : v * 100);
@@ -539,10 +588,8 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     if (!link) return strip;
     // The whole strip is one 44px+ tap target to the Energy page, with a visible "Energy ›" cue, and a
     // small cheapest-2h line when one is coming up (or running).
-    const cs = state(hass, 'sensor.cheapest_2h_waking_start');
-    const ce = state(hass, 'sensor.cheapest_2h_waking_end');
-    const running = state(hass, 'binary_sensor.octopus_energy_target_cheapest_2h_waking_hours') === 'on';
-    const cue = usable(cs) && usable(ce) ? `<div style="font-size:12px;color:${TOKENS.text2};margin-top:6px">Cheapest 2h ${running ? 'running now, until ' + esc(ce) : esc(cs) + ' → ' + esc(ce)}</div>` : '';
+    const cw = cheapestWindow(hass, at);
+    const cue = cw.status === 'running' ? `<div style="font-size:12px;color:${TOKENS.text2};margin-top:6px">Cheapest 2h running now${cw.endText ? ', until ' + esc(cw.endText) : ''}</div>` : cw.status === 'upcoming' ? `<div style="font-size:12px;color:${TOKENS.text2};margin-top:6px">Cheapest 2h ${esc(cw.text)}</div>` : '';
     return `<a class="tap" data-act="nav" data-path="${ENERGY_PATH}" aria-label="Open energy details" style="display:block;min-height:44px;margin-top:14px;padding-top:12px;border-top:1px solid ${TOKENS.divider}">${strip}${cue}<div style="display:flex;justify-content:flex-end;align-items:center;gap:2px;font-size:12px;font-weight:600;color:${TOKENS.link};min-height:24px">Energy ›</div></a>`;
   }
 
@@ -587,13 +634,22 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 
   const SHORT_HOLD = { 'Window open': 'Window', 'Door open': 'Door' };
   const shortHold = (l) => SHORT_HOLD[l] || l;
-  // Only a recent real action is worth a note; older ones are noise on this page.
-  function recentNote(m, now) {
-    const t = parseTs(m.last_ts);
-    if (t === null || !m.last) return '';
+  // A recent real action (under 15 minutes) as a phrase with its verb ("lights off 7 min ago"). Without a
+  // known verb there is no note: a bare "7 min" means nothing.
+  const ACTION_PHRASE = {
+    lighting: { turn_on: 'lights on', turn_off: 'lights off', activate_scene: 'scene set' },
+    heating: { set_mode: 'heating changed', suspend: 'heating suspended', restore: 'heating restored' },
+    occupied: { set_occupied: 'marked occupied', clear_occupied: 'marked empty' },
+  };
+  function recentNote(hass, key, now) {
+    const e = roomFeed(hass, key)[0];
+    if (!e) return '';
+    const t = parseTs(e.ts);
+    const phrase = ACTION_PHRASE[str(e.sub)] && ACTION_PHRASE[str(e.sub)][str(e.decision)];
+    if (t === null || !phrase) return '';
     const age = now - t;
-    if (age < 0 || age >= RECENT_MS) return age < 0 && age > -60000 ? 'just now' : '';
-    return age < 60000 ? 'just now' : `${Math.floor(age / 60000)} min`;
+    if (age >= RECENT_MS || age < -60000) return '';
+    return age < 60000 ? `${phrase} just now` : `${phrase} ${Math.floor(age / 60000)} min ago`;
   }
   const badge = (inner, style) => `<span class="badge"${style ? ` style="${style}"` : ''}>${inner}</span>`;
   const sizedIcon = (path, px, color) => `<svg class="ic" viewBox="0 0 24 24" width="${px}" height="${px}" fill="none" stroke="${color || 'currentColor'}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${path}"/></svg>`;
@@ -608,34 +664,36 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   }
   const holdBadges = (m) => m.heat_labels.map((l) => badge(`${sizedIcon(ICON.window, 12)}${esc(shortHold(l))}`)).join('');
   const tempText = (m) => (m.temp !== null ? `${fmt1(m.temp)}°` : '–');
+  // Rooms without a climate sensor have no temperature to show at all (a bare dash adds nothing).
+  const tempBlock = (m, style) => (m.cfg.climate ? `<div style="${style}${m.temp === null ? ';color:' + TOKENS.text3 : ''}">${tempText(m)}</div>` : '');
 
   function attentionCard(hass, k, items) {
     const m = roomModel(hass, k);
     const lines = [];
     if (m.target_reason && m.target !== null) lines.push(`<div class="l"><b>Heating</b><span>target ${fmt1(m.target)}° (${esc(m.target_reason)})${m.mode_name && m.mode_target !== null ? `. Normally ${esc(m.mode_name)}, ${fmt1(m.mode_target)}°.` : '.'}</span></div>`);
-    if (m.pres_labels.length) lines.push(`<div class="l"><b>Held</b><span>occupied by ${esc(m.pres_labels.join(' · '))}</span></div>`);
+    if (m.pres_labels.length) lines.push(`<div class="l"><b>Held occupied</b><span>${esc(m.pres_labels.join(' · '))}</span></div>`);
     for (const i of items.filter((x) => x.key === k)) lines.push(`<div class="l"><b>${esc(itemLabel(i, m))}</b><span>${esc(itemDetail(i, m))}</span></div>`);
     const tags = m.labels.concat(m.heat_labels.filter((l) => !m.labels.includes(l))).map((l) => `<span class="tag">${esc(l)}</span>`).join('');
     if (tags) lines.push(`<div class="l">${tags}</div>`);
-    return `<div class="card warn pad"><div style="display:flex;align-items:center;gap:8px"><span class="dot warn"></span><div style="flex:1;font-size:16px;font-weight:600;display:flex;align-items:center;gap:6px">${esc(m.cfg.short)}${occIcon(m)}</div><div style="font-size:22px;font-weight:700;letter-spacing:-.3px${m.temp === null ? ';color:' + TOKENS.text3 : ''}">${tempText(m)}</div></div><div class="det" style="padding:8px 0 0">${lines.join('')}<a class="link tap" data-act="nav" data-path="${roomPath(k)}">${esc(m.cfg.short)} details ›</a></div></div>`;
+    return `<div class="card warn pad"><div style="display:flex;align-items:center;gap:8px"><span class="dot warn"></span><div style="flex:1;font-size:16px;font-weight:600;display:flex;align-items:center;gap:6px">${esc(m.cfg.short)}${occIcon(m)}</div>${tempBlock(m, 'font-size:22px;font-weight:700;letter-spacing:-.3px')}</div><div class="det" style="padding:8px 0 0">${lines.join('')}<a class="link tap" data-act="nav" data-path="${roomPath(k)}">${esc(m.cfg.short)} details ›</a></div></div>`;
   }
 
   function occupiedCard(hass, k, now) {
     const m = roomModel(hass, k);
     const scene = activeScene(hass, k);
-    const recent = recentNote(m, now);
+    const recent = recentNote(hass, k, now);
     const reason = m.pres_labels.slice(0, 2).join(' · ');
     const lights = badge(`${sizedIcon(ICON.bulb, 13, m.lights_on > 0 ? TOKENS.sceneActive : undefined)}${esc(lightsBadgeText(m, scene))}`);
-    return `<a class="card oc tap" data-act="nav" data-path="${roomPath(k)}">${occIcon(m, 22)}<div style="flex:1;min-width:0"><div style="font-size:16px;font-weight:600">${esc(m.cfg.short)}</div><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;align-items:center">${lights}${manualBadge(m, now)}${holdBadges(m)}${recent ? `<span style="font-size:11px;color:${TOKENS.text3}">${esc(recent)}</span>` : ''}</div></div><div style="text-align:right"><div style="font-size:22px;font-weight:700;letter-spacing:-.3px${m.temp === null ? ';color:' + TOKENS.text3 : ''}">${tempText(m)}</div>${reason ? `<div style="font-size:11px;color:${TOKENS.text3}">${esc(reason)}</div>` : ''}</div></a>`;
+    return `<a class="card oc tap" data-act="nav" data-path="${roomPath(k)}">${occIcon(m, 22)}<div style="flex:1;min-width:0"><div style="font-size:16px;font-weight:600">${esc(m.cfg.short)}</div><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;align-items:center">${lights}${manualBadge(m, now)}${holdBadges(m)}${recent ? `<span style="font-size:11px;color:${TOKENS.text3}">${esc(recent)}</span>` : ''}</div></div><div style="text-align:right">${tempBlock(m, 'font-size:22px;font-weight:700;letter-spacing:-.3px')}${reason ? `<div style="font-size:11px;color:${TOKENS.text3}">${esc(reason)}</div>` : ''}</div></a>`;
   }
 
   function roomTile(hass, k, now) {
     const m = roomModel(hass, k);
     const scene = activeScene(hass, k);
-    const recent = recentNote(m, now);
+    const recent = recentNote(hass, k, now);
     const line = `${sizedIcon(ICON.bulb, 14)}${m.hasReport ? esc(lightsBadgeText(m, scene)) : 'No report'}`;
     const extra = `${m.hasReport ? manualBadge(m, now) : ''}${m.hasReport ? holdBadges(m) : ''}${recent ? `<span>${esc(recent)}</span>` : ''}`;
-    return `<a class="rt tap" data-act="nav" data-path="${roomPath(k)}"><div class="nm" style="display:flex;align-items:center;gap:6px;font-size:14px;font-weight:600;color:#cfd5dd">${occIcon(m) || sizedIcon(ICON.person, 15, TOKENS.text3)}${esc(m.cfg.short)}</div><div style="font-size:20px;font-weight:700;letter-spacing:-.3px${m.temp === null ? ';color:' + TOKENS.text3 : ''}">${tempText(m)}</div><div class="b">${line}${extra}</div></a>`;
+    return `<a class="rt tap" data-act="nav" data-path="${roomPath(k)}"><div class="nm" style="display:flex;align-items:center;gap:6px;font-size:14px;font-weight:600;color:#cfd5dd">${occIcon(m) || sizedIcon(ICON.person, 15, TOKENS.text3)}${esc(m.cfg.short)}</div>${tempBlock(m, 'font-size:20px;font-weight:700;letter-spacing:-.3px')}<div class="b">${line}${extra}</div></a>`;
   }
 
   function sectionRooms(hass, now) {
@@ -940,23 +998,21 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const control = `<div class="segs">${seg('today', 'Today')}${seg('tomorrow', 'Tomorrow')}</div>`;
     if (slots.length === 0) {
       const late = day === 'tomorrow';
-      return `${control}<div class="card pad"><div style="font-size:14px;font-weight:600">${late ? 'Tomorrow\'s rates are not in yet' : 'No price data for today'}</div><div style="font-size:12.5px;color:${TOKENS.text2};margin-top:4px;line-height:1.4">${late ? 'Tomorrow\'s rates are published late afternoon.' : 'The rates list is empty or unavailable.'}</div></div>${windowsCard(hass, [])}`;
+      return `${control}<div class="card pad"><div style="font-size:14px;font-weight:600">${late ? 'Tomorrow\'s rates are not in yet' : 'No price data for today'}</div><div style="font-size:12.5px;color:${TOKENS.text2};margin-top:4px;line-height:1.4">${late ? 'Tomorrow\'s rates are published late afternoon.' : 'The rates list is empty or unavailable.'}</div></div>${windowsCard(hass, [], at)}`;
     }
     const st = energyStats(slots);
     const stat = (k, v, sub, col) => `<div class="card stat"><div class="k">${k}</div><div class="v" style="${col ? 'color:' + col : ''}">${v}</div><div class="s">${sub}</div></div>`;
     const stats = `<div style="display:flex;gap:8px">${stat('Cheapest', penceText(st.cheapest.v), 'at ' + st.cheapest.time, priceColour(st.cheapest.v, { text: true }))}${stat('Dearest', penceText(st.dearest.v), 'at ' + st.dearest.time, priceColour(st.dearest.v, { text: true }))}${stat('Average', penceText(st.avg), 'per kWh', priceColour(st.avg, { text: true }))}</div>`;
-    return `${control}<div class="card pad">${priceChart(rates, at, day)}<div style="font-size:11.5px;color:${TOKENS.text3};margin-top:8px">Drag across the chart to read any half hour.</div></div>${stats}${windowsCard(hass, slots)}`;
+    return `${control}<div class="card pad">${priceChart(rates, at, day)}<div style="font-size:11.5px;color:${TOKENS.text3};margin-top:8px">Drag across the chart to read any half hour.</div></div>${stats}${windowsCard(hass, slots, at)}`;
   }
 
-  function windowsCard(hass, slots) {
+  function windowsCard(hass, slots, at) {
     const rows = [];
-    const s = state(hass, 'sensor.cheapest_2h_waking_start');
-    const e = state(hass, 'sensor.cheapest_2h_waking_end');
-    const avg = num(state(hass, 'sensor.cheapest_2h_waking_avg_rate'));
-    const running = state(hass, 'binary_sensor.octopus_energy_target_cheapest_2h_waking_hours') === 'on';
+    const cw = cheapestWindow(hass, at);
     const row = (title, sub, right) => `<div class="wrow"><div><div style="font-weight:600">${title}</div><div class="m">${sub}</div></div>${right}</div>`;
-    const cheapestSub = usable(s) && usable(e) ? `${esc(s)} → ${esc(e)}${avg !== null ? ' · avg ' + esc(penceText(avg)) : ''}` : 'none upcoming';
-    rows.push(row('Next cheapest 2 hours', cheapestSub, running ? '<span class="tag ok">Running now</span>' : usable(s) && usable(e) ? '<span class="tag ok">Best</span>' : ''));
+    if (cw.status === 'running') rows.push(row('Next cheapest 2 hours', `Running now${cw.endText ? ', until ' + esc(cw.endText) : ''}`, '<span class="tag ok">Running now</span>'));
+    else if (cw.status === 'upcoming') rows.push(row('Next cheapest 2 hours', `${esc(cw.text)}${cw.avg !== null ? ' · avg ' + esc(penceText(cw.avg)) : ''}`, '<span class="tag ok">Best</span>'));
+    else rows.push(row('Next cheapest 2 hours', 'none upcoming', ''));
     if (Array.isArray(slots) && slots.length) {
       for (const [kind, label] of [['negative', 'Negative'], ['cheap', 'Cheap']]) {
         const ws = slotWindows(slots, kind);
@@ -1188,9 +1244,9 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     }
     const holds = m.labels.length ? m.labels : [];
     const occ = m.occupancy_unavailable ? 'Occupancy unavailable' : m.occupied ? 'Occupied' : 'Empty';
-    const pres = holds.length ? `Held by ${esc(holds.join(' · '))}.${holds.length > 1 ? ' All are true, so it stays held until all clear.' : ''}` : 'No holds.';
+    const pres = holds.length ? `Held occupied · ${esc(holds.join(' · '))}.${holds.length > 1 ? ' All are true, so it stays held until all clear.' : ''}` : 'No holds.';
     const ovr = m.override_text ? ` ${esc(m.override_text)}.` : '';
-    rows.push(`<div class="item">${svg(ICON.bed, 18)}<div><div class="h">${occ}</div><div class="s">${pres}${ovr}</div></div><span class="tag${holds.length || m.override ? '' : ' off'}">${holds.length ? holds.length + ' ' + plural(holds.length, 'reason', 'reasons') : m.override ? 'Override' : 'Clear'}</span></div>`);
+    rows.push(`<div class="item">${svg(ICON.person, 18)}<div><div class="h">${occ}</div><div class="s">${pres}${ovr}</div></div><span class="tag${holds.length || m.override ? '' : ' off'}">${holds.length ? holds.length + ' ' + plural(holds.length, 'reason', 'reasons') : m.override ? 'Override' : 'Clear'}</span></div>`);
     return `<div class="lbl" style="margin:4px 4px -10px">Why it is like this</div><div class="card">${rows.join('')}</div>`;
   }
 
@@ -1207,8 +1263,11 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     if (m.manual) {
       const how = SOURCE_WORDS[m.manual.source] || m.manual.source;
       const when = ago(m.manual.ts, now);
-      const auto = m.lights_why ? `Automation last acted: ${esc(m.lights_why)}${m.lights_ts ? ' (' + esc(hhmm(m.lights_ts)) + ')' : ''}. It may change them again.` : 'The automation may change them again.';
-      foot = `<div class="mrow"><span class="tag">Manual · ${esc(how)}${when ? ', ' + esc(when) : ''}</span><span>${m.manual.what ? esc(m.manual.what) + '. ' : ''}${auto}</span></div>`;
+      const pill = `Manual · ${how}${when ? ' · ' + when : ''}`;
+      // One quiet second line, only when it adds something: what was done (dashboard/switch changes) and
+      // what the automation last did.
+      const second = [m.manual.source !== 'wall_button' && m.manual.what ? m.manual.what : '', m.lights_why ? `Automation had: ${m.lights_why}` : ''].filter(Boolean).join(' · ');
+      foot = `<div class="mrow"><span class="tag">${esc(pill)}</span></div>${second ? `<div class="note" style="margin-top:6px">${esc(second)}</div>` : ''}`;
     } else if (m.lights_why) {
       foot = `<div class="note">Set by automation${m.lights_ts ? ' at ' + esc(hhmm(m.lights_ts)) : ''}: ${esc(m.lights_why)}. Tap a scene to take over.</div>`;
     } else {
@@ -1254,7 +1313,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     if (m.cfg.media.length === 0) return '';
     const rows = m.cfg.media.map(([id, label, kind]) => {
       const s = stateObj(hass, id);
-      const name = esc(str(attr(hass, id, 'friendly_name')) || label);
+      const name = esc(label); // the device role from the room config, not the entity's friendly name
       if (!s) return `<div class="tog"><div><div class="h">${esc(label)}</div><div class="s">Not found</div></div></div>`;
       if (!usable(s.state)) return `<div class="tog"><div><div class="h">${name}</div><div class="s">Unavailable</div></div></div>`;
       const off = s.state === 'off' || s.state === 'standby';
@@ -1352,7 +1411,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     }
   }
 
-  const api = { COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, roomGroups, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, MOBILE, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, ALL_ROOM_KEYS, ALLOWED, render, priceColour, PRICE_STOPS, PRICE_EXTREME_P, roomModel, attentionItems, handleAction, callService, num, parseList };
+  const api = { cheapestWindow, entrySentence, tidyVerdict, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, roomGroups, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, MOBILE, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, ALL_ROOM_KEYS, ALLOWED, render, priceColour, PRICE_STOPS, PRICE_EXTREME_P, roomModel, attentionItems, handleAction, callService, num, parseList };
   root.PulseLib = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 
