@@ -1,4 +1,5 @@
-# Pulse "Now": header, attention, room rows, energy, bins, heating, feed.
+# Pulse "Now" (v2): quiet by default, loud by exception. Header, one status card (verdict, people, prices),
+# room groups (needs attention / occupied now / other rooms), prices, bins + heating, feed.
 # Every section is `custom:pulse-card` (www/pulse-card.js, loaded via packages/frontend.yaml).
 # The price bars are drawn by pulse-card itself from the rates attribute (any slot count).
 title: Now
@@ -11,11 +12,13 @@ sections:
   - type: grid
     cards:
       - {type: custom:pulse-card, mode: now-header}
-      - {type: custom:pulse-card, mode: attention}
+      # One status card: verdict, sentence, people/Mo chips and the Now/Next/Usage price strip.
+      - {type: custom:pulse-card, mode: status}
+      # Needs attention (full width), Occupied now (full width), Other rooms (2-column tiles).
       - {type: custom:pulse-card, mode: rooms}
-      # One card: numbers, price bars (drawn by pulse-card from the rates attribute), cheapest-2h, tomorrow note.
+      # Today's prices: bars with scrub, Cheapest 2h, tomorrow note. Add `details_path:
+      # /pulse-dashboard/energy` here only once that view exists in info-dashboard.yaml.
       - {type: custom:pulse-card, mode: energy}
-      - {type: custom:pulse-card, mode: bins}
-      - {type: custom:pulse-card, mode: heating}
+      - {type: custom:pulse-card, mode: bins-heating}
       - {type: custom:pulse-card, mode: feed}
       - {type: custom:pulse-card, mode: footer}
