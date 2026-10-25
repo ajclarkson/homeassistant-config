@@ -1,0 +1,16 @@
+title: Bathroom
+path: room-bathroom
+subview: true
+back_path: /info-dashboard/now
+type: sections
+max_columns: 1
+background: '#12151a'
+sections:
+  - type: grid
+    cards:
+      - type: custom:streamline-card
+        template: pulse_room
+        variables:
+          room: bathroom
+          climate: climate.bathroom_trv
+          temp: sensor.bathroom_sensor_climate_temperature

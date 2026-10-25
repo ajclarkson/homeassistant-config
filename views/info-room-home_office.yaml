@@ -1,0 +1,16 @@
+title: Home office
+path: room-home_office
+subview: true
+back_path: /info-dashboard/now
+type: sections
+max_columns: 1
+background: '#12151a'
+sections:
+  - type: grid
+    cards:
+      - type: custom:streamline-card
+        template: pulse_room
+        variables:
+          room: home_office
+          climate: climate.home_office_trv
+          temp: sensor.home_office_sensor_climate_temperature

@@ -1,0 +1,16 @@
+title: Hallway downstairs
+path: room-hallway_downstairs
+subview: true
+back_path: /info-dashboard/now
+type: sections
+max_columns: 1
+background: '#12151a'
+sections:
+  - type: grid
+    cards:
+      - type: custom:streamline-card
+        template: pulse_room
+        variables:
+          room: hallway_downstairs
+          climate: climate.hallway_downstairs_trv
+          temp: sensor.hallway_downstairs_sensor_climate_temperature

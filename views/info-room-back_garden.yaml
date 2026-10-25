@@ -1,0 +1,16 @@
+title: Back garden
+path: room-back_garden
+subview: true
+back_path: /info-dashboard/now
+type: sections
+max_columns: 1
+background: '#12151a'
+sections:
+  - type: grid
+    cards:
+      - type: custom:streamline-card
+        template: pulse_room
+        variables:
+          room: back_garden
+          climate: climate.back_garden_trv
+          temp: sensor.back_garden_sensor_climate_temperature

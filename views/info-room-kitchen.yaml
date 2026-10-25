@@ -1,0 +1,16 @@
+title: Kitchen
+path: room-kitchen
+subview: true
+back_path: /info-dashboard/now
+type: sections
+max_columns: 1
+background: '#12151a'
+sections:
+  - type: grid
+    cards:
+      - type: custom:streamline-card
+        template: pulse_room
+        variables:
+          room: kitchen
+          climate: climate.kitchen_trv
+          temp: sensor.kitchen_sensor_climate_temperature

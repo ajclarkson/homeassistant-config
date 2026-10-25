@@ -1,0 +1,106 @@
+# Shared room page for the Pulse dashboard. One template, parameterised by room; every room view
+# (views/info-room-*.yaml) is a single call to it. Sections that do not apply to a room (media,
+# individual lights, chart) hide themselves, so there is no per-room card list to copy.
+#
+# Variables (for rooms without climate pass the conventional ids anyway; the chart hides itself):
+# Variables:
+#   room     key used by custom:pulse-card (see ROOMS in www/pulse-card.js) and by helper ids
+#   climate  climate entity for the 24h chart target line
+#   temp     room temperature sensor for the 24h chart
+pulse_room:
+  default: []
+  variables:
+    room: ''
+    climate: ''
+    temp: ''
+  card:
+    type: vertical-stack
+    cards:
+      - type: custom:pulse-card
+        mode: room-head
+        room: '[[room]]'
+      # Only rooms with a temperature sensor chart: the numeric condition is false for a missing
+      # entity, so gardens and the upstairs hallway show nothing here.
+      - type: conditional
+        conditions:
+          - condition: numeric_state
+            entity: '[[temp]]'
+            above: -100
+        card:
+          type: custom:apexcharts-card
+          header:
+            show: true
+            title: Last 24 hours
+            show_states: false
+            colorize_states: false
+          graph_span: 24h
+          apex_config:
+            chart:
+              height: 140
+              toolbar: {show: false}
+              zoom: {enabled: false}
+              background: '#1a1f26'
+            legend: {show: false}
+            dataLabels: {enabled: false}
+            grid: {borderColor: '#232a33'}
+            tooltip: {x: {format: HH:mm}}
+            xaxis:
+              type: datetime
+              tickAmount: 4
+              axisBorder: {show: false}
+              axisTicks: {show: false}
+              labels:
+                datetimeUTC: false
+                format: HH:mm
+                style: {colors: '#8f9aa8', fontSize: 10px}
+            yaxis:
+              decimalsInFloat: 0
+              labels:
+                style: {colors: '#8f9aa8', fontSize: 10px}
+          card_mod:
+            style: |
+              ha-card { border: none; border-radius: 16px; box-shadow: none; background: #1a1f26; }
+          series:
+            - entity: '[[temp]]'
+              name: Room
+              color: '#e8ebef'
+              stroke_width: 2
+              curve: smooth
+              show: {legend_value: false}
+            - entity: '[[climate]]'
+              attribute: temperature
+              name: Target
+              color: '#f2b84b'
+              stroke_width: 2
+              curve: stepline
+              show: {legend_value: false}
+      - type: custom:pulse-card
+        mode: why
+        room: '[[room]]'
+      - type: custom:pulse-card
+        mode: scenes
+        room: '[[room]]'
+      # Collapsed by default; the header text is a pulse-card so it can show "N of M on".
+      - type: custom:expander-card
+        expanded: false
+        title-card-clickable: true
+        gap: 0
+        padding: 0
+        child-padding: 0
+        title-card:
+          type: custom:pulse-card
+          mode: lights-title
+          room: '[[room]]'
+        cards:
+          - type: custom:pulse-card
+            mode: lights
+            room: '[[room]]'
+      - type: custom:pulse-card
+        mode: media
+        room: '[[room]]'
+      - type: custom:pulse-card
+        mode: automations
+        room: '[[room]]'
+      - type: custom:pulse-card
+        mode: room-feed
+        room: '[[room]]'

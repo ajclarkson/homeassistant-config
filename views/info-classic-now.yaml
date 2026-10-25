@@ -1,0 +1,66 @@
+title: Classic
+path: classic
+icon: mdi:home-heart
+type: panel
+cards:
+  - type: vertical-stack
+    cards:
+      - type: markdown
+        content: |-
+          {% set rooms = state_attr('sensor.info_rooms', 'rooms') %}
+          {% set rooms = rooms | from_json if rooms is string else (rooms or []) %}
+          {% set items = state_attr('sensor.info_attention', 'items') %}
+          {% set items = items | from_json if items is string else (items or []) %}
+          {% set home = ['person.adam', 'person.sarah'] | select('is_state', 'home') | list | length %}
+          {% set hn = namespace(n=0) %}{% for r in rooms %}{% if r.get('hvac_action') == 'heating' %}{% set hn.n = hn.n + 1 %}{% endif %}{% endfor %}
+          {% set heating = hn.n %}
+          {% set mode = states('sensor.house_active_mode') %}
+          {% if items | length == 0 %}
+          ## All good
+          {{ home }} home · heating in {{ heating }} room{{ '' if heating == 1 else 's' }} · mode {{ mode }}
+          {% else %}
+          ## {{ items | length }} thing{{ '' if items | length == 1 else 's' }} need{{ 's' if items | length == 1 else '' }} attention
+          {{ home }} home · heating in {{ heating }} room{{ '' if heating == 1 else 's' }} · mode {{ mode }}
+
+          {% for i in items %}
+          - **{{ i.get('room') }}**: {{ i.get('text') }} ([fix]({{ i.get('nav') or '/mobile-dashboard' }}))
+          {% endfor %}
+          {% endif %}
+          {% set fe = state_attr('sensor.info_decision_feed', 'entries') %}
+          {% if not fe or (fe is string and (fe | from_json) | length == 0) %}
+          _No decisions seen since HA started, so room cards show no reasons yet._
+          {% endif %}
+
+          [Open Mobile](/mobile-dashboard) · [House report](/info-dashboard/classic-house)
+      - type: markdown
+        title: Rooms
+        content: |-
+          {% set rooms = state_attr('sensor.info_rooms', 'rooms') %}
+          {% set rooms = rooms | from_json if rooms is string else (rooms or []) %}
+          {% set items = state_attr('sensor.info_attention', 'items') %}
+          {% set items = items | from_json if items is string else (items or []) %}
+          {% set kn = namespace(k=[]) %}{% for i in items %}{% set kn.k = kn.k + [i.get('key')] %}{% endfor %}
+          {% set keys = kn.k %}
+          {# Rooms needing attention first, then the fixed order. now() in the age maths makes HA re-render each minute. #}
+          {% set on = namespace(first=[], rest=[]) %}
+          {% for r in rooms %}{% if r.get('k') in keys %}{% set on.first = on.first + [r] %}{% else %}{% set on.rest = on.rest + [r] %}{% endif %}{% endfor %}
+          {% set ordered = on.first + on.rest %}
+          {% for r in ordered %}
+          ### {{ r.get('n') }}{% if r.get('k') in keys %} (needs attention){% endif %}
+          {{ r.get('verdict') or '' }}
+
+          {% set lw = r.get('lights_why') %}{% set sc = r.get('scene') %}
+          {% if r.get('lights_on') and sc and sc != 'off' %}Lights: {{ sc }} scene{% if lw %} · {{ lw }}{% endif %}{% elif lw %}Lights: {{ 'on' if r.get('lights_on') else 'off' }} · {{ lw }}{% endif %}{% if lw and r.get('lights_ts') %} ({{ 'just now' if (now() - as_datetime(r.get('lights_ts'))).total_seconds() < 60 else relative_time(as_datetime(r.get('lights_ts'))) ~ ' ago' }}){% endif %}
+
+          {# One temperature: the room sensor. TRV target and mode only when they explain something. #}
+          {% if r.get('temp') is not none %}Room {{ r.get('temp') }}°{% if r.get('humidity') is not none %} · {{ r.get('humidity') | round(0) | int }}%{% endif %}{% if r.get('target_reason') and r.get('target') is not none %} · TRV target {{ r.get('target') }}° ({{ r.get('target_reason') }}){% if r.get('mode_name') and r.get('mode_target') is not none %} · mode {{ r.get('mode_name') }} ({{ r.get('mode_target') }}°){% endif %}{% endif %}{% endif %}
+          {% set src = r.get('heating_source') %}{% if src and src not in ['schedule', 'unknown', 'unavailable'] %}Heating source: {{ src | replace('_', ' ') }}{% endif %}
+
+          {% if not r.get('lights_enabled', true) or r.get('heating_enabled') == false or r.get('override') %}Automations: lights {{ 'on' if r.get('lights_enabled', true) else '**off**' }}{% if r.get('heating_enabled') is not none %} · heating {{ 'on' if r.get('heating_enabled') else '**off**' }}{% endif %}{% if r.get('override') %} · **override**{% endif %}{% endif %}
+
+          {% if r.get('last') %}Last action: {{ r.get('last') }}{% if r.get('last_ts') %} ({{ 'just now' if (now() - as_datetime(r.get('last_ts'))).total_seconds() < 60 else relative_time(as_datetime(r.get('last_ts'))) ~ ' ago' }}){% endif %}{% endif %}
+
+          [Room controls]({{ r.get('nav') or '/mobile-dashboard' }})
+
+          ---
+          {% endfor %}
