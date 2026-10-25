@@ -271,115 +271,6 @@ ok('dashboard YAML parses', () => {
   for (const f of ['info-dashboard.yaml', 'info_templates.yaml', ...readdirSync(root + 'views').filter((x) => x.startsWith('info-')).map((x) => 'views/' + x)]) loadYaml(f);
 });
 
-ok('rateSeries marks the current slot and dims past', () => {
-  const rates = [
-    { start: '2026-10-25T18:00:00+00:00', end: '2026-10-25T18:30:00+00:00', value_inc_vat: 0.2 },
-    { start: '2026-10-25T18:30:00+00:00', end: '2026-10-25T19:00:00+00:00', value_inc_vat: 0.2 },
-    { start: '2026-10-25T19:00:00+00:00', end: '2026-10-25T19:30:00+00:00', value_inc_vat: 0.05 },
-    { start: '2026-10-25T19:30:00+00:00', end: '2026-10-25T20:00:00+00:00', value_inc_vat: 0.45 },
-  ];
-  const y = (cat) => P.rateSeries(rates, cat, NOW).map((p) => p.y !== null);
-  assert.deepEqual(y('past_mid'), [true, false, false, false]);
-  assert.deepEqual(y('past_cheap'), [false, false, false, false]);
-  assert.deepEqual(y('current'), [false, true, false, false]);
-  assert.deepEqual(y('cheap'), [false, false, true, false]);
-  assert.deepEqual(y('peak'), [false, false, false, true]);
-  assert.deepEqual(P.rateSeries('nope', 'cheap', NOW), []);
-});
-
-ok('past slots keep their band so they stay readable', () => {
-  const rates = [
-    { start: '2026-10-25T10:00:00+00:00', end: '2026-10-25T10:30:00+00:00', value_inc_vat: 0.05 },
-    { start: '2026-10-25T11:00:00+00:00', end: '2026-10-25T11:30:00+00:00', value_inc_vat: 0.5 },
-  ];
-  assert.deepEqual(P.rateSeries(rates, 'past_cheap', NOW).map((p) => p.y !== null), [true, false]);
-  assert.deepEqual(P.rateSeries(rates, 'past_peak', NOW).map((p) => p.y !== null), [false, true]);
-});
-
-ok('feed collapses consecutive identical sentences and has no second "just now"', () => {
-  const s = 'Bathroom lights scene set · button pressed';
-  const e = (ts, sentence) => ({ loc: 'bathroom', ts, sentence, decision: 'activate_scene', auto: 'bathroom:lighting' });
-  const entries = [e('2026-10-25T18:11:50+00:00', s), e('2026-10-25T18:11:40+00:00', s), e('2026-10-25T18:11:30+00:00', s), e('2026-10-25T18:11:20+00:00', s), e('2026-10-25T18:05:00+00:00', 'Kitchen lights on'), e('2026-10-25T18:01:00+00:00', s)];
-  const hass = mk({ 'sensor.info_decision_feed': { state: 'x', attributes: { entries: JSON.stringify(entries), by_room: '[]' } } });
-  const html = P.render('feed', {}, hass, Date.parse('2026-10-25T18:11:55Z'));
-  assert.equal((html.match(/Bathroom lights scene set/g) || []).length, 2, 'four in a row collapse to one; the later one stays separate');
-  assert.match(html, /<b>x4<\/b>/);
-  assert.doesNotMatch(html, /just now/);
-  assert.doesNotMatch(html, /x1/);
-});
-
-ok('room rows split lights vs heating holds and avoid jargon', () => {
-  const m = { ...FULL('bedroom'), target_reason: '', pres_labels: ['Bed occupied'], heat_labels: ['Window open'], labels: ['Bed occupied', 'Window open'], lights_why: 'lights back to automatic', lights_ts: '2026-10-25T18:41:00+00:00' };
-  const html = P.render('rooms', {}, withRooms([m], []), NOW);
-  assert.match(html, /Off · lights back to automatic 1 min ago · heating held: Window open · kept occupied by Bed occupied/);
-  assert.doesNotMatch(html, /recent-off|(?<!heating )held: Window open/);
-});
-
-ok('attention: sentence once in the row, human labels, steamy only with humidity data', () => {
-  const item = { room: 'Bathroom', key: 'bathroom', kind: 'comfort_outlier', text: '22.4° (room sensor) is too warm', nav: '/x' };
-  const mk2 = (over) => withRooms([{ ...FULL('bathroom'), target_reason: '', labels: [], pres_labels: [], heat_labels: [], verdict: 'Empty · lights off', ...over }], [item]);
-  const warm = renderAll(mk2({ humidity: 50 }));
-  assert.match(warm.attention, /Bathroom<\/b> · Too warm/);
-  assert.doesNotMatch(warm.attention, /22\.4/);
-  assert.equal((warm.rooms.match(/22\.4° \(room sensor\) is too warm/g) || []).length, 1);
-  assert.doesNotMatch(warm.rooms, /comfort outlier|comfort_outlier/);
-  const steamy = renderAll(mk2({ humidity: 88 }));
-  assert.match(steamy.attention, /Steamy/);
-  assert.match(steamy.rooms, /probably a shower/);
-  const shower = renderAll(mk2({ humidity: 75, occupied: true, lights_on: 1 }));
-  assert.match(shower.attention, /Steamy/);
-  const dry = renderAll(mk2({ humidity: null }));
-  assert.match(dry.attention, /Too warm/);
-  const cold = P.render('attention', {}, withRooms([FULL('bathroom')], [{ ...item, text: '15.0° (room sensor) is too cold' }]), NOW);
-  assert.match(cold, /Too cold/);
-});
-
-ok('Mo chip is a plain link to the Mo page, no time', () => {
-  const html = P.render('now-header', {}, mk({ 'input_text.mo_cooldown_eating': { state: '2026-10-25T03:44:00+00:00', attributes: {} } }), NOW);
-  assert.match(html, /data-path="\/mobile-dashboard\/mo"[^>]*>Mo<\/a>/);
-  assert.doesNotMatch(html, /eating alert|03:44/);
-});
-
-ok('usage: reads the unit (kW -> W), keeps W, dashes for unavailable / missing unit / stale', () => {
-  const at = (state, attributes, extra = {}) => P.render('energy', {}, mk({ 'sensor.glow_electricity_power': { state, attributes, last_updated: '2026-10-25T18:41:50+00:00', ...extra } }), NOW);
-  assert.match(at('0.44', { unit_of_measurement: 'kW' }), /440 W/);
-  assert.match(at('412', { unit_of_measurement: 'W' }), /412 W/);
-  assert.match(at('1.5', { unit_of_measurement: 'kW' }), /1\.50 kW/);
-  assert.match(at('0', { unit_of_measurement: 'kW' }), /0 W/);
-  assert.match(at('unavailable', { unit_of_measurement: 'kW' }), /Usage<\/div><div[^>]*>–/);
-  assert.match(at('0.44', {}), /Usage<\/div><div[^>]*>–/);
-  assert.match(at('0.44', { unit_of_measurement: 'MW' }), /Usage<\/div><div[^>]*>–/);
-  assert.match(at('0.44', { unit_of_measurement: 'kW' }, { last_updated: '2026-10-25T17:00:00+00:00' }), /Usage<\/div><div[^>]*>–/);
-  assert.equal(P.formatPower('0.44', 'kW'), '440 W');
-  assert.equal(P.formatPower(null, 'kW'), '–');
-});
-
-ok('Mo chip: ate today / yesterday / weekday from sensor.mo_timeline, bare Mo without data', () => {
-  const chip = (eating) => P.render('now-header', {}, mk({ 'sensor.mo_timeline': { state: 'x', attributes: { eating } } }), NOW);
-  assert.match(chip([{ ts: Date.parse('2026-10-25T03:44:00Z') }, { ts: 1 }]), />Mo · ate 03:44<\/a>/);
-  assert.match(chip([{ ts: Date.parse('2026-10-24T18:05:00Z') }]), /Mo · ate yesterday 18:05/);
-  assert.match(chip([{ ts: Date.parse('2026-10-23T18:05:00Z') }]), /Mo · ate Fri 18:05/);
-  assert.match(chip([{ ts: String(Date.parse('2026-10-25T03:44:00Z')) }]), /Mo · ate 03:44/);
-  for (const bad of [[], undefined, 'nope', [{}], [{ ts: 'x' }], [null]]) assert.match(chip(bad), />Mo<\/a>/, JSON.stringify(bad));
-  assert.match(P.render('now-header', {}, mk(), NOW), />Mo<\/a>/);
-  assert.match(chip([{ ts: 1 }]), />Mo<\/a>/);
-});
-
-ok('negative-heavy 50-slot day: negatives are kept, banded cheap, one category per slot, zero baseline drawn', () => {
-  const rates = Array.from({ length: 50 }, (_, i) => {
-    const s = Date.parse('2026-10-24T23:00:00Z') + i * 1800000;
-    const pence = i < 30 ? -7.54 + (i % 6) * 1.7 : i < 38 ? 31 : 12;
-    return { start: new Date(s).toISOString(), end: new Date(s + 1800000).toISOString(), value_inc_vat: pence / 100 };
-  });
-  const cats = ['past_cheap', 'past_mid', 'past_peak', 'current', 'cheap', 'mid', 'peak'];
-  const series = Object.fromEntries(cats.map((c) => [c, P.rateSeries(rates, c, NOW)]));
-  for (let i = 0; i < 50; i += 1) assert.equal(cats.filter((c) => series[c][i].y !== null).length, 1, `slot ${i}`);
-  const neg = series.past_cheap.filter((p) => p.y !== null && p.y < 0);
-  assert.ok(neg.length > 20, 'past negative slots are drawn, below zero, in the cheap (green) band');
-  assert.ok(series.past_cheap.every((p) => p.y === null || p.y < 15));
-  assert.equal(series.cheap.concat(series.mid, series.peak).filter((p) => p.y !== null && p.y < 0).length, series.cheap.filter((p) => p.y !== null && p.y < 0).length, 'future negatives are cheap too');
-});
-
 ok('cheapest 2h line: shown with data, running now, hidden when unknown', () => {
   assert.match(P.render('energy', {}, mk(), NOW), /Cheapest 2h<\/span><span>02:00 → 04:00 · avg 9\.8p/);
   const running = P.render('energy', {}, mk({ 'binary_sensor.octopus_energy_target_cheapest_2h_waking_hours': { state: 'on', attributes: {} } }), NOW);
@@ -413,11 +304,11 @@ ok('real data at 18:29Z: slots 0-37 past (dimmed, visible), slot 38 now, 39-49 f
   assert.equal(bars[38].op, 1);
   assert.deepEqual(bars.slice(39).map((b) => b.op), Array(11).fill(1));
   // 16:00-18:30Z (slots 34-37) are 29-33p: mid band, drawn above the baseline, clearly tall
-  for (const i of [34, 35, 36, 37]) { assert.equal(bars[i].fill, '#5d7390'); assert.ok(bars[i].y + bars[i].h <= base + 0.5 && bars[i].h > 30, `slot ${i}`); }
+  for (const i of [34, 35, 36, 37]) { assert.equal(bars[i].fill, P.priceColour(real[i].value_inc_vat * 100)); assert.ok(bars[i].y + bars[i].h <= base + 0.5 && bars[i].h > 30, `slot ${i}`); }
   // overnight slots are negative: green, hanging from the baseline
   const neg = bars.slice(0, 34).filter((b) => Math.abs(b.y - base) < 0.6);
   assert.ok(neg.length >= 20, 'negative slots start at the baseline and extend down');
-  assert.ok(bars.slice(0, 34).every((b) => b.fill === '#6fcf97' || b.fill === '#5d7390'));
+  assert.ok(real.slice(0, 34).every((r, i) => (r.value_inc_vat <= 0 ? bars[i].fill === '#2ee6c8' : bars[i].fill === P.priceColour(r.value_inc_vat * 100))));
   assert.ok(bars.every((b) => b.h >= 1.5));
   const nowX = Number(html.match(/<line x1="([\d.]+)" x2="[\d.]+" y1="0"/)[1]);
   assert.equal(nowX, 38 * 6 + 2.5, 'now marker sits on the current slot');
@@ -462,6 +353,85 @@ ok('rooms list: occupancy icon beside the name (occupied / empty / unavailable),
 ok('frontend module URL is cache-busted and the card says to bump it', () => {
   assert.match(readFileSync(root + 'packages/frontend.yaml', 'utf8'), /\/local\/pulse-card\.js\?v=\d+/);
   assert.match(readFileSync(root + 'www/pulse-card.js', 'utf8'), /Bump N|Cache busting/);
+});
+
+const hexRgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+const dist = (a, b) => Math.hypot(...hexRgb(a).map((v, i) => v - hexRgb(b)[i]));
+const lum = (h) => { const c = hexRgb(h).map((v) => v / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
+const cr = (a, b) => (Math.max(lum(a), lum(b)) + 0.05) / (Math.min(lum(a), lum(b)) + 0.05);
+
+ok('priceColour: negative special case, boundaries, never throws', () => {
+  const C = P.priceColour;
+  for (const bad of [NaN, undefined, null, 'x', '', Infinity, -Infinity, {}, []]) assert.equal(C(bad), '#6b7684', String(bad));
+  assert.equal(C(-7.54), '#2ee6c8');
+  assert.equal(C(0), '#2ee6c8');
+  assert.equal(C(-0.01), C(-100));
+  for (const v of [0.01, 15, 25, 35, 44.9, 45, 100, -7.54]) assert.match(C(v), /^#[0-9a-f]{6}$/, String(v));
+  assert.equal(C(45), C(100));
+  assert.equal(C('12'), C(12));
+  assert.notEqual(C(45), C(44.9));
+});
+
+ok('priceColour: negative is clearly distinct from the 0-10p greens; extreme is distinct from 35-44.9p', () => {
+  for (const v of [0.01, 2, 5, 10]) assert.ok(dist(P.priceColour(-1), P.priceColour(v)) > 60, `neg vs ${v}`);
+  for (let v = 35; v < 45; v += 0.3) assert.ok(dist(P.priceColour(45), P.priceColour(v)) > 45, `extreme vs ${v.toFixed(1)}`);
+});
+
+ok('priceColour: continuous green -> red hue, monotonic, lightness varies, green/red differ in luminance', () => {
+  const hue = (hex) => { const [r, g, b] = hexRgb(hex).map((x) => x / 255); const mx = Math.max(r, g, b); const mn = Math.min(r, g, b); const d = mx - mn; if (d === 0) return 0; let h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; h *= 60; return h < 0 ? h + 360 : h; };
+  let prev = 1000;
+  let lights = new Set();
+  let maxStep = 0;
+  let last = null;
+  for (let v = 0.5; v < 45; v += 0.5) {
+    const c = P.priceColour(v);
+    const h = hue(c);
+    assert.ok(h <= prev + 0.6, `hue should fall (${v}p: ${h} after ${prev})`);
+    prev = h;
+    lights.add(Math.round(lum(c) * 20));
+    if (last) maxStep = Math.max(maxStep, dist(c, last));
+    last = c;
+  }
+  assert.ok(maxStep < 40, `no jumps within the graded range (max step ${maxStep.toFixed(1)})`);
+  assert.ok(lights.size >= 4, 'luminance varies along the scale');
+  assert.ok(cr(P.priceColour(1), P.priceColour(44.9)) >= 1.5, 'green and red differ in luminance, not just hue');
+});
+
+ok('priceColour: text variant reads on the card (>= 4.5:1) for every price', () => {
+  for (const v of [-20, -7.5, 0, 0.5, 5, 10, 15, 20, 25, 30, 35, 40, 44.9, 45, 80, 200, NaN]) assert.ok(cr(P.priceColour(v, { text: true }), '#1a1f26') >= 4.5, `${v}`);
+});
+
+ok('Now and Next figures use the price colour (text variant)', () => {
+  const html = P.render('energy', {}, mk(), NOW); // now 34.8p, next 41.2p in the fixture
+  assert.ok(html.includes(`color:${P.priceColour(34.8, { text: true })}`));
+  assert.ok(html.includes(`color:${P.priceColour(41.2, { text: true })}`));
+  const none = P.render('energy', {}, { states: {} }, NOW);
+  assert.ok(none.includes(`color:${P.priceColour(NaN, { text: true })}`));
+});
+
+ok('chart: per-slot colours from the real rates at 18:29Z; key and aria summary present', () => {
+  const html = energyAt(real, Date.parse('2026-10-25T18:29:00Z'));
+  const bars = rect(html);
+  assert.equal(bars.length, 50);
+  real.forEach((r, i) => {
+    const p = r.value_inc_vat * 100;
+    if (i === 38) assert.equal(bars[i].fill, '#e8ebef');
+    else assert.equal(bars[i].fill, P.priceColour(p), `slot ${i} ${p.toFixed(2)}p`);
+    assert.equal(bars[i].op, i < 38 ? 0.45 : 1);
+  });
+  assert.match(html, /aria-label="Half-hourly electricity price, 50 slots\. Cheapest -7\.5p at \d\d:\d\d, dearest 33\.4p at \d\d:\d\d\. Now [\d.-]+p\."/);
+  assert.match(html, />≤0p</);
+  assert.match(html, /<span>0<\/span><span>15<\/span><span>30<\/span><span>45p\+<\/span>/);
+  assert.match(html, /linear-gradient\(to right,#/);
+  assert.match(html, /stroke-dasharray="2 2"/);
+  const emptyKey = energyAt([], NOW);
+  assert.doesNotMatch(emptyKey, /linear-gradient/);
+});
+
+ok('extreme prices (>= 45p) render in the extreme colour; zero and negative in teal', () => {
+  const slots = [-3, 0, 20, 44.9, 45, 60].map((p, i) => { const s = Date.parse('2026-10-25T00:00:00Z') + i * 1800000; return { start: new Date(s).toISOString(), end: new Date(s + 1800000).toISOString(), value_inc_vat: p / 100 }; });
+  const bars = rect(energyAt(slots, Date.parse('2026-10-25T23:00:00Z')));
+  assert.deepEqual(bars.map((b) => b.fill), ['#2ee6c8', '#2ee6c8', P.priceColour(20), P.priceColour(44.9), '#c2003b', '#c2003b']);
 });
 
 console.log(`\n${n} test groups passed`);

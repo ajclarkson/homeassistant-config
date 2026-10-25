@@ -41,6 +41,24 @@
     switchOff: '#3a424d',
   };
 
+  // ── Price colours (single definition) ──────────────────────────────────────────────────────
+  // Graded green -> red by pence/kWh, interpolated in HSL between these stops. Lightness varies
+  // along the scale (not just hue) so green and red stay apart for colour-blind viewers; bar
+  // height and the numbers carry the price too. Negative prices are always good ("paid to use")
+  // and get their own bright teal; >= PRICE_EXTREME_P is a deeper, more saturated red.
+  const PRICE_STOPS = [ // [pence, hue, saturation %, lightness %]
+    [0, 142, 58, 46],
+    [15, 88, 62, 56],
+    [25, 52, 82, 60],
+    [35, 26, 88, 56],
+    [44.99, 4, 80, 50],
+  ];
+  const PRICE_EXTREME_P = 45;
+  const PRICE_NEGATIVE = '#2ee6c8';
+  const PRICE_EXTREME = '#c2003b';
+  const PRICE_NEUTRAL = '#6b7684';
+  const PRICE_KEY_P = [0, 15, 30, 45];
+
   const STYLE = `
 :host{display:block}
 *{box-sizing:border-box}
@@ -213,8 +231,6 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 
   const PLUMBING_DECISIONS = ['update_external_temp', 'record'];
   const PLUMBING_AUTOS = ['room_temp_feed', 'outdoor_temp_history'];
-  const CHEAP_P = 15;
-  const PEAK_P = 38;
 
   // ── Safe readers ─────────────────────────────────────────────────────────────────────────────
   const num = (v) => {
@@ -565,12 +581,52 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return `ate ${d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} ${time}`;
   }
 
-  const priceColor = (p) => (p === null ? TOKENS.text : p < CHEAP_P ? TOKENS.ok : p >= PEAK_P ? TOKENS.amber : TOKENS.text);
+  const hex2 = (n) => Math.round(Math.max(0, Math.min(255, n))).toString(16).padStart(2, '0');
+  function hslToHex(h, sat, l) {
+    const S = sat / 100;
+    const L = l / 100;
+    const k = (n) => (n + h / 30) % 12;
+    const a = S * Math.min(L, 1 - L);
+    const f = (n) => L - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+    return `#${hex2(f(0) * 255)}${hex2(f(8) * 255)}${hex2(f(4) * 255)}`;
+  }
+  const luminance = (hex) => {
+    const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  };
+  const contrast = (a, b) => { const x = luminance(a); const y = luminance(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+
+  // price (pence) -> hex. Never throws: a non-finite price is neutral grey. `text: true` returns a
+  // variant lightened until it has >= 4.5:1 contrast on the card surface, for figures.
+  function priceColour(p, opts) {
+    const v = typeof p === 'number' ? p : typeof p === 'string' && p.trim() !== '' ? Number(p) : NaN;
+    const text = !!(opts && opts.text);
+    if (!Number.isFinite(v)) return text ? lift(PRICE_NEUTRAL) : PRICE_NEUTRAL;
+    if (v <= 0) return text ? lift(PRICE_NEGATIVE) : PRICE_NEGATIVE;
+    if (v >= PRICE_EXTREME_P) return text ? lift(PRICE_EXTREME) : PRICE_EXTREME;
+    let lo = PRICE_STOPS[0];
+    let hi = PRICE_STOPS[PRICE_STOPS.length - 1];
+    for (let i = 0; i < PRICE_STOPS.length - 1; i += 1) {
+      if (v >= PRICE_STOPS[i][0] && v <= PRICE_STOPS[i + 1][0]) { lo = PRICE_STOPS[i]; hi = PRICE_STOPS[i + 1]; break; }
+    }
+    const t = hi[0] === lo[0] ? 0 : (v - lo[0]) / (hi[0] - lo[0]);
+    const mix = (i) => lo[i] + (hi[i] - lo[i]) * t;
+    const hex = hslToHex(mix(1), mix(2), mix(3));
+    return text ? lift(hex) : hex;
+  }
+  // Lighten (mix toward white) until the colour reads on the card surface.
+  function lift(hex) {
+    let out = hex;
+    for (let i = 1; i <= 10 && contrast(out, TOKENS.surface) < 4.5; i += 1) {
+      const m = (c) => hex2(parseInt(hex.slice(c, c + 2), 16) + (255 - parseInt(hex.slice(c, c + 2), 16)) * (i / 10));
+      out = `#${m(1)}${m(3)}${m(5)}`;
+    }
+    return out;
+  }
   // Price bars: one slot per entry of the Octopus current-day rates list (46, 48 or 50 on clock-change
   // days; never assumed), x anchored to the first slot start and last slot end, negative slots below
   // a zero baseline. Drawn here (not apexcharts-card) so the whole energy block is one surface and
   // every pixel decision is testable in node.
-  const BAR_COLOR = { cheap: TOKENS.ok, mid: '#5d7390', peak: TOKENS.amber };
   const PLOT_H = 96;
   const SLOT_W = 6;
   function rateBands(rates, now) {
@@ -581,8 +637,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       const end = Date.parse(r.end);
       const v = Number(r.value_inc_vat) * 100;
       if (!Number.isFinite(start) || !Number.isFinite(end) || !Number.isFinite(v) || end <= start) continue;
-      const band = v < CHEAP_P ? 'cheap' : v >= PEAK_P ? 'peak' : 'mid';
-      out.push({ start, end, v, band, state: end <= now ? 'past' : start <= now ? 'current' : 'future' });
+      out.push({ start, end, v, state: end <= now ? 'past' : start <= now ? 'current' : 'future' });
     }
     return out.sort((x, y) => x.start - y.start);
   }
@@ -599,7 +654,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const bars = slots.map((x, i) => {
       const top = Math.min(y(x.v), y0);
       const h = Math.max(1.5, Math.abs(y(x.v) - y0));
-      const fill = x.state === 'current' ? TOKENS.text : BAR_COLOR[x.band];
+      const fill = x.state === 'current' ? TOKENS.text : priceColour(x.v);
       const op = x.state === 'past' ? 0.45 : 1;
       return `<rect x="${i * SLOT_W}" y="${top.toFixed(1)}" width="${SLOT_W - 1}" height="${h.toFixed(1)}" rx="1" fill="${fill}" opacity="${op}"/>`;
     }).join('');
@@ -610,10 +665,15 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       const d = new Date(x.start);
       return d.getMinutes() === 0 && d.getHours() % 6 === 0 ? `<span style="position:absolute;left:${((i / n) * 100).toFixed(2)}%;transform:translateX(-50%)">${String(d.getHours()).padStart(2, '0')}</span>` : '';
     }).join('');
-    const label = cur >= 0 ? `Half-hourly electricity price, ${n} slots, now ${fmt1(slots[cur].v)}p` : `Half-hourly electricity price, ${n} slots`;
+    const cheapest = slots.reduce((a, x) => (x.v < a.v ? x : a), slots[0]);
+    const dearest = slots.reduce((a, x) => (x.v > a.v ? x : a), slots[0]);
+    const at = (x) => hhmm(new Date(x.start).toISOString());
+    const label = `Half-hourly electricity price, ${n} slots. Cheapest ${fmt1(cheapest.v)}p at ${at(cheapest)}, dearest ${fmt1(dearest.v)}p at ${at(dearest)}.${cur >= 0 ? ` Now ${fmt1(slots[cur].v)}p.` : ''}`;
+    const grad = [0, 15, 25, 35, 44.9].map((pp, i) => `${priceColour(pp)} ${(i / 4) * 100}%`).join(',');
+    const key = `<div style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:10px;color:${TOKENS.text3}" aria-hidden="true"><span style="display:inline-flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:3px;background:${PRICE_NEGATIVE}"></span>≤0p</span><span style="flex:1;display:flex;flex-direction:column;gap:2px"><span style="height:6px;border-radius:3px;background:linear-gradient(to right,${grad})"></span><span style="display:flex;justify-content:space-between"><span>${PRICE_KEY_P[0]}</span><span>${PRICE_KEY_P[1]}</span><span>${PRICE_KEY_P[2]}</span><span>${PRICE_KEY_P[3]}p+</span></span></span><span style="width:10px;height:10px;border-radius:3px;background:${PRICE_EXTREME}"></span></div>`;
     return `<div style="position:relative;margin-top:14px"><svg viewBox="0 0 ${n * SLOT_W} ${PLOT_H}" preserveAspectRatio="none" width="100%" height="${PLOT_H}" role="img" aria-label="${esc(label)}" style="display:block">${bars}<line x1="0" x2="${n * SLOT_W}" y1="${y0.toFixed(1)}" y2="${y0.toFixed(1)}" stroke="${TOKENS.text3}" stroke-width=".8" vector-effect="non-scaling-stroke"/>${marker}</svg>
 <span style="position:absolute;left:0;top:${Math.max(0, y0 - 14).toFixed(0)}px;font-size:10px;color:${TOKENS.text3}">0</span></div>
-<div style="position:relative;height:14px;font-size:10px;color:${TOKENS.text3};margin-top:4px">${ticks}</div>`;
+<div style="position:relative;height:14px;font-size:10px;color:${TOKENS.text3};margin-top:4px">${ticks}</div>${key}`;
   }
 
   // The energy block is ONE card: numbers, bars, cheapest-2h and the tomorrow note.
@@ -643,8 +703,8 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const note = `${tomorrowIn ? "Tomorrow's rates are in." : "Tomorrow's rates are not in yet."}${hasFree ? ' Free window ' + esc(free) + '.' : ''}`;
     return `<div class="lbl" style="margin:4px 4px -10px">Energy</div>
 <div class="card pad"><div style="display:flex;gap:16px;align-items:flex-end">
-<div><div class="lbl">Now</div><div style="font-size:26px;font-weight:700;letter-spacing:-.5px;line-height:1.1">${nowP === null ? '–' : fmt1(nowP)}<span style="font-size:13px;font-weight:500;color:${TOKENS.text2}"> p/kWh</span></div></div>
-<div><div class="lbl">Next</div><div style="font-size:18px;font-weight:600;color:${priceColor(nextP)};line-height:1.5">${nextP === null ? '–' : fmt1(nextP) + 'p'}</div></div>
+<div><div class="lbl">Now</div><div style="font-size:26px;font-weight:700;letter-spacing:-.5px;line-height:1.1;color:${priceColour(nowP, { text: true })}">${nowP === null ? '–' : fmt1(nowP)}<span style="font-size:13px;font-weight:500;color:${TOKENS.text2}"> p/kWh</span></div></div>
+<div><div class="lbl">Next</div><div style="font-size:18px;font-weight:600;color:${priceColour(nextP, { text: true })};line-height:1.5">${nextP === null ? '–' : fmt1(nextP) + 'p'}</div></div>
 <div style="flex:1"></div><div style="text-align:right"><div class="lbl">Usage</div><div style="font-size:18px;font-weight:600;line-height:1.5">${usageText}</div></div></div>
 ${priceChart(rates, at)}${cheapest}<div style="font-size:12px;color:${TOKENS.text2};margin-top:8px">${note}</div></div>`;
   }
@@ -850,29 +910,6 @@ ${priceChart(rates, at)}${cheapest}<div style="font-size:12px;color:${TOKENS.tex
     return html ? `<div class="p">${html}</div>` : '';
   }
 
-  // ── Price bars for apexcharts-card ───────────────────────────────────────────────────────────
-  // rates: attribute `rates` of the Octopus current-day-rates event ({start, end, value_inc_vat},
-  // GBP/kWh, local offsets). Never assume 48 slots: clock-change days have 46 or 50.
-  function rateSeries(rates, cat, now) {
-    const list = Array.isArray(rates) ? rates : [];
-    const out = [];
-    for (const r of list) {
-      if (!isObj(r)) continue;
-      const start = Date.parse(r.start);
-      const end = Date.parse(r.end);
-      const v = Number(r.value_inc_vat) * 100;
-      if (!Number.isFinite(start) || !Number.isFinite(end) || !Number.isFinite(v)) continue;
-      let c;
-      const band = v < CHEAP_P ? 'cheap' : v >= PEAK_P ? 'peak' : 'mid';
-      // Past slots keep their band (drawn at 45% opacity) so the day's shape stays readable.
-      if (end <= now) c = `past_${band}`;
-      else if (start <= now) c = 'current';
-      else c = band;
-      out.push({ x: start, y: c === cat ? v : null });
-    }
-    return out;
-  }
-
   // ── Service calls ────────────────────────────────────────────────────────────────────────────
   function callService(hass, domain, service, data) {
     if (!ALLOWED[domain] || !ALLOWED[domain].includes(service)) {
@@ -899,7 +936,7 @@ ${priceChart(rates, at)}${cheapest}<div style="font-size:12px;color:${TOKENS.tex
     }
   }
 
-  const api = { rateBands, DASH, MOBILE, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, ALL_ROOM_KEYS, ALLOWED, render, rateSeries, roomModel, attentionItems, handleAction, callService, num, parseList };
+  const api = { rateBands, DASH, MOBILE, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, ALL_ROOM_KEYS, ALLOWED, render, priceColour, PRICE_STOPS, PRICE_EXTREME_P, roomModel, attentionItems, handleAction, callService, num, parseList };
   root.PulseLib = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 
