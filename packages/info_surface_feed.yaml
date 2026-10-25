@@ -117,6 +117,7 @@ template:
                 'auto': e.get('automation_id') | string,
                 'decision': dec,
                 'reason': rsn,
+                'why': why,
                 'sentence': (loc | replace('_', ' ') | capitalize) ~ ' '
                   ~ nouns.get(sub, sub | replace('_', ' ')) ~ ' ' ~ verb
                   ~ ((' · ' ~ why) if why else '')
@@ -169,6 +170,19 @@ template:
             {% set new = entry | from_json if entry is string else entry %}
             {% if new %}
               {{ ([new] + (old | selectattr('loc', 'ne', new.loc) | list))[:30] | tojson }}
+            {% else %}
+              {{ old | tojson }}
+            {% endif %}
+          # Newest meaningful lighting decision per location, so the room card can say why the
+          # lights are as they are. Kept apart from by_room, which holds one entry per location
+          # and would otherwise need a 3x larger list (attribute size limit).
+          lights: >-
+            {% set x = state_attr('sensor.info_decision_feed', 'lights') %}
+            {% set old = x | from_json if x is string else (x or []) %}
+            {% set new = entry | from_json if entry is string else entry %}
+            {% if new and new.get('sub') == 'lighting' %}
+              {{ ([{'loc': new.get('loc'), 'ts': new.get('ts'), 'decision': new.get('decision'), 'reason': new.get('reason'), 'why': new.get('why')}]
+                  + (old | rejectattr('loc', 'eq', new.get('loc')) | list))[:12] | tojson }}
             {% else %}
               {{ old | tojson }}
             {% endif %}
