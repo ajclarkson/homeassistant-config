@@ -86,12 +86,6 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 .tag.ok{background:${TOKENS.okBg};color:${TOKENS.ok}}
 .tag.off{background:${TOKENS.divider};color:${TOKENS.text2}}
 .link{display:flex;align-items:center;min-height:44px;font-size:13px;font-weight:600;color:${TOKENS.link}}
-.bins{display:flex;gap:8px}
-.bin{flex:1;background:${TOKENS.surface};border-radius:12px;padding:10px 6px;text-align:center;min-height:56px}
-.bin .d{font-size:16px;font-weight:700}
-.bin .n{font-size:11px;color:${TOKENS.text2};margin-top:2px}
-.bin.soon{background:${TOKENS.amberTag}}
-.bin.soon .d,.bin.soon .n{color:${TOKENS.amber}}
 .feed{display:grid;grid-template-columns:44px 1fr;gap:8px;font-size:12.5px;line-height:1.4;padding:8px 14px;border-top:1px solid ${TOKENS.divider}}
 .feed:first-child{border-top:0}
 .feed .a{color:${TOKENS.text3}}
@@ -111,6 +105,11 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 .tile.on{background:${TOKENS.sceneActive};color:${TOKENS.sceneActiveText}}
 .lt{display:grid;grid-template-columns:1fr 130px;gap:12px;align-items:center;min-height:56px;padding:6px 14px;border-top:1px solid ${TOKENS.divider}}
 .lt:first-child{border-top:0}
+.badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:${TOKENS.divider};color:#cfd5dd;white-space:nowrap}
+.oc{display:flex;align-items:center;gap:12px;padding:14px;min-height:64px;text-decoration:none}
+.rgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.rt{display:flex;flex-direction:column;justify-content:space-between;gap:6px;padding:12px 12px 10px;min-height:76px;background:${TOKENS.surface};border-radius:14px;text-decoration:none;color:inherit}
+.rt .b{display:flex;gap:6px;align-items:center;flex-wrap:wrap;color:#7d8794;font-size:11px;min-height:16px}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .chart:focus-visible{outline:2px solid ${TOKENS.link};outline-offset:2px;border-radius:6px}
 .tip{position:absolute;top:-36px;left:0;pointer-events:none;background:${TOKENS.divider};border:1px solid #2f3843;border-radius:8px;padding:4px 8px;font-size:12px;line-height:1.3;white-space:nowrap;z-index:2}
@@ -220,6 +219,10 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   // path silently falls back to the default dashboard, which is exactly the bug this avoids.
   const DASH = '/pulse-dashboard';
   const MOBILE = '/mobile-dashboard';
+  // The separate energy page. The Details link only renders when a card names this path in
+  // `details_path`, and only when that view exists in info-dashboard.yaml (tests enforce both).
+  const ENERGY_PATH = `${DASH}/energy`;
+  const RECENT_MS = 15 * 60 * 1000;
 
   // Wall-button and other manual sources, in plain words.
   const SOURCE_WORDS = { dashboard: 'dashboard', switch: 'wall switch', wall_button: 'wall button' };
@@ -445,15 +448,18 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     chev: 'M6 9l6 6 6-6',
     sliders: 'M4 12h10M18 12h2M4 6h4M12 6h8M4 18h12M20 18h0M16 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM10 4a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM18 16a2 2 0 1 0 0 4 2 2 0 0 0 0-4z',
     play: 'M8 5v14l11-7z',
+    hand: 'M8 13V5a1.5 1.5 0 0 1 3 0v6M11 10V4a1.5 1.5 0 0 1 3 0v6M14 10V6a1.5 1.5 0 0 1 3 0v8a6 6 0 0 1-6 6h-1a6 6 0 0 1-5-3l-2-4a1.5 1.5 0 0 1 2.5-1.5L8 14',
+    window: 'M4 4h16v16H4zM12 4v16M4 12h16',
     pause: 'M7 5h4v14H7zM13 5h4v14h-4z',
   };
   const svg = (path, size, extra) => `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"${extra || ''}><path d="${path}"/></svg>`;
   // Occupancy indicator (the dot stays health): filled person = occupied, outlined dim = empty,
   // dashed amber = occupancy sensor unavailable.
-  function occIcon(m) {
+  function occIcon(m, px) {
+    const size = px || 15;
     if (!m.hasReport) return '';
     const [label, fill, color, dash] = m.occupancy_unavailable ? ['Occupancy unavailable', 'none', TOKENS.amber, ' stroke-dasharray="2 2"'] : m.occupied ? ['Occupied', 'currentColor', TOKENS.text, ''] : ['Empty', 'none', TOKENS.text3, ''];
-    return `<svg class="occ" role="img" aria-label="${label}" viewBox="0 0 24 24" width="15" height="15" fill="${fill}" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="color:${color};flex:none"${dash}><circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/></svg>`;
+    return `<svg class="occ" role="img" aria-label="${label}" viewBox="0 0 24 24" width="${size}" height="${size}" fill="${fill}" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="color:${color};flex:none"${dash}><circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/></svg>`;
   }
   const SCENE_ICON = { off: 'power', lamps: 'lamp', low: 'moon', full: 'sun', all_full: 'sun', daylight: 'sun' };
 
@@ -461,22 +467,6 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   function lightsPhrase(m, scene) {
     if (m.lights_on > 0) return scene && scene !== 'off' ? `${sceneLabel(scene)} scene` : 'Lights on';
     return 'Off';
-  }
-
-  // One-line reason for a room row: lights state and why, then anything that differs or holds.
-  function rowSub(m, scene, now) {
-    const parts = [lightsPhrase(m, scene)];
-    if (m.lights_why) {
-      const a = ago(m.lights_ts, now);
-      parts.push(`${m.lights_why}${a ? ' ' + a : ''}`);
-    } else if (m.hasReport) {
-      parts.push(m.occupancy_unavailable ? 'occupancy unavailable' : m.occupied ? 'occupied' : 'empty');
-    }
-    if (m.target_reason && m.target !== null) parts.push(`heating target ${fmt1(m.target)}° (${m.target_reason})`);
-    else if (m.heat_labels.length) parts.push(`heating held: ${m.heat_labels.join(' · ')}`);
-    if (m.pres_labels.length) parts.push(`kept occupied by ${m.pres_labels.join(' · ')}`);
-    if (m.manual) parts.push(`manual (${SOURCE_WORDS[m.manual.source] || m.manual.source})`);
-    return parts.join(' · ');
   }
 
   function bannerFor(m, items) {
@@ -496,66 +486,143 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   }
 
   // ── Sections ─────────────────────────────────────────────────────────────────────────────────
-  function sectionNowHeader(hass, at) {
+  function sectionNowHeader(hass) {
     const mode = state(hass, 'sensor.house_active_mode');
     const mod = state(hass, 'input_select.house_active_mode_modifier');
     const pill = usable(mode) ? `<div class="tag ok" style="padding:3px 9px">● ${esc(mode.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase()))}${usable(mod) && mod !== 'none' ? ' · ' + esc(mod) : ''}</div>` : '';
+    return `<div style="display:flex;align-items:center;gap:10px"><div style="font-size:28px;font-weight:700;letter-spacing:-.4px">Pulse</div>${pill}<div style="flex:1"></div>
+<a class="tap" data-act="nav" data-path="${MOBILE}" aria-label="Open Mobile controls" style="min-height:44px;min-width:44px;display:flex;align-items:center;justify-content:center;color:${TOKENS.text2}">${svg(ICON.sliders, 22)}</a></div>`;
+  }
+
+  function peopleChips(hass, at) {
     const person = (id, name, wfh) => {
-      const s = state(hass, id);
-      const home = s === 'home';
+      const st = state(hass, id);
+      const home = st === 'home';
       const w = state(hass, wfh) === 'on';
-      const label = !usable(s) ? 'Unknown' : home && w ? 'WFH' : home ? 'Home' : w ? 'Away · WFH' : 'Away';
+      const label = !usable(st) ? 'Unknown' : home && w ? 'WFH' : home ? 'Home' : w ? 'Away · WFH' : 'Away';
       return `<div class="chip"><span class="dot${home ? '' : ' dim'}" style="width:8px;height:8px"></span>${esc(name)} · ${label}</div>`;
     };
-    return `<div style="display:flex;align-items:center;gap:10px"><div style="font-size:28px;font-weight:700;letter-spacing:-.4px">Pulse</div>${pill}<div style="flex:1"></div>
-<a class="tap" data-act="nav" data-path="${MOBILE}" aria-label="Open Mobile controls" style="min-height:44px;min-width:44px;display:flex;align-items:center;justify-content:center;color:${TOKENS.text2}">${svg(ICON.sliders, 22)}</a></div>
-<div style="display:flex;gap:8px;flex-wrap:wrap">${person('person.adam', 'Adam', 'input_boolean.wfh_adam')}${person('person.sarah', 'Sarah', 'input_boolean.wfh_sarah')}<a class="chip tap" data-act="nav" data-path="${MOBILE}/mo" style="color:${TOKENS.text2}">Mo${moAte(hass, at) ? ' · ' + esc(moAte(hass, at)) : ''}</a></div>`;
+    const ate = moAte(hass, at);
+    return `<div style="display:flex;gap:8px;flex-wrap:wrap">${person('person.adam', 'Adam', 'input_boolean.wfh_adam')}${person('person.sarah', 'Sarah', 'input_boolean.wfh_sarah')}<a class="chip tap" data-act="nav" data-path="${MOBILE}/mo" style="color:${TOKENS.text2}">Mo${ate ? ' · ' + esc(ate) : ''}</a></div>`;
+  }
+
+  // Now / Next (graded colours) and Usage (unit-aware). A reading that has not updated for 10 minutes
+  // is stale (the meter reports every few seconds), so it shows a dash rather than a confident 0 W.
+  function priceStrip(hass, at) {
+    const base = 'sensor.octopus_energy_electricity_24e8140196_1012483035417';
+    const p = (v) => (v === null ? null : v * 100);
+    const nowP = p(num(state(hass, `${base}_current_rate`)));
+    const nextP = p(num(state(hass, `${base}_next_rate`)));
+    const wState = stateObj(hass, 'sensor.glow_electricity_power');
+    const wAge = wState ? parseTs(wState.last_updated) : null;
+    const stale = wAge !== null && at - wAge > 600000;
+    const usageText = stale ? '–' : formatPower(state(hass, 'sensor.glow_electricity_power'), attr(hass, 'sensor.glow_electricity_power', 'unit_of_measurement'));
+    return `<div style="display:flex;gap:16px;align-items:flex-end;margin-top:14px;padding-top:12px;border-top:1px solid ${TOKENS.divider}">
+<div><div class="lbl">Now</div><div style="font-size:26px;font-weight:700;letter-spacing:-.5px;line-height:1.15;color:${priceColour(nowP, { text: true })}">${nowP === null ? '–' : fmt1(nowP)}<span style="font-size:12px;font-weight:500;color:${TOKENS.text2}"> p/kWh</span></div></div>
+<div><div class="lbl">Next</div><div style="font-size:18px;font-weight:600;color:${priceColour(nextP, { text: true })};line-height:1.5">${nextP === null ? '–' : fmt1(nextP) + 'p'}</div></div>
+<div style="flex:1"></div><div style="text-align:right"><div class="lbl">Usage</div><div style="font-size:18px;font-weight:600;line-height:1.5">${usageText}</div></div></div>`;
   }
 
   function heatingRooms(hass) {
     return ROOM_ORDER.filter((k) => roomModel(hass, k).hvac_action === 'heating');
   }
 
-  function sectionAttention(hass) {
+  const occupiedRooms = (hass) => ROOM_ORDER.filter((k) => { const m = roomModel(hass, k); return m.hasReport && m.occupied; });
+
+  // One status card: dot + verdict (amber with the attention summary when there are items), the
+  // occupancy/heating sentence, people and Mo chips, and the price strip.
+  function sectionStatus(hass, at) {
     const items = attentionItems(hass);
+    const n = heatingRooms(hass).length;
+    const occ = occupiedRooms(hass).length;
+    const mode = state(hass, 'sensor.house_active_mode');
+    const sentence = `${occ} ${plural(occ, 'room', 'rooms')} occupied · heating in ${n} ${plural(n, 'room', 'rooms')}${usable(mode) ? ' · ' + esc(mode) : ''}`;
+    const hasData = !!stateObj(hass, 'sensor.info_attention');
+    let head;
     if (items.length === 0) {
-      const home = ['person.adam', 'person.sarah'].filter((p) => state(hass, p) === 'home').length;
-      const n = heatingRooms(hass).length;
-      const mode = state(hass, 'sensor.house_active_mode');
-      const occ = ROOM_ORDER.filter((k) => roomModel(hass, k).hasReport && roomModel(hass, k).occupied).length;
-      const hasData = !!stateObj(hass, 'sensor.info_attention');
-      return `<div class="card pad" style="display:flex;align-items:center;gap:10px"><span class="dot${hasData ? '' : ' dim'}"></span><div><div style="font-size:15px;font-weight:700">${hasData ? 'All good' : 'No attention report'}</div><div style="font-size:12px;color:${TOKENS.text2};margin-top:2px">${home} home · ${occ} ${plural(occ, 'room', 'rooms')} occupied · heating in ${n} ${plural(n, 'room', 'rooms')}${usable(mode) ? ' · ' + esc(mode) : ''}</div></div></div>`;
+      head = `<div style="display:flex;align-items:center;gap:10px"><span class="dot${hasData ? '' : ' dim'}"></span><div><div style="font-size:15px;font-weight:700">${hasData ? 'All good' : 'No attention report'}</div><div style="font-size:12px;color:${TOKENS.text2};margin-top:2px">${sentence}</div></div></div>`;
+    } else {
+      const first = items[0];
+      const path = ROOMS[first.key] ? roomPath(first.key) : MOBILE;
+      // The summary is room and what; the room card below carries the sentence.
+      const shown = items.slice(0, 3).map((i) => `<div style="font-size:13px;margin-top:6px;line-height:1.4"><b>${esc(i.room)}</b> · ${esc(itemLabel(i, ROOMS[i.key] ? roomModel(hass, i.key) : null))}</div>`).join('');
+      const more = items.length > 3 ? `<div style="font-size:12px;color:${TOKENS.text2};margin-top:4px">+${items.length - 3} more</div>` : '';
+      head = `<a class="tap" data-act="nav" data-path="${esc(path)}" style="display:block"><div style="display:flex;align-items:center;gap:8px"><span class="dot warn"></span><span style="font-size:15px;font-weight:700;color:${TOKENS.amber}">${items.length} ${plural(items.length, 'needs', 'need')} attention</span></div><div style="font-size:12px;color:${TOKENS.text2};margin-top:4px">${sentence}</div>${shown}${more}</a>`;
     }
-    const first = items[0];
-    const path = ROOMS[first.key] ? roomPath(first.key) : MOBILE;
-    // The banner is the summary (room and what); the room row below carries the sentence.
-    const shown = items.slice(0, 3).map((i) => `<div style="font-size:13px;margin-top:6px;line-height:1.4"><b>${esc(i.room)}</b> · ${esc(itemLabel(i, ROOMS[i.key] ? roomModel(hass, i.key) : null))}</div>`).join('');
-    const more = items.length > 3 ? `<div style="font-size:12px;color:${TOKENS.text2};margin-top:4px">+${items.length - 3} more</div>` : '';
-    return `<a class="card warn pad tap" data-act="nav" data-path="${esc(path)}" style="display:block"><div style="display:flex;align-items:center;gap:8px"><span class="dot warn"></span><span style="font-size:15px;font-weight:700;color:${TOKENS.amber}">${items.length} ${plural(items.length, 'needs', 'need')} attention</span></div>${shown}${more}</a>`;
+    return `<div class="card pad${items.length ? ' warn' : ''}">${head}<div style="margin-top:12px">${peopleChips(hass, at)}</div>${priceStrip(hass, at)}</div>`;
+  }
+
+  // ── Rooms: three groups, quiet by default ───────────────────────────────────────────────────
+  // A room is in exactly one group: attention first, then occupied, then everything else (fixed order).
+  function roomGroups(hass) {
+    const flagged = new Set(attentionItems(hass).map(keyFromItem).filter(Boolean));
+    const attention = ROOM_ORDER.filter((k) => flagged.has(k));
+    const occupied = occupiedRooms(hass).filter((k) => !flagged.has(k));
+    const other = ROOM_ORDER.filter((k) => !flagged.has(k) && !occupied.includes(k));
+    return { attention, occupied, other };
+  }
+
+  const SHORT_HOLD = { 'Window open': 'Window', 'Door open': 'Door' };
+  const shortHold = (l) => SHORT_HOLD[l] || l;
+  // Only a recent real action is worth a note; older ones are noise on this page.
+  function recentNote(m, now) {
+    const t = parseTs(m.last_ts);
+    if (t === null || !m.last) return '';
+    const age = now - t;
+    if (age < 0 || age >= RECENT_MS) return age < 0 && age > -60000 ? 'just now' : '';
+    return age < 60000 ? 'just now' : `${Math.floor(age / 60000)} min`;
+  }
+  const badge = (inner, style) => `<span class="badge"${style ? ` style="${style}"` : ''}>${inner}</span>`;
+  const sizedIcon = (path, px, color) => `<svg class="ic" viewBox="0 0 24 24" width="${px}" height="${px}" fill="none" stroke="${color || 'currentColor'}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${path}"/></svg>`;
+  function lightsBadgeText(m, scene) {
+    if (m.lights_on > 0) return scene && scene !== 'off' ? sceneLabel(scene) : 'On';
+    return 'Off';
+  }
+  function manualBadge(m, now) {
+    if (!m.manual) return '';
+    const a = ago(m.manual.ts, now).replace(' ago', '');
+    return badge(`${sizedIcon(ICON.hand, 13)}Manual${a ? ' · ' + esc(a) + (a === 'just now' ? '' : ' ago') : ''}`, `color:${TOKENS.amber};background:${TOKENS.amberTag}`);
+  }
+  const holdBadges = (m) => m.heat_labels.map((l) => badge(`${sizedIcon(ICON.window, 12)}${esc(shortHold(l))}`)).join('');
+  const tempText = (m) => (m.temp !== null ? `${fmt1(m.temp)}°` : '–');
+
+  function attentionCard(hass, k, items) {
+    const m = roomModel(hass, k);
+    const lines = [];
+    if (m.target_reason && m.target !== null) lines.push(`<div class="l"><b>Heating</b><span>target ${fmt1(m.target)}° (${esc(m.target_reason)})${m.mode_name && m.mode_target !== null ? `. Normally ${esc(m.mode_name)}, ${fmt1(m.mode_target)}°.` : '.'}</span></div>`);
+    if (m.pres_labels.length) lines.push(`<div class="l"><b>Held</b><span>occupied by ${esc(m.pres_labels.join(' · '))}</span></div>`);
+    for (const i of items.filter((x) => x.key === k)) lines.push(`<div class="l"><b>${esc(itemLabel(i, m))}</b><span>${esc(itemDetail(i, m))}</span></div>`);
+    const tags = m.labels.concat(m.heat_labels.filter((l) => !m.labels.includes(l))).map((l) => `<span class="tag">${esc(l)}</span>`).join('');
+    if (tags) lines.push(`<div class="l">${tags}</div>`);
+    return `<div class="card warn pad"><div style="display:flex;align-items:center;gap:8px"><span class="dot warn"></span><div style="flex:1;font-size:16px;font-weight:600;display:flex;align-items:center;gap:6px">${esc(m.cfg.short)}${occIcon(m)}</div><div style="font-size:22px;font-weight:700;letter-spacing:-.3px${m.temp === null ? ';color:' + TOKENS.text3 : ''}">${tempText(m)}</div></div><div class="det" style="padding:8px 0 0">${lines.join('')}<a class="link tap" data-act="nav" data-path="${roomPath(k)}">${esc(m.cfg.short)} details ›</a></div></div>`;
+  }
+
+  function occupiedCard(hass, k, now) {
+    const m = roomModel(hass, k);
+    const scene = activeScene(hass, k);
+    const recent = recentNote(m, now);
+    const reason = m.pres_labels.slice(0, 2).join(' · ');
+    const lights = badge(`${sizedIcon(ICON.bulb, 13, m.lights_on > 0 ? TOKENS.sceneActive : undefined)}${esc(lightsBadgeText(m, scene))}`);
+    return `<a class="card oc tap" data-act="nav" data-path="${roomPath(k)}">${occIcon(m, 22)}<div style="flex:1;min-width:0"><div style="font-size:16px;font-weight:600">${esc(m.cfg.short)}</div><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;align-items:center">${lights}${manualBadge(m, now)}${holdBadges(m)}${recent ? `<span style="font-size:11px;color:${TOKENS.text3}">${esc(recent)}</span>` : ''}</div></div><div style="text-align:right"><div style="font-size:22px;font-weight:700;letter-spacing:-.3px${m.temp === null ? ';color:' + TOKENS.text3 : ''}">${tempText(m)}</div>${reason ? `<div style="font-size:11px;color:${TOKENS.text3}">${esc(reason)}</div>` : ''}</div></a>`;
+  }
+
+  function roomTile(hass, k, now) {
+    const m = roomModel(hass, k);
+    const scene = activeScene(hass, k);
+    const recent = recentNote(m, now);
+    const line = `${sizedIcon(ICON.bulb, 14)}${m.hasReport ? esc(lightsBadgeText(m, scene)) : 'No report'}`;
+    const extra = `${m.hasReport ? manualBadge(m, now) : ''}${m.hasReport ? holdBadges(m) : ''}${recent ? `<span>${esc(recent)}</span>` : ''}`;
+    return `<a class="rt tap" data-act="nav" data-path="${roomPath(k)}"><div class="nm" style="display:flex;align-items:center;gap:6px;font-size:14px;font-weight:600;color:#cfd5dd">${occIcon(m) || sizedIcon(ICON.person, 15, TOKENS.text3)}${esc(m.cfg.short)}</div><div style="font-size:20px;font-weight:700;letter-spacing:-.3px${m.temp === null ? ';color:' + TOKENS.text3 : ''}">${tempText(m)}</div><div class="b">${line}${extra}</div></a>`;
   }
 
   function sectionRooms(hass, now) {
+    const g = roomGroups(hass);
     const items = attentionItems(hass);
-    const flagged = new Set(items.map(keyFromItem).filter(Boolean));
-    const ordered = ROOM_ORDER.filter((k) => flagged.has(k)).concat(ROOM_ORDER.filter((k) => !flagged.has(k)));
-    const rows = ordered.map((k) => {
-      const m = roomModel(hass, k);
-      const scene = activeScene(hass, k);
-      const temp = m.temp !== null ? `${fmt1(m.temp)}°` : '–';
-      const hum = m.cfg.climate ? (m.humidity !== null ? `${Math.round(m.humidity)}%` : '') : 'no climate';
-      const tcolor = m.temp === null ? ` style="color:${TOKENS.text3}"` : '';
-      if (!flagged.has(k)) {
-        return `<a class="row tap" data-act="nav" data-path="${roomPath(k)}"><span class="dot${m.hasReport ? '' : ' dim'}"></span><div><div class="nm" style="display:flex;align-items:center;gap:6px">${esc(m.cfg.short)}${occIcon(m)}</div><div class="sub">${esc(m.hasReport ? rowSub(m, scene, now) : 'No report yet')}</div></div><div><div class="t"${tcolor}>${temp}</div><div class="rh">${esc(hum)}</div></div></a>`;
-      }
-      const lines = [];
-      if (m.target_reason && m.target !== null) lines.push(`<div class="l"><b>Heating</b><span>target ${fmt1(m.target)}° (${esc(m.target_reason)})${m.mode_name && m.mode_target !== null ? `. Normally ${esc(m.mode_name)}, ${fmt1(m.mode_target)}°.` : '.'}</span></div>`);
-      if (m.pres_labels.length) lines.push(`<div class="l"><b>Held</b><span>occupied by ${esc(m.pres_labels.join(' · '))}</span></div>`);
-      for (const i of items.filter((x) => x.key === k)) lines.push(`<div class="l"><b>${esc(itemLabel(i, m))}</b><span>${esc(itemDetail(i, m))}</span></div>`);
-      const tags = m.labels.concat(m.heat_labels.filter((l) => !m.labels.includes(l))).map((l) => `<span class="tag">${esc(l)}</span>`).join('');
-      if (tags) lines.push(`<div class="l">${tags}</div>`);
-      return `<div class="row warn"><span class="dot warn" style="margin-top:6px"></span><div><div class="nm" style="display:flex;align-items:center;gap:6px">${esc(m.cfg.short)}${occIcon(m)}</div><div class="sub">${esc(m.verdict || rowSub(m, scene, now))}</div></div><div><div class="t"${tcolor}>${temp}</div><div class="rh">${esc(hum)}</div></div><div class="det">${lines.join('')}<a class="link tap" data-act="nav" data-path="${roomPath(k)}">${esc(m.cfg.short)} details ›</a></div></div>`;
-    });
-    return `<div class="lbl" style="margin:4px 4px -10px">Rooms</div><div class="card">${rows.join('')}</div>`;
+    const out = [];
+    if (g.attention.length) out.push(`<div class="lbl" style="margin:4px 4px -10px">Needs attention</div>${g.attention.map((k) => attentionCard(hass, k, items)).join('')}`);
+    if (g.occupied.length) out.push(`<div class="lbl" style="margin:4px 4px -10px">Occupied now</div>${g.occupied.map((k) => occupiedCard(hass, k, now)).join('')}`);
+    if (g.other.length) out.push(`<div class="lbl" style="margin:4px 4px -10px">${g.occupied.length || g.attention.length ? 'Other rooms' : 'Rooms'}</div><div class="rgrid">${g.other.map((k) => roomTile(hass, k, now)).join('')}</div>`);
+    return out.join('');
   }
 
   // The meter sensor reports kW today but could be W: read the unit, never assume it. An unknown
@@ -714,19 +781,10 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   }
 
   // The energy block is ONE card: numbers, bars, cheapest-2h and the tomorrow note.
-  function sectionEnergy(hass, at) {
-    const base = 'sensor.octopus_energy_electricity_24e8140196_1012483035417';
-    const now = num(state(hass, `${base}_current_rate`));
-    const next = num(state(hass, `${base}_next_rate`));
-    const p = (v) => (v === null ? null : v * 100);
-    // A reading that has not updated for 10 minutes is stale (the meter reports every few seconds),
-    // so show a dash rather than a confident 0 W. A fresh 0 is shown as is.
-    const wState = stateObj(hass, 'sensor.glow_electricity_power');
-    const wAge = wState ? parseTs(wState.last_updated) : null;
-    const stale = wAge !== null && at - wAge > 600000;
-    const usageText = stale ? '–' : formatPower(state(hass, 'sensor.glow_electricity_power'), attr(hass, 'sensor.glow_electricity_power', 'unit_of_measurement'));
-    const nowP = p(now);
-    const nextP = p(next);
+  // "Today's prices": the chart (scrub, key), Cheapest 2h and the tomorrow note. Now/Next/Usage live in
+  // the status card. The Details affordance renders only when the card config names a path
+  // (`details_path`), which must be a view registered in info-dashboard.yaml (tests enforce it).
+  function sectionEnergy(hass, at, cfg) {
     const rates = ratesOf(hass);
     const s = state(hass, 'sensor.cheapest_2h_waking_start');
     const e = state(hass, 'sensor.cheapest_2h_waking_end');
@@ -738,41 +796,38 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const free = state(hass, 'sensor.octopus_tomorrow_negative_windows');
     const hasFree = tomorrowIn && usable(free) && free !== '—' && free.trim() !== '';
     const note = `${tomorrowIn ? "Tomorrow's rates are in." : "Tomorrow's rates are not in yet."}${hasFree ? ' Free window ' + esc(free) + '.' : ''}`;
-    return `<div class="lbl" style="margin:4px 4px -10px">Energy</div>
-<div class="card pad"><div style="display:flex;gap:16px;align-items:flex-end">
-<div><div class="lbl">Now</div><div style="font-size:26px;font-weight:700;letter-spacing:-.5px;line-height:1.1;color:${priceColour(nowP, { text: true })}">${nowP === null ? '–' : fmt1(nowP)}<span style="font-size:13px;font-weight:500;color:${TOKENS.text2}"> p/kWh</span></div></div>
-<div><div class="lbl">Next</div><div style="font-size:18px;font-weight:600;color:${priceColour(nextP, { text: true })};line-height:1.5">${nextP === null ? '–' : fmt1(nextP) + 'p'}</div></div>
-<div style="flex:1"></div><div style="text-align:right"><div class="lbl">Usage</div><div style="font-size:18px;font-weight:600;line-height:1.5">${usageText}</div></div></div>
-${priceChart(rates, at)}${cheapest}<div style="font-size:12px;color:${TOKENS.text2};margin-top:8px">${note}</div></div>`;
+    const details = cfg && cfg.details_path === ENERGY_PATH ? `<a class="link tap" data-act="nav" data-path="${ENERGY_PATH}" style="justify-content:flex-end">Details ›</a>` : '';
+    return `<div class="lbl" style="margin:4px 4px -10px">Today's prices</div>
+<div class="card pad">${priceChart(rates, at)}${cheapest}<div style="font-size:12px;color:${TOKENS.text2};margin-top:8px">${note}</div>${details}</div>`;
   }
 
-  function sectionBins(hass) {
+  // Bins (what is due next, and when) beside Heating (boiler state, inside/outside).
+  function sectionBinsHeating(hass) {
     const names = { food: 'Food', paid_garden: 'Garden', recycling: 'Recycling', refuse: 'Refuse' };
-    const bins = Object.keys(names).map((k) => ({ n: names[k], d: num(state(hass, `sensor.st_albans_collect_domestic_${k}_days_until_collection`)) }));
-    bins.sort((a, b) => (a.d === null ? 1e9 : a.d) - (b.d === null ? 1e9 : b.d));
-    const tiles = bins.map((b) => {
-      const label = b.d === null ? '–' : b.d <= 0 ? 'Today' : b.d === 1 ? 'Tomorrow' : `${Math.round(b.d)}d`;
-      const soon = b.d !== null && b.d <= 1;
-      return `<div class="bin${soon ? ' soon' : ''}"><div class="d">${label}</div><div class="n">${b.n}</div></div>`;
-    }).join('');
-    return `<div class="lbl" style="margin:4px 4px -10px">Bins</div><div class="bins">${tiles}</div>`;
-  }
-
-  function sectionHeating(hass) {
-    const master = state(hass, 'input_boolean.house_heating_enabled');
+    const bins = Object.keys(names).map((k) => ({ n: names[k], d: num(state(hass, `sensor.st_albans_collect_domestic_${k}_days_until_collection`)) })).filter((b) => b.d !== null);
+    let binTitle = '–';
+    let binSub = 'no collection data';
+    let soon = false;
+    if (bins.length) {
+      const next = Math.min(...bins.map((b) => b.d));
+      binTitle = bins.filter((b) => b.d === next).map((b) => b.n).join(' · ');
+      binSub = next <= 0 ? 'today' : next === 1 ? 'tomorrow' : `in ${Math.round(next)} days`;
+      soon = next <= 1;
+    }
+    const off = state(hass, 'input_boolean.house_heating_enabled') === 'off';
     const firing = state(hass, 'binary_sensor.house_heating_boiler_firing') === 'on';
     const rooms = heatingRooms(hass).length;
-    const title = master === 'off' ? 'Heating off (master switch)' : firing ? `Boiler firing · ${rooms} ${plural(rooms, 'room', 'rooms')}` : 'Boiler idle';
+    const hTitle = off ? 'Heating off' : firing ? `Boiler firing · ${rooms} ${plural(rooms, 'room', 'rooms')}` : 'Boiler idle';
     const inside = num(state(hass, 'sensor.house_average_temperature'));
     const outside = num(attr(hass, 'weather.forecast_home', 'temperature'));
-    const patio = state(hass, 'input_boolean.patio_door_heating_suspended') === 'on' ? 'patio door open, heating suspended' : 'patio door shut';
-    const bits = [inside !== null ? `Inside ${fmt1(inside)}°` : '', outside !== null ? `outside ${fmt1(outside)}°` : '', patio].filter(Boolean).join(' · ');
-    return `<div class="lbl" style="margin:4px 4px -10px">Heating</div><div class="card pad" style="display:flex;align-items:center;gap:12px"><span style="color:${TOKENS.link}">${svg(ICON.flame, 22)}</span><div style="flex:1"><div style="font-size:15px;font-weight:600">${esc(title)}</div><div style="font-size:12px;color:${TOKENS.text2};margin-top:2px">${esc(bits)}</div></div></div>`;
+    const patio = state(hass, 'input_boolean.patio_door_heating_suspended') === 'on' ? ' · patio open' : '';
+    const hSub = [inside !== null ? `in ${fmt1(inside)}°` : '', outside !== null ? `out ${fmt1(outside)}°` : ''].filter(Boolean).join(' · ') + patio || 'no readings';
+    return `<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px"><div class="card" style="padding:12px 14px${soon ? ';background:' + TOKENS.amberTag : ''}"><div class="lbl">Bins</div><div style="font-size:15px;font-weight:600;margin-top:4px${soon ? ';color:' + TOKENS.amber : ''}">${esc(binTitle)}</div><div style="font-size:12px;color:${soon ? TOKENS.amber : TOKENS.text2}">${esc(binSub)}</div></div><div class="card" style="padding:12px 14px"><div class="lbl">Heating</div><div style="font-size:15px;font-weight:600;margin-top:4px">${esc(hTitle)}</div><div style="font-size:12px;color:${TOKENS.text2}">${esc(hSub)}</div></div></div>`;
   }
 
   function sectionFeed(hass, now) {
     const entries = feedEntries(hass);
-    const body = entries.length ? feedRows(entries, now, 6) : `<div class="feed"><span class="a"></span><span style="color:${TOKENS.text2}">No decisions seen since HA started.</span></div>`;
+    const body = entries.length ? feedRows(entries, now, 3) : `<div class="feed"><span class="a"></span><span style="color:${TOKENS.text2}">No decisions seen since HA started.</span></div>`;
     return `<div class="lbl" style="margin:4px 4px -10px">What the house did</div><div class="card">${body}</div>`;
   }
 
@@ -918,12 +973,11 @@ ${priceChart(rates, at)}${cheapest}<div style="font-size:12px;color:${TOKENS.tex
 
   // ── Dispatcher ───────────────────────────────────────────────────────────────────────────────
   const MODES = {
-    'now-header': (h, c, n) => sectionNowHeader(h, n),
-    attention: (h) => sectionAttention(h),
+    'now-header': (h) => sectionNowHeader(h),
+    status: (h, c, n) => sectionStatus(h, n),
     rooms: (h, c, n) => sectionRooms(h, n),
-    energy: (h, c, n) => sectionEnergy(h, n),
-    bins: (h) => sectionBins(h),
-    heating: (h) => sectionHeating(h),
+    energy: (h, c, n) => sectionEnergy(h, n, c),
+    'bins-heating': (h) => sectionBinsHeating(h),
     feed: (h, c, n) => sectionFeed(h, n),
     footer: (h, c, n) => sectionFooter(h, n),
     'room-head': (h, c) => sectionRoomHead(h, c.room),
@@ -973,7 +1027,7 @@ ${priceChart(rates, at)}${cheapest}<div style="font-size:12px;color:${TOKENS.tex
     }
   }
 
-  const api = { slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, MOBILE, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, ALL_ROOM_KEYS, ALLOWED, render, priceColour, PRICE_STOPS, PRICE_EXTREME_P, roomModel, attentionItems, handleAction, callService, num, parseList };
+  const api = { ENERGY_PATH, roomGroups, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, MOBILE, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, ALL_ROOM_KEYS, ALLOWED, render, priceColour, PRICE_STOPS, PRICE_EXTREME_P, roomModel, attentionItems, handleAction, callService, num, parseList };
   root.PulseLib = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 
