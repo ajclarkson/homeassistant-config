@@ -68,6 +68,8 @@ template:
             ] %}
             {% set feed = state_attr('sensor.info_decision_feed', 'by_room') %}
             {% set feed = feed | from_json if feed is string else (feed or []) %}
+            {% set mx = state_attr('sensor.info_manual_changes', 'changes') %}
+            {% set manual_feed = mx | from_json if mx is string else (mx or []) %}
             {% set lx = state_attr('sensor.info_decision_feed', 'lights') %}
             {% set lights_feed = lx | from_json if lx is string else (lx or []) %}
             {% set out = namespace(items=[]) %}
@@ -119,6 +121,12 @@ template:
               {% set parts = [('Occupancy unavailable' if 'occupancy' in un.items else ('Occupied' if occupied else 'Empty'))] %}
               {% set parts = parts + [('lights on' if lights_on else 'lights off')] %}
               {# Effective state: only said when the TRV target is not what the mode implies; otherwise the mode is noise. #}
+              {% set mn = namespace(v=none) %}
+              {% for m in manual_feed if mn.v is none and m.get('room') == k %}{% set mn.v = m %}{% endfor %}
+              {# Light counts come from the room's light group members (kitchen ceiling is itself a group: counted once). #}
+              {% set members = state_attr('group.' ~ k ~ '_lights', 'entity_id') or [] %}
+              {% set lc = namespace(on=0) %}
+              {% for m in members %}{% if is_state(m, 'on') %}{% set lc.on = lc.on + 1 %}{% endif %}{% endfor %}
               {% set lw = namespace(v=none) %}
               {% for f in lights_feed if lw.v is none and f.get('loc') == k %}{% set lw.v = f %}{% endfor %}
               {% if target_reason %}
@@ -141,7 +149,6 @@ template:
                 'hvac_action': hvac,
                 'heating_active': active,
                 'heating_source': states('sensor.' ~ k ~ '_heating_source') if c['he'] else '',
-                'lights_on': lights_on,
                 'scene': scene | replace(k ~ '_', '', 1) | replace('_', ' ') if scene not in ['unknown', 'unavailable', ''] else '',
                 'lights_enabled': not is_state('input_boolean.' ~ k ~ '_automation_lights_enabled', 'off'),
                 'heating_enabled': (not is_state('input_boolean.' ~ k ~ '_automation_heating_enabled', 'off')) if c['he'] else none,
@@ -151,6 +158,9 @@ template:
                 'reason_text': reason_text,
                 'override_text': ovr,
                 'labels': labels,
+                'manual': {'source': mn.v.get('source'), 'ts': mn.v.get('ts'), 'what': mn.v.get('what')} if mn.v and mn.v.get('source') else none,
+                'lights_on': lc.on,
+                'lights_total': members | length,
                 'lights_why': (lw.v.get('why') or '') if lw.v else '',
                 'lights_ts': (lw.v.get('ts') or '') if lw.v else '',
                 'last': last.get('sentence') if last else '',
