@@ -1,5 +1,6 @@
 # Pulse "Now" (v2): quiet by default, loud by exception. Header, one status card (verdict, people, prices),
-# room groups (needs attention / occupied now / other rooms), prices, bins + heating, feed.
+# room groups (needs attention / occupied now / other rooms), bins + heating, feed. The price strip in the
+# status card opens the Energy page (chart, windows, cost and usage live there).
 # Every section is `custom:pulse-card` (www/pulse-card.js, loaded via packages/frontend.yaml).
 # The price bars are drawn by pulse-card itself from the rates attribute (any slot count).
 title: Now
@@ -16,8 +17,6 @@ sections:
       - {type: custom:pulse-card, mode: status}
       # Needs attention (full width), Occupied now (full width), Other rooms (2-column tiles).
       - {type: custom:pulse-card, mode: rooms}
-      # Today's prices: bars with scrub, Cheapest 2h, tomorrow note; Details opens the Energy page.
-      - {type: custom:pulse-card, mode: energy, details_path: /pulse-dashboard/energy}
       - {type: custom:pulse-card, mode: bins-heating}
       - {type: custom:pulse-card, mode: feed}
       - {type: custom:pulse-card, mode: footer}

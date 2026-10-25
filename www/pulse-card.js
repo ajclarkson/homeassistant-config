@@ -522,7 +522,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 
   // Now / Next (graded colours) and Usage (unit-aware). A reading that has not updated for 10 minutes
   // is stale (the meter reports every few seconds), so it shows a dash rather than a confident 0 W.
-  function priceStrip(hass, at, bare) {
+  function priceStrip(hass, at, bare, link) {
     const base = 'sensor.octopus_energy_electricity_24e8140196_1012483035417';
     const p = (v) => (v === null ? null : v * 100);
     const nowP = p(num(state(hass, `${base}_current_rate`)));
@@ -531,11 +531,19 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const wAge = wState ? parseTs(wState.last_updated) : null;
     const stale = wAge !== null && at - wAge > 600000;
     const usageText = stale ? '–' : formatPower(state(hass, 'sensor.glow_electricity_power'), attr(hass, 'sensor.glow_electricity_power', 'unit_of_measurement'));
-    const edge = bare ? '' : `margin-top:14px;padding-top:12px;border-top:1px solid ${TOKENS.divider}`;
-    return `<div style="display:flex;gap:16px;align-items:flex-end;${edge}">
+    const edge = bare || link ? '' : `margin-top:14px;padding-top:12px;border-top:1px solid ${TOKENS.divider}`;
+    const strip = `<div style="display:flex;gap:16px;align-items:flex-end;${edge}">
 <div><div class="lbl">Now</div><div style="font-size:26px;font-weight:700;letter-spacing:-.5px;line-height:1.15;color:${priceColour(nowP, { text: true })}">${nowP === null ? '–' : fmt1(nowP)}<span style="font-size:12px;font-weight:500;color:${TOKENS.text2}"> p/kWh</span></div></div>
 <div><div class="lbl">Next</div><div style="font-size:18px;font-weight:600;color:${priceColour(nextP, { text: true })};line-height:1.5">${nextP === null ? '–' : fmt1(nextP) + 'p'}</div></div>
 <div style="flex:1"></div><div style="text-align:right"><div class="lbl">Usage</div><div style="font-size:18px;font-weight:600;line-height:1.5">${usageText}</div></div></div>`;
+    if (!link) return strip;
+    // The whole strip is one 44px+ tap target to the Energy page, with a visible "Energy ›" cue, and a
+    // small cheapest-2h line when one is coming up (or running).
+    const cs = state(hass, 'sensor.cheapest_2h_waking_start');
+    const ce = state(hass, 'sensor.cheapest_2h_waking_end');
+    const running = state(hass, 'binary_sensor.octopus_energy_target_cheapest_2h_waking_hours') === 'on';
+    const cue = usable(cs) && usable(ce) ? `<div style="font-size:12px;color:${TOKENS.text2};margin-top:6px">Cheapest 2h ${running ? 'running now, until ' + esc(ce) : esc(cs) + ' → ' + esc(ce)}</div>` : '';
+    return `<a class="tap" data-act="nav" data-path="${ENERGY_PATH}" aria-label="Open energy details" style="display:block;min-height:44px;margin-top:14px;padding-top:12px;border-top:1px solid ${TOKENS.divider}">${strip}${cue}<div style="display:flex;justify-content:flex-end;align-items:center;gap:2px;font-size:12px;font-weight:600;color:${TOKENS.link};min-height:24px">Energy ›</div></a>`;
   }
 
   function heatingRooms(hass) {
@@ -564,7 +572,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       const more = items.length > 3 ? `<div style="font-size:12px;color:${TOKENS.text2};margin-top:4px">+${items.length - 3} more</div>` : '';
       head = `<a class="tap" data-act="nav" data-path="${esc(path)}" style="display:block"><div style="display:flex;align-items:center;gap:8px"><span class="dot warn"></span><span style="font-size:15px;font-weight:700;color:${TOKENS.amber}">${items.length} ${plural(items.length, 'needs', 'need')} attention</span></div><div style="font-size:12px;color:${TOKENS.text2};margin-top:4px">${sentence}</div>${shown}${more}</a>`;
     }
-    return `<div class="card pad${items.length ? ' warn' : ''}">${head}<div style="margin-top:12px">${peopleChips(hass, at)}</div>${priceStrip(hass, at)}</div>`;
+    return `<div class="card pad${items.length ? ' warn' : ''}">${head}<div style="margin-top:12px">${peopleChips(hass, at)}</div>${priceStrip(hass, at, false, true)}</div>`;
   }
 
   // ── Rooms: three groups, quiet by default ───────────────────────────────────────────────────
@@ -797,26 +805,6 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   }
 
   // The energy block is ONE card: numbers, bars, cheapest-2h and the tomorrow note.
-  // "Today's prices": the chart (scrub, key), Cheapest 2h and the tomorrow note. Now/Next/Usage live in
-  // the status card. The Details affordance renders only when the card config names a path
-  // (`details_path`), which must be a view registered in info-dashboard.yaml (tests enforce it).
-  function sectionEnergy(hass, at, cfg) {
-    const rates = ratesOf(hass);
-    const s = state(hass, 'sensor.cheapest_2h_waking_start');
-    const e = state(hass, 'sensor.cheapest_2h_waking_end');
-    const avg = num(state(hass, 'sensor.cheapest_2h_waking_avg_rate'));
-    const running = state(hass, 'binary_sensor.octopus_energy_target_cheapest_2h_waking_hours') === 'on';
-    const avgTxt = avg !== null ? ' · avg ' + fmt1(avg) + 'p' : '';
-    const cheapest = running && usable(e) ? `<div style="display:flex;align-items:center;gap:8px;font-size:13px;margin-top:10px"><span class="tag ok">Cheapest 2h</span><span>Running now, until ${esc(e)}${avgTxt}</span></div>` : usable(s) && usable(e) ? `<div style="display:flex;align-items:center;gap:8px;font-size:13px;margin-top:10px"><span class="tag ok">Cheapest 2h</span><span>${esc(s)} → ${esc(e)}${avgTxt}</span></div>` : '';
-    const tomorrowIn = state(hass, 'binary_sensor.octopus_tomorrow_data_available') === 'on';
-    const free = state(hass, 'sensor.octopus_tomorrow_negative_windows');
-    const hasFree = tomorrowIn && usable(free) && free !== '—' && free.trim() !== '';
-    const note = `${tomorrowIn ? "Tomorrow's rates are in." : "Tomorrow's rates are not in yet."}${hasFree ? ' Free window ' + esc(free) + '.' : ''}`;
-    const details = cfg && cfg.details_path === ENERGY_PATH ? `<a class="link tap" data-act="nav" data-path="${ENERGY_PATH}" style="justify-content:flex-end">Details ›</a>` : '';
-    return `<div class="lbl" style="margin:4px 4px -10px">Today's prices</div>
-<div class="card pad">${priceChart(rates, at)}${cheapest}<div style="font-size:12px;color:${TOKENS.text2};margin-top:8px">${note}</div>${details}</div>`;
-  }
-
   // ── Energy page ───────────────────────────────────────────────────────────────────────────────
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -842,16 +830,38 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   }
   const penceText = (v) => (Number.isFinite(v) ? `${v < 0 ? '−' : ''}${Math.abs(v).toFixed(1)}p` : '–');
 
-  // The window sensors publish "HH:MM–HH:MM (X.Xp) · ..." or "—" when empty (packages/templates.yaml).
-  function parseWindows(text) {
-    const t = typeof text === 'string' ? text.trim() : '';
-    if (t === '' || t === 'unknown' || t === 'unavailable') return { status: 'unknown', items: [] };
-    if (t === '—' || t === '-') return { status: 'none', items: [] };
-    const items = [];
-    for (const m of t.matchAll(/(\d\d:\d\d)\s*[–-]\s*(\d\d:\d\d)\s*\((-?\d+(?:\.\d+)?)p\)/g)) items.push({ from: m[1], to: m[2], avg: Number(m[3]) });
-    return items.length ? { status: 'ok', items } : { status: 'unknown', items: [] };
+  // Negative (< 0p) and cheap (0 <= p < 10p) windows computed from the same slot list as the chart, not
+  // from the template sensors: those sort ISO strings with mixed offsets, which scrambles a clock-change
+  // day. Slots are ordered by instant (rateBands sorts by parsed ms) and merged only when one ends exactly
+  // where the next starts, so the repeated hour cannot split, duplicate or zero-length a window.
+  const WINDOW_CHEAP_MAX_P = 10;
+  function slotWindows(slots, kind) {
+    const pick = kind === 'negative' ? (v) => v < 0 : (v) => v >= 0 && v < WINDOW_CHEAP_MAX_P;
+    const list = (Array.isArray(slots) ? slots : []).filter((x) => isObj(x) && Number.isFinite(x.start) && Number.isFinite(x.end) && Number.isFinite(x.v) && x.end > x.start).sort((x, y) => x.start - y.start);
+    const out = [];
+    let cur = null;
+    for (const x of list) {
+      if (!pick(x.v)) { cur = null; continue; }
+      if (cur && cur.end === x.start) {
+        cur.sum += x.v * (x.end - x.start);
+        cur.end = x.end;
+      } else {
+        cur = { start: x.start, end: x.end, sum: x.v * (x.end - x.start) };
+        out.push(cur);
+      }
+    }
+    return out.map((w) => ({ start: w.start, end: w.end, avg: w.sum / (w.end - w.start) }));
   }
-  const windowLine = (w) => `${w.from} → ${w.to} · avg ${penceText(w.avg)}`;
+  // "HH:MM → HH:MM" in the viewer's zone. If both ends print the same (a window spanning the repeated
+  // hour on a clock-change day) the zone abbreviation is added so it never reads as zero-length.
+  function windowRange(w) {
+    const hm = localHm;
+    const a = hm(w.start);
+    const b = hm(w.end);
+    if (a !== b) return `${a} → ${b}`;
+    const z = (ms) => { try { return new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', timeZoneName: 'short' }).format(new Date(ms)); } catch (e) { return hm(ms); } };
+    return `${z(w.start)} → ${z(w.end)}`;
+  }
 
   // "Fri 23 Oct" from the ISO date part of a published timestamp, in the zone it was published in
   // (not the viewer's), so the label is the day the provider meant.
@@ -930,30 +940,28 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const control = `<div class="segs">${seg('today', 'Today')}${seg('tomorrow', 'Tomorrow')}</div>`;
     if (slots.length === 0) {
       const late = day === 'tomorrow';
-      return `${control}<div class="card pad"><div style="font-size:14px;font-weight:600">${late ? 'Tomorrow\'s rates are not in yet' : 'No price data for today'}</div><div style="font-size:12.5px;color:${TOKENS.text2};margin-top:4px;line-height:1.4">${late ? 'Tomorrow\'s rates are published late afternoon.' : 'The rates list is empty or unavailable.'}</div></div>${windowsCard(hass, day, false)}`;
+      return `${control}<div class="card pad"><div style="font-size:14px;font-weight:600">${late ? 'Tomorrow\'s rates are not in yet' : 'No price data for today'}</div><div style="font-size:12.5px;color:${TOKENS.text2};margin-top:4px;line-height:1.4">${late ? 'Tomorrow\'s rates are published late afternoon.' : 'The rates list is empty or unavailable.'}</div></div>${windowsCard(hass, [])}`;
     }
     const st = energyStats(slots);
     const stat = (k, v, sub, col) => `<div class="card stat"><div class="k">${k}</div><div class="v" style="${col ? 'color:' + col : ''}">${v}</div><div class="s">${sub}</div></div>`;
     const stats = `<div style="display:flex;gap:8px">${stat('Cheapest', penceText(st.cheapest.v), 'at ' + st.cheapest.time, priceColour(st.cheapest.v, { text: true }))}${stat('Dearest', penceText(st.dearest.v), 'at ' + st.dearest.time, priceColour(st.dearest.v, { text: true }))}${stat('Average', penceText(st.avg), 'per kWh', priceColour(st.avg, { text: true }))}</div>`;
-    return `${control}<div class="card pad">${priceChart(rates, at, day)}<div style="font-size:11.5px;color:${TOKENS.text3};margin-top:8px">Drag across the chart to read any half hour.</div></div>${stats}${windowsCard(hass, day, true)}`;
+    return `${control}<div class="card pad">${priceChart(rates, at, day)}<div style="font-size:11.5px;color:${TOKENS.text3};margin-top:8px">Drag across the chart to read any half hour.</div></div>${stats}${windowsCard(hass, slots)}`;
   }
 
-  function windowsCard(hass, day, hasDay) {
+  function windowsCard(hass, slots) {
     const rows = [];
     const s = state(hass, 'sensor.cheapest_2h_waking_start');
     const e = state(hass, 'sensor.cheapest_2h_waking_end');
     const avg = num(state(hass, 'sensor.cheapest_2h_waking_avg_rate'));
     const running = state(hass, 'binary_sensor.octopus_energy_target_cheapest_2h_waking_hours') === 'on';
-    const row = (title, sub, right, col) => `<div class="wrow"><div><div style="font-weight:600">${title}</div><div class="m">${sub}</div></div>${right}</div>`;
+    const row = (title, sub, right) => `<div class="wrow"><div><div style="font-weight:600">${title}</div><div class="m">${sub}</div></div>${right}</div>`;
     const cheapestSub = usable(s) && usable(e) ? `${esc(s)} → ${esc(e)}${avg !== null ? ' · avg ' + esc(penceText(avg)) : ''}` : 'none upcoming';
-    rows.push(row('Next cheapest 2 hours', cheapestSub, running ? '<span class="tag ok">Running now</span>' : usable(s) && usable(e) ? '<span class="tag ok">Best</span>' : '', null));
-    if (hasDay) {
-      const pre = day === 'tomorrow' ? 'octopus_tomorrow' : 'octopus_today';
-      for (const [kind, id] of [['Negative', `sensor.${pre}_negative_windows`], ['Cheap', `sensor.${pre}_cheap_windows`]]) {
-        const w = parseWindows(state(hass, id));
-        if (w.status === 'unknown') rows.push(row(kind, '–', '', null));
-        else if (w.status === 'none') rows.push(row(kind, 'none', '', null));
-        else for (const it of w.items) rows.push(row(kind, `${it.from} → ${it.to}`, `<div class="r" style="color:${priceColour(it.avg, { text: true })}">avg ${esc(penceText(it.avg))}</div>`, null));
+    rows.push(row('Next cheapest 2 hours', cheapestSub, running ? '<span class="tag ok">Running now</span>' : usable(s) && usable(e) ? '<span class="tag ok">Best</span>' : ''));
+    if (Array.isArray(slots) && slots.length) {
+      for (const [kind, label] of [['negative', 'Negative'], ['cheap', 'Cheap']]) {
+        const ws = slotWindows(slots, kind);
+        if (ws.length === 0) rows.push(row(label, 'none', ''));
+        else for (const w of ws) rows.push(row(label, esc(windowRange(w)), `<div class="r" style="color:${priceColour(w.avg, { text: true })}">avg ${esc(penceText(w.avg))}</div>`));
       }
     }
     return `<div class="lbl" style="margin:4px 4px -10px">Windows</div><div class="card">${rows.join('')}</div>`;
@@ -1155,7 +1163,6 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     'now-header': (h) => sectionNowHeader(h),
     status: (h, c, n) => sectionStatus(h, n),
     rooms: (h, c, n) => sectionRooms(h, n),
-    energy: (h, c, n) => sectionEnergy(h, n, c),
     'bins-heating': (h) => sectionBinsHeating(h),
     'energy-head': (h, c, n) => sectionEnergyHead(h, n),
     'energy-day': (h, c, n, ui) => sectionEnergyDay(h, n, ui),
@@ -1210,7 +1217,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     }
   }
 
-  const api = { energyStats, parseWindows, windowLine, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, roomGroups, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, MOBILE, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, ALL_ROOM_KEYS, ALLOWED, render, priceColour, PRICE_STOPS, PRICE_EXTREME_P, roomModel, attentionItems, handleAction, callService, num, parseList };
+  const api = { energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, roomGroups, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, MOBILE, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, ALL_ROOM_KEYS, ALLOWED, render, priceColour, PRICE_STOPS, PRICE_EXTREME_P, roomModel, attentionItems, handleAction, callService, num, parseList };
   root.PulseLib = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 
