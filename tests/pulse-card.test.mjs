@@ -124,7 +124,7 @@ ok('no-climate rooms: no numbers card, "no climate" in row', () => {
   const out = renderAll(withRooms(P.ROOM_ORDER.map(FULL), []));
   assert.doesNotMatch(out['room-head:hallway_upstairs'], /Valve target|class="lbl">Room/);
   const quiet = P.render('rooms', {}, withRooms([{ k: 'hallway_upstairs', n: 'x', occupied: false, temp: null, humidity: null }], []), NOW);
-  const upTile = quiet.match(/<a class="rt tap"[^>]*room-hallway_upstairs"[\s\S]*?<\/a>/)[0];
+  const upTile = quiet.match(/<a class="rt tap[^"]*"[^>]*room-hallway_upstairs"[\s\S]*?<\/a>/)[0];
   assert.doesNotMatch(upTile, /–/, 'no bare dash for a room without climate');
   assert.doesNotMatch(out['why:hallway_upstairs'], /Heating target/);
   for (const g of ['back_garden', 'front_garden']) {
@@ -570,7 +570,7 @@ ok('Now v2 all calm: status card not amber, no attention/occupied groups, 8 comp
   assert.doesNotMatch(status, /\d home/);
   assert.doesNotMatch(rooms, /Needs attention|Occupied now|Other rooms/);
   assert.match(rooms, />Rooms</);
-  assert.equal(count(rooms, /class="rt tap"/g), 8);
+  assert.equal(count(rooms, /class="rt tap[" ]/g), 8);
   assert.doesNotMatch(rooms, /%|humidity|automatic|ago/);
   assert.match(rooms, /Parlour[\s\S]*Kitchen[\s\S]*Hallway down[\s\S]*Hallway up[\s\S]*Bedroom[\s\S]*Bathroom[\s\S]*Home office[\s\S]*Foreign office/);
   noNoise({ status, rooms }, 'calm v2');
@@ -582,7 +582,7 @@ ok('Now v2 one occupied: Occupied now card with filled icon, lights badge, reaso
   assert.match(rooms, />Occupied now</);
   assert.match(rooms, />Other rooms</);
   assert.equal(count(rooms, /class="card oc tap"/g), 1);
-  assert.equal(count(rooms, /class="rt tap"/g), 7);
+  assert.equal(count(rooms, /class="rt tap[" ]/g), 7);
   const card = rooms.match(/<a class="card oc tap"[\s\S]*?<\/a>/)[0];
   assert.match(card, /aria-label="Occupied"[^>]*fill="currentColor"/);
   assert.match(card, /Parlour/);
@@ -598,7 +598,7 @@ ok('Now v2 all rooms occupied: no Other rooms group', () => {
   const hass = withRooms(P.ROOM_ORDER.map((k) => quietRoom(k, { occupied: true })), []);
   const rooms = P.render('rooms', {}, hass, NOW);
   assert.equal(count(rooms, /class="card oc tap"/g), 8);
-  assert.doesNotMatch(rooms, /Other rooms|class="rt tap"/);
+  assert.doesNotMatch(rooms, /Other rooms|class="rt tap[" ]/);
   assert.match(P.render('status', {}, hass, NOW), /8 rooms occupied/);
 });
 
@@ -625,7 +625,7 @@ ok('Now v2 attention: Bathroom (steamy) and Bedroom (window open) sit in Needs a
   assert.match(html, /probably a shower/);
   assert.match(html, /target 5\.0° \(window open\)/);
   assert.equal(count(html.slice(html.indexOf('Other rooms')), /Bathroom|Bedroom/g), 0, 'not in the tiles either');
-  assert.equal(count(html, /class="rt tap"/g), 6);
+  assert.equal(count(html, /class="rt tap[" ]/g), 6);
   noNoise({ html, status }, 'attention v2');
 });
 
@@ -691,7 +691,7 @@ ok('Now v2 tiles: unavailable occupancy keeps the dashed amber icon; rooms with 
   assert.equal(count(missing, /No report/g), 8);
   assert.equal(count(missing, /color:#8f9aa8">–</g), 7, 'seven rooms with a climate sensor show a muted dash; the climate-less hallway shows none');
   const css = readFileSync(root + 'www/pulse-card.js', 'utf8');
-  assert.match(css, /\.rt\{[^}]*height:92px/);
+  assert.match(P.STYLE, /\.rt\{[^\n]*height:104px/);
   assert.match(css, /\.oc\{[^}]*min-height:64px/);
 });
 
@@ -1304,7 +1304,7 @@ ok('held-occupied wording has no redundancy', () => {
 
 ok('rooms without a climate sensor show no temperature at all; rooms with one but no reading keep a muted dash', () => {
   const quiet = P.render('rooms', {}, withRooms(calmRooms({ hallway_upstairs: { temp: null, humidity: null }, kitchen: { temp: null } }), []), NOW);
-  const tile = (html, name) => html.match(new RegExp(`<a class="rt tap"[^>]*>(?:(?!<a class="rt tap").)*?${name}[\\s\\S]*?</a>`))[0];
+  const tile = (html, name) => html.match(new RegExp(`<a class="rt tap[^"]*"[^>]*>(?:(?!<a class="rt tap[" ]).)*?${name}[\\s\\S]*?</a>`))[0];
   const up = tile(quiet, 'Hallway up');
   assert.doesNotMatch(up, /–/);
   assert.match(up, />no climate</);
@@ -1369,11 +1369,11 @@ ok('Now v3 calm / 4 occupied / attention: partition rules and the amber state', 
   const calm = nowPage(withRooms(calmRooms(), []));
   assert.doesNotMatch(calm, /Needs attention|Occupied now|card pad warn/);
   assert.match(calm, />Rooms</);
-  assert.equal(count(calm, /class="rt tap"/g), 8);
+  assert.equal(count(calm, /class="rt tap[" ]/g), 8);
   const four = withRooms(calmRooms({ parlour: { occupied: true, lights_on: 2 }, kitchen: { occupied: true }, bathroom: { occupied: true, temp: 19.8 }, hallway_upstairs: { occupied: true, temp: null } }), []);
   const rooms = P.render('rooms', {}, four, NOW);
   assert.equal(count(rooms, /class="card oc tap"/g), 4);
-  assert.equal(count(rooms, /class="rt tap"/g), 4);
+  assert.equal(count(rooms, /class="rt tap[" ]/g), 4);
   assert.match(rooms, />Occupied now</);
   assert.match(rooms, />Other rooms</);
   assert.match(P.render('status', {}, four, NOW), /4 rooms occupied · heating idle/);
@@ -1387,7 +1387,7 @@ ok('Now v3 calm / 4 occupied / attention: partition rules and the amber state', 
   const r = P.render('rooms', {}, att, NOW);
   assert.equal(count(r, />Needs attention</g), 1);
   assert.doesNotMatch(r, />Occupied now</);
-  assert.equal(count(r, /class="rt tap"/g), 6);
+  assert.equal(count(r, /class="rt tap[" ]/g), 6);
   const heating = withRooms(calmRooms({ kitchen: { hvac_action: 'heating' }, parlour: { hvac_action: 'heating' } }), []);
   assert.match(P.render('status', {}, heating, NOW), /heating in 2 rooms/);
 });
@@ -1416,25 +1416,27 @@ ok('Now v3 occupied card is two lines: icon + name + temperature, then badges (a
 ok('Now v3 tiles: fixed height, name / temperature / status-line grid, identical structure with or without badges, nothing wraps', () => {
   const plain = P.render('rooms', {}, withRooms(calmRooms(), []), NOW);
   const busy = P.render('rooms', {}, withRooms(calmRooms({ bedroom: { heat_labels: ['Window open'], labels: ['Window open'], manual: { source: 'dashboard', ts: new Date(NOW - 600000).toISOString(), what: 'x' } }, kitchen: { lights_on: 3 } }), []), NOW);
-  const tiles = (h) => [...h.matchAll(/<a class="rt tap"[^>]*>([\s\S]*?)<\/a>/g)].map((m) => m[0]);
+  const tiles = (h) => [...h.matchAll(/<a class="rt tap[^"]*"[^>]*>([\s\S]*?)<\/a>/g)].map((m) => m[0]);
   const shape = (t) => t.replace(/<svg[\s\S]*?<\/svg>/g, '<svg/>').match(/<(?:a|div)[^>]*>/g).map((x) => x.replace(/data-path="[^"]*"/, '').replace(/style="[^"]*"/, 'style').trim());
   const a = tiles(plain);
   const b = tiles(busy);
   assert.equal(a.length, 8);
   assert.equal(b.length, 8);
   for (const t of [...a, ...b]) {
-    assert.match(t, /^<a class="rt tap"[^>]*><div class="nm">[\s\S]*?<\/div><div class="t">[\s\S]*?<\/div><div class="b">[\s\S]*<\/div><\/a>$/);
+    assert.match(t, /^<a class="rt tap[^"]*"[^>]*><div class="nm">[\s\S]*?<\/div><div class="t">[\s\S]*?<\/div><div class="b">[\s\S]*<\/div><\/a>$/);
     assert.equal((t.match(/class="rt/g) || []).length, 1);
-    assert.doesNotMatch(t, /height:|min-height:|flex-wrap:wrap/, 'height comes from CSS only, never from content or inline style');
+    assert.doesNotMatch(t, /(^|[;"\s])(min-)?height:|flex-wrap:wrap/, 'height comes from CSS only, never from content or inline style');
   }
   const bedroom = b.find((t) => t.includes('Bedroom'));
   assert.match(bedroom, /Window<\/span>/);
   assert.doesNotMatch(bedroom, /Dashboard/, 'a hold wins over the manual badge so the status line stays one line');
   assert.deepEqual(shape(b[4]).slice(0, 3), shape(a[4]).slice(0, 3));
   const css = readFileSync(root + 'www/pulse-card.js', 'utf8');
-  assert.match(css, /\.rt\{[^\n]*grid-template-rows:auto 1fr auto[^\n]*height:92px[^\n]*overflow:hidden/);
-  assert.match(css, /\.rt \.b\{[^\n]*flex-wrap:nowrap[^\n]*white-space:nowrap[^\n]*overflow:hidden/);
-  assert.match(css, /\.rt \.t\{align-self:center\}/);
+  assert.match(P.STYLE, /\.rt\{[^\n]*grid-template-rows:auto 1fr auto[^\n]*height:104px/);
+  assert.doesNotMatch(P.STYLE.match(/\.rt\{[^\n]*/)[0], /overflow:hidden/, 'the tile itself never clips');
+  assert.match(P.STYLE, /\.rt \.b\{[^\n]*flex-wrap:nowrap[^\n]*white-space:nowrap/);
+  assert.doesNotMatch(P.STYLE.match(/\.rt \.b\{[^\n]*/)[0], /overflow:hidden/, 'the status line row does not clip; only text ellipsises');
+  assert.match(P.STYLE, /\.rt \.t\{align-self:center;text-align:left;/);
   assert.doesNotMatch(plain + busy, /%|humidity/);
   const kitchen = a.find((t) => t.includes('Kitchen'));
   assert.match(kitchen, /Off<\/span>/);
@@ -1446,6 +1448,108 @@ ok('Now v3 sparse and missing data: every Now mode renders cleanly', () => {
     assert.doesNotMatch(page, NOISE);
     assert.doesNotMatch(page, /Updated/);
   }
+});
+
+// ── Tile geometry (no clipping, left-aligned temperature, odd count) ────────────────────────────
+const cssRules = () => [...P.STYLE.matchAll(/^([^{\n]+)\{([^\n]*)\}$/gm)].map((m) => ({ sel: m[1].trim(), body: m[2] }));
+const decl = (body, prop) => { const m = body.match(new RegExp(`(?:^|;)${prop}:([^;]+)`)); return m ? m[1].trim() : null; };
+const px = (v) => (v && /^-?[\d.]+px$/.test(v) ? parseFloat(v) : null);
+const rule = (sel) => cssRules().find((r) => r.sel === sel);
+
+ok('tile height is at least what its rows need (arithmetic from the CSS itself, not the constants)', () => {
+  const rt = rule('.rt').body;
+  const pad = decl(rt, 'padding').split(/\s+/).map(px);
+  const gap = px(decl(rt, 'row-gap'));
+  const name = px(decl(rule('.rt .nm').body, 'line-height'));
+  const temp = px(decl(rule('.rt .t').body, 'line-height'));
+  const status = Math.max(px(decl(rule('.rt .b').body, 'line-height')), px(decl(rule('.rt .b').body, 'min-height')));
+  const needed = pad[0] * 2 + name + temp + status + 2 * gap;
+  const height = px(decl(rt, 'height'));
+  assert.equal(needed, 102);
+  assert.ok(height >= needed, `tile ${height}px must hold ${needed}px of content`);
+  assert.equal(height, P.TILE_H);
+  assert.equal(P.tileNeededHeight(false), needed);
+  // the temperature text itself is styled with the same line-height the arithmetic used
+  assert.match(P.render('rooms', {}, withRooms(calmRooms(), []), NOW), new RegExp(`font-size:20px;font-weight:700;letter-spacing:-\\.3px;line-height:${temp}px`));
+  // wide tile: padding + the taller of name/temperature + gap + status line
+  const wide = rule('.rt.wide').body;
+  const wneeded = pad[0] * 2 + Math.max(name, temp) + gap + status;
+  assert.equal(wneeded, 76);
+  assert.ok(px(decl(wide, 'height')) >= wneeded);
+  assert.equal(px(decl(wide, 'height')), P.TILE_WIDE_H);
+  assert.ok(P.TILE_H >= P.tileNeededHeight(false) && P.TILE_WIDE_H >= P.tileNeededHeight(true));
+  // the status line contents fit their line: 14px icon, 14px-line badges, 20px line
+  assert.ok(14 <= status);
+  assert.ok(px(decl(rule('.rt .b .badge').body, 'line-height')) + 2 * 3 <= status, 'badge (14px line + 3px padding) fits the 20px status line');
+});
+
+ok('tile never clips: no overflow hidden on the tile or its status row; only text ellipsises, icons and badge boxes keep their size', () => {
+  assert.doesNotMatch(rule('.rt').body, /overflow/);
+  assert.doesNotMatch(rule('.rt .b').body, /overflow/);
+  assert.match(rule('.rt .b>*').body, /flex:none/);
+  assert.match(rule('.rt .b>span:not(.badge)').body, /overflow:hidden;text-overflow:ellipsis/);
+  assert.match(rule('.rt .nm span').body, /overflow:hidden;text-overflow:ellipsis/);
+  const html = P.render('rooms', {}, withRooms(calmRooms({ bedroom: { heat_labels: ['Window open'], labels: ['Window open'] } }), []), NOW);
+  const bedroom = html.match(/<a class="rt tap[^"]*"[^>]*room-bedroom"[\s\S]*?<\/a>/)[0];
+  assert.match(bedroom, /<svg[^>]*width="14" height="14"[\s\S]*?<span>Off<\/span><span class="badge"[^>]*>[\s\S]*Window<\/span>/);
+  const manual = P.render('rooms', {}, withRooms(calmRooms({ kitchen: { manual: { source: 'wall_button', ts: new Date(NOW - 3 * 3600000).toISOString(), what: 'x' } } }), []), NOW);
+  const k = manual.match(/<a class="rt tap[^"]*"[^>]*room-kitchen"[\s\S]*?<\/a>/)[0];
+  assert.match(k, /Wall button<\/span>/);
+  assert.doesNotMatch(k, /Wall button · /, 'the tile badge drops its age so the status line stays short');
+});
+
+ok('every fixed height or clipping rule is accounted for (a new one needs its arithmetic)', () => {
+  const fixed = cssRules().filter((r) => px(decl(r.body, 'height'))).map((r) => r.sel).sort();
+  // content boxes with a fixed height (need the arithmetic above): .rt and .rt.wide only. The rest are fixed SHAPES
+  // (dots, icons, switch track and knob, slider track and thumb, the 1px visually-hidden helper) that hold no text.
+  const shapes = ['.dot', '.item svg,.ic', '.sw', '.sw::after', '.sr', '.lt input[type=range]', '.lt input[type=range]::-webkit-slider-runnable-track', '.lt input[type=range]::-webkit-slider-thumb', '.lt input[type=range]::-moz-range-track', '.lt input[type=range]::-moz-range-progress', '.lt input[type=range]::-moz-range-thumb'];
+  assert.deepEqual(fixed, [...shapes, '.rt', '.rt.wide'].sort());
+  // .sw: a 28px track holds a 22px knob with 3px above and below
+  const sw = px(decl(rule('.sw').body, 'height'));
+  const knob = P.STYLE.match(/\.sw::after\{[^\n]*top:(\d+)px[^\n]*height:(\d+)px/);
+  assert.ok(sw >= +knob[1] * 2 + +knob[2]);
+  // range input: 44px row holds the 24px thumb
+  assert.ok(px(decl(rule('.lt input[type=range]').body, 'height')) >= 24);
+  const clip = cssRules().filter((r) => /overflow:hidden/.test(r.body)).map((r) => r.sel).sort();
+  assert.deepEqual(clip, ['.card', '.chip', '.rt .b .badge', '.rt .b>span:not(.badge)', '.rt .nm span', '.sr'].sort());
+  // none of the clipping rules also fixes a height except the visually-hidden helper
+  for (const r of cssRules().filter((x) => /overflow:hidden/.test(x.body) && x.sel !== '.sr')) assert.equal(px(decl(r.body, 'height')), null, r.sel);
+  // flexible regions use min-height only
+  for (const sel of ['.oc', '.pstrip', '.chip', '.row', '.tog', '.link', '.seg', '.wrow', '.lh']) assert.ok(px(decl(rule(sel).body, 'min-height')) > 0 && px(decl(rule(sel).body, 'height')) === null, sel);
+  assert.equal(px(decl(rule('.chip').body, 'min-height')), 30);
+});
+
+ok('tile temperature is left-aligned with the name; no climate is left-aligned muted text in the same slot', () => {
+  assert.match(rule('.rt .t').body, /text-align:left/);
+  assert.match(rule('.rt .t').body, /align-self:center/);
+  assert.doesNotMatch(rule('.rt .t').body, /text-align:right/);
+  assert.match(rule('.rt.wide .t').body, /text-align:right/);
+  const html = P.render('rooms', {}, withRooms(calmRooms({ hallway_upstairs: { temp: null } }), []), NOW);
+  const up = html.match(/<a class="rt tap[^"]*"[^>]*room-hallway_upstairs"[\s\S]*?<\/a>/)[0];
+  assert.match(up, /<div class="t"><div style="font-size:12px;font-weight:500;color:#8f9aa8">no climate<\/div><\/div>/);
+  assert.doesNotMatch(up, /text-align:right/);
+});
+
+ok('odd tile counts: the last tile spans both columns as a wide row; even counts are unchanged (1, 2, 7, 8)', () => {
+  const others = (n) => { const occ = Object.fromEntries(P.ROOM_ORDER.slice(0, 8 - n).map((k) => [k, { occupied: true }])); return P.render('rooms', {}, withRooms(calmRooms(occ), []), NOW); };
+  for (const [n, wide] of [[1, 1], [2, 0], [7, 1], [8, 0]]) {
+    const html = others(n);
+    assert.equal(count(html, /<a class="rt tap[" ]/g), n, `${n} tiles`);
+    assert.equal(count(html, /class="rt tap wide"/g), wide, `${n}: wide tiles`);
+    if (wide) {
+      const tiles = [...html.matchAll(/<a class="rt tap[^"]*"[^>]*>/g)].map((m) => m[0]);
+      assert.match(tiles[tiles.length - 1], /rt tap wide/, 'the LAST tile is the wide one');
+      assert.ok(tiles.slice(0, -1).every((t) => !t.includes('wide')));
+    }
+  }
+  const seven = others(7);
+  const w = seven.match(/<a class="rt tap wide"[\s\S]*?<\/a>/)[0];
+  assert.match(w, /^<a class="rt tap wide"[^>]*><div class="nm">[\s\S]*?<\/div><div class="t">[\s\S]*?<\/div><div class="b">[\s\S]*<\/div><\/a>$/);
+  assert.match(w, /Foreign office/);
+  assert.match(rule('.rt.wide').body, /grid-column:1 \/ -1/);
+  assert.match(rule('.rt.wide .b').body, /grid-column:1 \/ -1/);
+  assert.match(rule('.rt.wide .nm').body, /grid-column:1/);
+  noNoise({ seven }, 'odd tiles');
 });
 
 console.log(`\n${n} test groups passed`);
