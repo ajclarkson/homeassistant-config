@@ -28,6 +28,12 @@ template:
         value_template: >-
           {% set e = trigger.payload_json if trigger.payload_json is defined else none %}
           {% set noisy = ['octopus', 'energy'] %}
+          {# Plumbing that runs on a timer or on every sensor update and changes nothing the household would notice.
+             Values from homerun-automations: heating/room-temp-feed.ts (decision update_external_temp, reason
+             heartbeat / temp_changed) and house/outdoor-temp-history.ts (decision record). #}
+          {% set plumbing_ids = ['room_temp_feed', 'outdoor_temp_history'] %}
+          {% set plumbing_decisions = ['update_external_temp', 'record'] %}
+          {% set plumbing_reasons = ['heartbeat'] %}
           {% if trigger.platform == 'homeassistant' %}
             {{ true }}
           {% elif e is not mapping %}
@@ -35,7 +41,11 @@ template:
           {% elif e.get('schema') != 'home.events.v2' or e.get('dry_run') %}
             {{ false }}
           {% elif e.get('event_type') == 'decision' %}
-            {{ e.get('decision') is string and e.get('decision') not in ['no_action', 'no_change'] }}
+            {% set aid = e.get('automation_id') | string %}
+            {{ e.get('decision') is string and e.get('decision') not in ['no_action', 'no_change']
+               and e.get('decision') not in plumbing_decisions
+               and e.get('reason') not in plumbing_reasons
+               and not (plumbing_ids | select('in', aid) | list | length > 0) }}
           {% elif e.get('event_type') == 'abort' %}
             {% set aid = e.get('automation_id') | string %}
             {{ e.get('abort_kind') in ['unavailable_input', 'guard', 'unhandled_error']

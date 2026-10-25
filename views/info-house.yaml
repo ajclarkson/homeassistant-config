@@ -14,18 +14,17 @@ sections:
           {% set a = state_attr('sensor.info_decision_feed', 'aborts') %}
           {% set a = a | from_json if a is string else (a or []) %}
           {% set started = state_attr('sensor.info_decision_feed', 'started') %}
-          {% set _ = now() %}
           {% if f | length == 0 %}
           No decisions seen since HA started{% if started %} ({{ as_datetime(started).astimezone().strftime('%H:%M') }}){% endif %}. This list is rebuilt from live events and is empty after a restart until something happens.
           {% endif %}
           {% for e in f %}
-          - {{ e.sentence }} · {{ relative_time(as_datetime(e.ts)) }} ago
+          - {{ e.sentence }} · {{ 'just now' if (now() - as_datetime(e.ts)).total_seconds() < 60 else relative_time(as_datetime(e.ts)) ~ ' ago' }}
           {% endfor %}
           {% if a | length > 0 %}
 
           **Held back or failed**
           {% for e in a %}
-          - {{ e.sentence }}{% if e.count | int(1) > 1 %} (x{{ e.count }}){% endif %} · {{ relative_time(as_datetime(e.ts)) }} ago
+          - {{ e.sentence }}{% if e.count | int(1) > 1 %} (x{{ e.count }}){% endif %} · {{ 'just now' if (now() - as_datetime(e.ts)).total_seconds() < 60 else relative_time(as_datetime(e.ts)) ~ ' ago' }}
           {% endfor %}
           {% endif %}
       - type: markdown
