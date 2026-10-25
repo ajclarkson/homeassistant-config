@@ -1,0 +1,17 @@
+# Pulse Energy page: prices for today/tomorrow, stats, windows, published cost, live usage.
+# Real published data only (no estimates). Sections are `custom:pulse-card` modes; the day selector,
+# chart, stats and windows are one card (energy-day) so the selected day survives state updates.
+title: Energy
+path: energy
+subview: true
+back_path: /pulse-dashboard/now
+type: sections
+max_columns: 1
+background: '#12151a'
+sections:
+  - type: grid
+    cards:
+      - {type: custom:pulse-card, mode: energy-head}
+      - {type: custom:pulse-card, mode: energy-day}
+      - {type: custom:pulse-card, mode: energy-cost}
+      - {type: custom:pulse-card, mode: energy-usage}
