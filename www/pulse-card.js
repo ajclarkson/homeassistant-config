@@ -976,6 +976,140 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 <div style="font-size:11.5px;color:${TOKENS.text3};margin:-6px 4px 0">Octopus publishes about 1-2 days late, so these cover an earlier day, not today.</div>`;
   }
 
+  // ── Daily cost history (recorder long-term statistics) ────────────────────────────────────────
+  // Source: the sensor's own statistics (they include the standing charge). Never chart raw `state`
+  // over time or `sum`: `state` resets daily and `sum` is cumulative. Each covered day shows up as a
+  // GROUP of hourly rows sharing one `last_reset` (local midnight of the day covered) and one `state`;
+  // the rows' own `start` times are NOT the covered day. So: group by the last_reset INSTANT, the cost
+  // is the group's state, and the covered date is last_reset in the HA time zone (DST-safe: no +1h).
+  const COST_STAT = {
+    electricity: 'sensor.octopus_energy_electricity_24e8140196_1012483035417_previous_accumulative_cost',
+    gas: 'sensor.octopus_energy_gas_e6s15257822462_2986733608_previous_accumulative_cost',
+  };
+  const HIST_DAYS = 14;
+  const HIST_LOOKBACK_DAYS = 21;
+  const HIST_MIN_ROWS = 20; // a covered day has ~24 hourly rows per publication; fewer means a partial group
+  const HIST_REFRESH_MS = 30 * 60000;
+  const HIST_RETRY_MS = 5 * 60000;
+
+  // Statistics times arrive as epoch ms (or seconds) or ISO strings depending on version.
+  function instantMs(v) {
+    if (typeof v === 'number') return Number.isFinite(v) ? (v < 1e11 ? v * 1000 : v) : null;
+    if (typeof v === 'string' && v.trim() !== '') { const t = Date.parse(v); return Number.isFinite(t) ? t : null; }
+    return null;
+  }
+  // "YYYY-MM-DD" of an instant in an IANA zone; falls back to the viewer's zone for a bad zone name.
+  function localDate(ms, tz) {
+    const fmt = (zone) => new Intl.DateTimeFormat('en-CA', { ...(zone ? { timeZone: zone } : {}), year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(ms));
+    let parts;
+    try { parts = fmt(tz); } catch (e) { parts = fmt(undefined); }
+    const g = (t) => parts.find((x) => x.type === t).value;
+    return `${g('year')}-${g('month')}-${g('day')}`;
+  }
+  function histRequest(nowMs) {
+    return {
+      type: 'recorder/statistics_during_period',
+      start_time: new Date(nowMs - HIST_LOOKBACK_DAYS * 86400000).toISOString(),
+      statistic_ids: [COST_STAT.electricity, COST_STAT.gas],
+      period: 'hour',
+      types: ['state', 'last_reset', 'sum', 'change'],
+    };
+  }
+
+  // rows -> [{date, cost, rows, lastReset}] oldest first, at most `days`. Partial groups (< minRows) are
+  // dropped except the newest, which is legitimately still filling. Never invents a day.
+  function groupDailyCost(rows, tz, opts) {
+    const days = (opts && opts.days) || HIST_DAYS;
+    const minRows = opts && opts.minRows !== undefined ? opts.minRows : HIST_MIN_ROWS;
+    const groups = new Map();
+    for (const r of Array.isArray(rows) ? rows : []) {
+      if (!isObj(r)) continue;
+      const reset = instantMs(r.last_reset);
+      const cost = num(r.state);
+      if (reset === null || cost === null) continue;
+      const at = instantMs(r.start);
+      let g = groups.get(reset);
+      if (!g) { g = { lastReset: reset, rows: 0, cost, at: at === null ? -Infinity : at }; groups.set(reset, g); }
+      g.rows += 1;
+      if (at !== null && at >= g.at) { g.at = at; g.cost = cost; } // latest row's state (identical across a group)
+    }
+    if (groups.size === 0) return [];
+    const newest = Math.max(...groups.keys());
+    const byDate = new Map();
+    for (const g of groups.values()) {
+      if (g.rows < minRows && g.lastReset !== newest) continue;
+      const date = localDate(g.lastReset, tz);
+      const prev = byDate.get(date);
+      if (!prev || g.rows > prev.rows || (g.rows === prev.rows && g.lastReset > prev.lastReset)) byDate.set(date, { date, cost: g.cost, rows: g.rows, lastReset: g.lastReset });
+    }
+    return [...byDate.values()].sort((a, b) => a.lastReset - b.lastReset).slice(-days);
+  }
+  // WS result ({statistic_id: rows[]}) -> {electricity: days[], gas: days[]}. A missing or malformed series is [].
+  function dailyCostFromWS(result, tz) {
+    const res = isObj(result) ? result : {};
+    return { electricity: groupDailyCost(res[COST_STAT.electricity], tz), gas: groupDailyCost(res[COST_STAT.gas], tz) };
+  }
+
+  const dayTick = (date) => { const l = isoDayLabel(date); return l ? l.split(' ').slice(0, 2).join(' ') : ''; };
+  // Readout for a scrubbed day, shaped like slotReadout so the scrub code can share it.
+  function dayReadout(day) {
+    if (!isObj(day) || !Number.isFinite(day.v) || typeof day.date !== 'string') return null;
+    const label = isoDayLabel(day.date);
+    if (!label) return null;
+    const price = money(day.v, 'GBP');
+    return { range: label, price, note: day.state === 'current' ? 'latest' : '', colour: TOKENS.text, spoken: `${label}, ${price}${day.state === 'current' ? ', latest' : ''}` };
+  }
+  // Average of the shown days; the standing-charge note is only repeated when the cost card has verified it.
+  function dailySummary(days, standing) {
+    const list = (Array.isArray(days) ? days : []).filter((d) => isObj(d) && Number.isFinite(d.cost));
+    if (list.length === 0) return '';
+    const avg = list.reduce((a, d) => a + d.cost, 0) / list.length;
+    return `${list.length}-day average ${money(avg, 'GBP')}${standing === 'incl. standing charge' ? ' · incl. standing charge' : ''}`;
+  }
+
+  function costChart(days) {
+    const n = days.length;
+    const COL_W = 24;
+    const vals = days.map((d) => d.cost);
+    const lo = Math.min(0, ...vals);
+    let hi = Math.max(0, ...vals);
+    if (hi - lo < 0.01) hi = lo + 0.01;
+    const y = (v) => ((hi - v) / (hi - lo)) * (PLOT_H - 2) + 1;
+    const y0 = y(0);
+    const bars = days.map((d, i) => {
+      const top = Math.min(y(d.cost), y0);
+      const h = Math.max(1.5, Math.abs(y(d.cost) - y0));
+      const latest = i === n - 1;
+      return `<rect x="${i * COL_W + 2}" y="${top.toFixed(1)}" width="${COL_W - 4}" height="${h.toFixed(1)}" rx="2" fill="${TOKENS.link}" opacity="${latest ? 1 : 0.55}"/>`;
+    }).join('');
+    const ticks = days.map((d, i) => ((n - 1 - i) % 2 === 0 ? `<span style="position:absolute;left:${(((i + 0.5) / n) * 100).toFixed(2)}%;transform:translateX(-50%);white-space:nowrap">${esc(dayTick(d.date))}</span>` : '')).join('');
+    const hiDay = days.reduce((a, d) => (d.cost > a.cost ? d : a), days[0]);
+    const loDay = days.reduce((a, d) => (d.cost < a.cost ? d : a), days[0]);
+    const lbl = (d) => `${money(d.cost, 'GBP')} on ${isoDayLabel(d.date)}`;
+    const label = `Daily cost, ${n} ${plural(n, 'day', 'days')}. Highest ${lbl(hiDay)}, lowest ${lbl(loDay)}, latest ${lbl(days[n - 1])}.`;
+    return `<div class="chart" data-chart data-kind="cost" data-n="${n}" tabindex="0" role="img" aria-label="${esc(label)}" style="position:relative;margin-top:36px;touch-action:pan-y;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none"><svg viewBox="0 0 ${n * COL_W} ${PLOT_H}" preserveAspectRatio="none" width="100%" height="${PLOT_H}" aria-hidden="true" style="display:block">${bars}<line x1="0" x2="${n * COL_W}" y1="${y0.toFixed(1)}" y2="${y0.toFixed(1)}" stroke="${TOKENS.text3}" stroke-width=".8" vector-effect="non-scaling-stroke"/></svg>
+<span style="position:absolute;left:0;top:${Math.max(0, y0 - 14).toFixed(0)}px;font-size:10px;color:${TOKENS.text3};pointer-events:none">£0</span><div data-guide style="display:none;position:absolute;top:0;bottom:0;width:1px;margin-left:-.5px;background:${TOKENS.text};opacity:.7;pointer-events:none"></div><div data-tip class="tip" style="display:none"></div></div><span class="sr" aria-live="polite" data-live></span>
+<div style="position:relative;height:14px;font-size:9.5px;color:${TOKENS.text3};margin-top:4px">${ticks}</div>`;
+  }
+
+  // Electricity | Gas toggle, bars for up to 14 covered days, readout on scrub, honest loading/unavailable states.
+  function sectionEnergyHistory(hass, at, ui) {
+    const fuel = ui && ui.fuel === 'gas' ? 'gas' : 'electricity';
+    const seg = (id, label) => `<button class="seg${fuel === id ? ' on' : ''}" data-act="cost-fuel" data-fuel="${id}" aria-pressed="${fuel === id}">${label}</button>`;
+    const h = ui && isObj(ui.hist) && isObj(ui.hist[fuel]) ? ui.hist[fuel] : { status: 'loading', days: [] };
+    const days = Array.isArray(h.days) ? h.days : [];
+    let body;
+    if (h.status === 'loading') body = `<div style="font-size:13px;color:${TOKENS.text2}">Loading history…</div>`;
+    else if (h.status !== 'ok' || days.length === 0) body = `<div style="font-size:14px;font-weight:600">History unavailable</div><div style="font-size:12.5px;color:${TOKENS.text2};margin-top:4px;line-height:1.4">The recorded cost history could not be read. The latest published day is shown above.</div>`;
+    else {
+      const id = COST_STAT[fuel];
+      const total = usable(state(hass, id)) ? num(state(hass, id)) : null;
+      const summary = dailySummary(days, standingNote(total, isObj(stateObj(hass, id)) ? stateObj(hass, id).attributes : {}));
+      body = `${costChart(days)}<div style="font-size:12.5px;margin-top:8px">${esc(summary)}</div><div style="font-size:11.5px;color:${TOKENS.text3};margin-top:4px">Drag across the bars to read a day. Published about 1-2 days late.</div>`;
+    }
+    return `<div class="lbl" style="margin:4px 4px -10px">Daily cost</div><div class="segs">${seg('electricity', 'Electricity')}${seg('gas', 'Gas')}</div><div class="card pad">${body}</div>`;
+  }
+
   function sectionEnergyUsage(hass) {
     const tile = (label, id) => {
       const text = usable(state(hass, id)) ? energyText(state(hass, id), attr(hass, id, 'unit_of_measurement')) : '–';
@@ -1167,6 +1301,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     'energy-head': (h, c, n) => sectionEnergyHead(h, n),
     'energy-day': (h, c, n, ui) => sectionEnergyDay(h, n, ui),
     'energy-cost': (h) => sectionEnergyCost(h),
+    'energy-history': (h, c, n, ui) => sectionEnergyHistory(h, n, ui),
     'energy-usage': (h) => sectionEnergyUsage(h),
     feed: (h, c, n) => sectionFeed(h, n),
     footer: (h, c, n) => sectionFooter(h, n),
@@ -1217,7 +1352,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     }
   }
 
-  const api = { energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, roomGroups, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, MOBILE, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, ALL_ROOM_KEYS, ALLOWED, render, priceColour, PRICE_STOPS, PRICE_EXTREME_P, roomModel, attentionItems, handleAction, callService, num, parseList };
+  const api = { COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, roomGroups, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, MOBILE, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, ALL_ROOM_KEYS, ALLOWED, render, priceColour, PRICE_STOPS, PRICE_EXTREME_P, roomModel, attentionItems, handleAction, callService, num, parseList };
   root.PulseLib = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 
@@ -1229,7 +1364,11 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         this._root = this.attachShadow({ mode: 'open' });
         this._html = null;
         this._busy = false;
-        this._ui = { open: false, day: 'today' };
+        this._ui = { open: false, day: 'today', fuel: 'electricity', hist: { electricity: { status: 'loading', days: [] }, gas: { status: 'loading', days: [] } } };
+        this._histBusy = false;
+        this._histSeq = 0;
+        this._histAt = 0;
+        this._histRetryAt = 0;
         this._scrub = { idx: null, slots: null, active: false, pending: null, timer: null };
         this._root.addEventListener('click', (ev) => this._click(ev));
         this._root.addEventListener('change', (ev) => this._change(ev));
@@ -1252,7 +1391,44 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       }
       set hass(hass) {
         this._hass = hass;
+        this._histEnsure();
         this._paint();
+      }
+      connectedCallback() { this._histEnsure(); }
+      disconnectedCallback() { this._histSeq += 1; this._histBusy = false; }
+      // Daily cost history: one read-only WS call when the Energy view mounts, then at most every 30
+      // minutes (a failure retries after 5), never per hass update, never overlapping, and a response
+      // that arrives after unmount is dropped (the sequence number moved on).
+      _histEnsure() {
+        if (!this._config || this._config.mode !== 'energy-history' || !this._hass || !this.isConnected || this._histBusy) return;
+        const now = Date.now();
+        if (now < this._histRetryAt || (this._histAt && now - this._histAt < HIST_REFRESH_MS)) return;
+        const set = (status, days) => { for (const f of ['electricity', 'gas']) this._ui.hist[f] = { status, days: days ? days[f] : [] }; };
+        if (typeof this._hass.callWS !== 'function') { set('unavailable'); this._histRetryAt = now + HIST_RETRY_MS; return; }
+        this._histBusy = true;
+        const seq = (this._histSeq += 1);
+        const tz = this._hass.config && this._hass.config.time_zone;
+        let call;
+        try { call = Promise.resolve(this._hass.callWS(histRequest(now))); } catch (e) { call = Promise.reject(e); }
+        call
+          .then((res) => {
+            if (seq !== this._histSeq) return;
+            const days = dailyCostFromWS(res, tz);
+            if (days.electricity.length === 0 && days.gas.length === 0) throw new Error('empty statistics');
+            set('ok', days);
+            this._histAt = Date.now();
+          })
+          .catch((err) => {
+            if (seq !== this._histSeq) return;
+            console.warn('pulse-card: daily cost history unavailable', err && err.message ? err.message : err);
+            if (!this._histAt) set('unavailable');
+            this._histRetryAt = Date.now() + HIST_RETRY_MS;
+          })
+          .finally(() => {
+            if (seq !== this._histSeq) return;
+            this._histBusy = false;
+            this._paint();
+          });
       }
       getCardSize() { return 3; }
       _paint() {
@@ -1278,7 +1454,13 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         clearTimeout(this._scrub.timer);
         this._scrub.timer = setTimeout(() => this._chartClear(), SCRUB_HOLD_MS);
       }
-      _chartSlots(chart) { return rateBands(ratesOf(this._hass, chart.dataset.day), Date.now()); }
+      _chartSlots(chart) {
+        if (chart.dataset.kind === 'cost') {
+          const days = this._ui.hist[this._ui.fuel === 'gas' ? 'gas' : 'electricity'].days;
+          return days.map((d, i) => ({ date: d.date, v: d.cost, state: i === days.length - 1 ? 'current' : 'past' }));
+        }
+        return rateBands(ratesOf(this._hass, chart.dataset.day), Date.now());
+      }
       _chartIdx(ev, chart) {
         const box = chart.getBoundingClientRect();
         const n = this._scrub.slots ? this._scrub.slots.length : 0;
@@ -1289,7 +1471,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         const slots = this._scrub.slots;
         if (!chart || !slots || slots.length === 0) return;
         const i = Math.max(0, Math.min(slots.length - 1, idx));
-        const r = slotReadout(slots[i]);
+        const r = chart.dataset.kind === 'cost' ? dayReadout(slots[i]) : slotReadout(slots[i]);
         if (!r) return;
         this._scrub.idx = i;
         const n = slots.length;
@@ -1388,6 +1570,12 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
             window.history.pushState(null, '', path);
             window.dispatchEvent(new CustomEvent('location-changed', { detail: { replace: false } }));
           }
+          return;
+        }
+        if (el.dataset.act === 'cost-fuel') {
+          this._ui.fuel = el.dataset.fuel === 'gas' ? 'gas' : 'electricity';
+          this._chartClear();
+          this._paint();
           return;
         }
         if (el.dataset.act === 'energy-day') {
