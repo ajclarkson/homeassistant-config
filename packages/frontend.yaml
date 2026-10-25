@@ -1,9 +1,11 @@
+# Bump ?v= on pulse-card.js whenever www/pulse-card.js changes behaviour the app must pick up
+# (the companion app caches the module); needs an HA restart to take effect.
 frontend:
   themes: !include_dir_merge_named /config/themes
   extra_module_url:
     - /hacsfiles/material-you-utilities/material-you-utilities.min.js
     - /local/mo-timeline-card.js
-    - /local/pulse-card.js
+    - /local/pulse-card.js?v=1
 
 panel_custom:
   - name: material-you-panel

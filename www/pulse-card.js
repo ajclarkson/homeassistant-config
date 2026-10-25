@@ -4,6 +4,9 @@
  * One card, many sections: `mode` picks the section and `room` (where relevant) the room, so
  * every room page is the same template with a different room key.
  *
+ * Cache busting: the module URL in packages/frontend.yaml carries ?v=N. Bump N in the same change
+ * whenever this file changes (the companion app caches JS modules hard).
+ *
  * Rules this file keeps:
  *  - Rendering is a pure function (render(mode, config, hass, nowMs) -> html string) with no DOM,
  *    so it runs under node (tests/pulse-card.test.mjs).
@@ -90,7 +93,13 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 .tile.on{background:${TOKENS.sceneActive};color:${TOKENS.sceneActiveText}}
 .lt{display:grid;grid-template-columns:1fr 130px;gap:12px;align-items:center;min-height:56px;padding:6px 14px;border-top:1px solid ${TOKENS.divider}}
 .lt:first-child{border-top:0}
-.lt input[type=range]{width:100%;height:44px;accent-color:${TOKENS.sceneActive};margin:0}
+.lh{display:flex;justify-content:space-between;align-items:center;width:100%;min-height:52px;padding:0 14px;background:none;border:0;color:inherit;font:inherit;cursor:pointer}
+.lt input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:44px;margin:0;background:transparent;accent-color:${TOKENS.sceneActive}}
+.lt input[type=range]::-webkit-slider-runnable-track{height:6px;border-radius:3px;background:linear-gradient(to right,${TOKENS.sceneActive} var(--p,0%),${TOKENS.switchOff} var(--p,0%))}
+.lt input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:24px;height:24px;margin-top:-9px;border-radius:50%;background:${TOKENS.sceneActive};border:2px solid ${TOKENS.surface}}
+.lt input[type=range]::-moz-range-track{height:6px;border-radius:3px;background:${TOKENS.switchOff}}
+.lt input[type=range]::-moz-range-progress{height:6px;border-radius:3px;background:${TOKENS.sceneActive}}
+.lt input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:${TOKENS.sceneActive};border:2px solid ${TOKENS.surface}}
 .round{min-height:44px;min-width:44px;border-radius:999px;border:0;background:${TOKENS.sceneActive};color:${TOKENS.sceneActiveText};display:flex;align-items:center;justify-content:center;cursor:pointer;flex:none}
 .big{font-size:32px;font-weight:700;letter-spacing:-.6px;line-height:1.1;margin-top:4px}
 .two{display:flex;gap:10px}
@@ -419,6 +428,13 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     pause: 'M7 5h4v14H7zM13 5h4v14h-4z',
   };
   const svg = (path, size, extra) => `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"${extra || ''}><path d="${path}"/></svg>`;
+  // Occupancy indicator (the dot stays health): filled person = occupied, outlined dim = empty,
+  // dashed amber = occupancy sensor unavailable.
+  function occIcon(m) {
+    if (!m.hasReport) return '';
+    const [label, fill, color, dash] = m.occupancy_unavailable ? ['Occupancy unavailable', 'none', TOKENS.amber, ' stroke-dasharray="2 2"'] : m.occupied ? ['Occupied', 'currentColor', TOKENS.text, ''] : ['Empty', 'none', TOKENS.text3, ''];
+    return `<svg class="occ" role="img" aria-label="${label}" viewBox="0 0 24 24" width="15" height="15" fill="${fill}" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="color:${color};flex:none"${dash}><circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/></svg>`;
+  }
   const SCENE_ICON = { off: 'power', lamps: 'lamp', low: 'moon', full: 'sun', all_full: 'sun', daylight: 'sun' };
 
   // ── Wording ──────────────────────────────────────────────────────────────────────────────────
@@ -486,8 +502,9 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       const home = ['person.adam', 'person.sarah'].filter((p) => state(hass, p) === 'home').length;
       const n = heatingRooms(hass).length;
       const mode = state(hass, 'sensor.house_active_mode');
+      const occ = ROOM_ORDER.filter((k) => roomModel(hass, k).hasReport && roomModel(hass, k).occupied).length;
       const hasData = !!stateObj(hass, 'sensor.info_attention');
-      return `<div class="card pad" style="display:flex;align-items:center;gap:10px"><span class="dot${hasData ? '' : ' dim'}"></span><div><div style="font-size:15px;font-weight:700">${hasData ? 'All good' : 'No attention report'}</div><div style="font-size:12px;color:${TOKENS.text2};margin-top:2px">${home} home · heating in ${n} ${plural(n, 'room', 'rooms')}${usable(mode) ? ' · ' + esc(mode) : ''}</div></div></div>`;
+      return `<div class="card pad" style="display:flex;align-items:center;gap:10px"><span class="dot${hasData ? '' : ' dim'}"></span><div><div style="font-size:15px;font-weight:700">${hasData ? 'All good' : 'No attention report'}</div><div style="font-size:12px;color:${TOKENS.text2};margin-top:2px">${home} home · ${occ} ${plural(occ, 'room', 'rooms')} occupied · heating in ${n} ${plural(n, 'room', 'rooms')}${usable(mode) ? ' · ' + esc(mode) : ''}</div></div></div>`;
     }
     const first = items[0];
     const path = ROOMS[first.key] ? roomPath(first.key) : MOBILE;
@@ -508,7 +525,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       const hum = m.cfg.climate ? (m.humidity !== null ? `${Math.round(m.humidity)}%` : '') : 'no climate';
       const tcolor = m.temp === null ? ` style="color:${TOKENS.text3}"` : '';
       if (!flagged.has(k)) {
-        return `<a class="row tap" data-act="nav" data-path="${roomPath(k)}"><span class="dot${m.hasReport ? '' : ' dim'}"></span><div><div class="nm">${esc(m.cfg.short)}</div><div class="sub">${esc(m.hasReport ? rowSub(m, scene, now) : 'No report yet')}</div></div><div><div class="t"${tcolor}>${temp}</div><div class="rh">${esc(hum)}</div></div></a>`;
+        return `<a class="row tap" data-act="nav" data-path="${roomPath(k)}"><span class="dot${m.hasReport ? '' : ' dim'}"></span><div><div class="nm" style="display:flex;align-items:center;gap:6px">${esc(m.cfg.short)}${occIcon(m)}</div><div class="sub">${esc(m.hasReport ? rowSub(m, scene, now) : 'No report yet')}</div></div><div><div class="t"${tcolor}>${temp}</div><div class="rh">${esc(hum)}</div></div></a>`;
       }
       const lines = [];
       if (m.target_reason && m.target !== null) lines.push(`<div class="l"><b>Heating</b><span>target ${fmt1(m.target)}° (${esc(m.target_reason)})${m.mode_name && m.mode_target !== null ? `. Normally ${esc(m.mode_name)}, ${fmt1(m.mode_target)}°.` : '.'}</span></div>`);
@@ -516,7 +533,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       for (const i of items.filter((x) => x.key === k)) lines.push(`<div class="l"><b>${esc(itemLabel(i, m))}</b><span>${esc(itemDetail(i, m))}</span></div>`);
       const tags = m.labels.concat(m.heat_labels.filter((l) => !m.labels.includes(l))).map((l) => `<span class="tag">${esc(l)}</span>`).join('');
       if (tags) lines.push(`<div class="l">${tags}</div>`);
-      return `<div class="row warn"><span class="dot warn" style="margin-top:6px"></span><div><div class="nm">${esc(m.cfg.short)}</div><div class="sub">${esc(m.verdict || rowSub(m, scene, now))}</div></div><div><div class="t"${tcolor}>${temp}</div><div class="rh">${esc(hum)}</div></div><div class="det">${lines.join('')}<a class="link tap" data-act="nav" data-path="${roomPath(k)}">${esc(m.cfg.short)} details ›</a></div></div>`;
+      return `<div class="row warn"><span class="dot warn" style="margin-top:6px"></span><div><div class="nm" style="display:flex;align-items:center;gap:6px">${esc(m.cfg.short)}${occIcon(m)}</div><div class="sub">${esc(m.verdict || rowSub(m, scene, now))}</div></div><div><div class="t"${tcolor}>${temp}</div><div class="rh">${esc(hum)}</div></div><div class="det">${lines.join('')}<a class="link tap" data-act="nav" data-path="${roomPath(k)}">${esc(m.cfg.short)} details ›</a></div></div>`;
     });
     return `<div class="lbl" style="margin:4px 4px -10px">Rooms</div><div class="card">${rows.join('')}</div>`;
   }
@@ -549,6 +566,57 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   }
 
   const priceColor = (p) => (p === null ? TOKENS.text : p < CHEAP_P ? TOKENS.ok : p >= PEAK_P ? TOKENS.amber : TOKENS.text);
+  // Price bars: one slot per entry of the Octopus current-day rates list (46, 48 or 50 on clock-change
+  // days; never assumed), x anchored to the first slot start and last slot end, negative slots below
+  // a zero baseline. Drawn here (not apexcharts-card) so the whole energy block is one surface and
+  // every pixel decision is testable in node.
+  const BAR_COLOR = { cheap: TOKENS.ok, mid: '#5d7390', peak: TOKENS.amber };
+  const PLOT_H = 96;
+  const SLOT_W = 6;
+  function rateBands(rates, now) {
+    const out = [];
+    for (const r of Array.isArray(rates) ? rates : []) {
+      if (!isObj(r)) continue;
+      const start = Date.parse(r.start);
+      const end = Date.parse(r.end);
+      const v = Number(r.value_inc_vat) * 100;
+      if (!Number.isFinite(start) || !Number.isFinite(end) || !Number.isFinite(v) || end <= start) continue;
+      const band = v < CHEAP_P ? 'cheap' : v >= PEAK_P ? 'peak' : 'mid';
+      out.push({ start, end, v, band, state: end <= now ? 'past' : start <= now ? 'current' : 'future' });
+    }
+    return out.sort((x, y) => x.start - y.start);
+  }
+
+  function priceChart(rates, now) {
+    const slots = rateBands(rates, now);
+    if (slots.length === 0) return `<div style="font-size:12px;color:${TOKENS.text2};margin-top:12px">No price data for today.</div>`;
+    const n = slots.length;
+    const lo = Math.min(0, ...slots.map((x) => x.v));
+    let hi = Math.max(0, ...slots.map((x) => x.v));
+    if (hi - lo < 1) hi = lo + 1;
+    const y = (v) => ((hi - v) / (hi - lo)) * (PLOT_H - 2) + 1;
+    const y0 = y(0);
+    const bars = slots.map((x, i) => {
+      const top = Math.min(y(x.v), y0);
+      const h = Math.max(1.5, Math.abs(y(x.v) - y0));
+      const fill = x.state === 'current' ? TOKENS.text : BAR_COLOR[x.band];
+      const op = x.state === 'past' ? 0.45 : 1;
+      return `<rect x="${i * SLOT_W}" y="${top.toFixed(1)}" width="${SLOT_W - 1}" height="${h.toFixed(1)}" rx="1" fill="${fill}" opacity="${op}"/>`;
+    }).join('');
+    const cur = slots.findIndex((x) => x.state === 'current');
+    const marker = cur >= 0 ? `<line x1="${cur * SLOT_W + (SLOT_W - 1) / 2}" x2="${cur * SLOT_W + (SLOT_W - 1) / 2}" y1="0" y2="${PLOT_H}" stroke="${TOKENS.text}" stroke-width="1" stroke-dasharray="2 2" vector-effect="non-scaling-stroke" opacity=".6"/>` : '';
+    // Hour labels follow the slots' real start times in the viewer's zone, so a 25-hour day is right.
+    const ticks = slots.map((x, i) => {
+      const d = new Date(x.start);
+      return d.getMinutes() === 0 && d.getHours() % 6 === 0 ? `<span style="position:absolute;left:${((i / n) * 100).toFixed(2)}%;transform:translateX(-50%)">${String(d.getHours()).padStart(2, '0')}</span>` : '';
+    }).join('');
+    const label = cur >= 0 ? `Half-hourly electricity price, ${n} slots, now ${fmt1(slots[cur].v)}p` : `Half-hourly electricity price, ${n} slots`;
+    return `<div style="position:relative;margin-top:14px"><svg viewBox="0 0 ${n * SLOT_W} ${PLOT_H}" preserveAspectRatio="none" width="100%" height="${PLOT_H}" role="img" aria-label="${esc(label)}" style="display:block">${bars}<line x1="0" x2="${n * SLOT_W}" y1="${y0.toFixed(1)}" y2="${y0.toFixed(1)}" stroke="${TOKENS.text3}" stroke-width=".8" vector-effect="non-scaling-stroke"/>${marker}</svg>
+<span style="position:absolute;left:0;top:${Math.max(0, y0 - 14).toFixed(0)}px;font-size:10px;color:${TOKENS.text3}">0</span></div>
+<div style="position:relative;height:14px;font-size:10px;color:${TOKENS.text3};margin-top:4px">${ticks}</div>`;
+  }
+
+  // The energy block is ONE card: numbers, bars, cheapest-2h and the tomorrow note.
   function sectionEnergy(hass, at) {
     const base = 'sensor.octopus_energy_electricity_24e8140196_1012483035417';
     const now = num(state(hass, `${base}_current_rate`));
@@ -562,24 +630,23 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const usageText = stale ? '–' : formatPower(state(hass, 'sensor.glow_electricity_power'), attr(hass, 'sensor.glow_electricity_power', 'unit_of_measurement'));
     const nowP = p(now);
     const nextP = p(next);
-    return `<div class="lbl" style="margin:4px 4px -10px">Energy</div>
-<div class="card pad" style="border-bottom-left-radius:0;border-bottom-right-radius:0;padding-bottom:0"><div style="display:flex;gap:16px;align-items:flex-end">
-<div><div class="lbl">Now</div><div style="font-size:26px;font-weight:700;letter-spacing:-.5px;line-height:1.1">${nowP === null ? '–' : fmt1(nowP)}<span style="font-size:13px;font-weight:500;color:${TOKENS.text2}"> p/kWh</span></div></div>
-<div><div class="lbl">Next</div><div style="font-size:18px;font-weight:600;color:${priceColor(nextP)};line-height:1.5">${nextP === null ? '–' : fmt1(nextP) + 'p'}</div></div>
-<div style="flex:1"></div><div style="text-align:right"><div class="lbl">Usage</div><div style="font-size:18px;font-weight:600;line-height:1.5">${usageText}</div></div></div></div>`;
-  }
-
-  function sectionEnergyFoot(hass) {
+    const rates = attr(hass, `event.octopus_energy_electricity_24e8140196_1012483035417_current_day_rates`, 'rates');
     const s = state(hass, 'sensor.cheapest_2h_waking_start');
     const e = state(hass, 'sensor.cheapest_2h_waking_end');
     const avg = num(state(hass, 'sensor.cheapest_2h_waking_avg_rate'));
     const running = state(hass, 'binary_sensor.octopus_energy_target_cheapest_2h_waking_hours') === 'on';
-    const cheapest = running && usable(e) ? `<div style="display:flex;align-items:center;gap:8px;font-size:13px"><span class="tag ok">Cheapest 2h</span><span>Running now, until ${esc(e)}${avg !== null ? ' · avg ' + fmt1(avg) + 'p' : ''}</span></div>` : usable(s) && usable(e) ? `<div style="display:flex;align-items:center;gap:8px;font-size:13px"><span class="tag ok">Cheapest 2h</span><span>${esc(s)} → ${esc(e)}${avg !== null ? ' · avg ' + fmt1(avg) + 'p' : ''}</span></div>` : '';
+    const avgTxt = avg !== null ? ' · avg ' + fmt1(avg) + 'p' : '';
+    const cheapest = running && usable(e) ? `<div style="display:flex;align-items:center;gap:8px;font-size:13px;margin-top:10px"><span class="tag ok">Cheapest 2h</span><span>Running now, until ${esc(e)}${avgTxt}</span></div>` : usable(s) && usable(e) ? `<div style="display:flex;align-items:center;gap:8px;font-size:13px;margin-top:10px"><span class="tag ok">Cheapest 2h</span><span>${esc(s)} → ${esc(e)}${avgTxt}</span></div>` : '';
     const tomorrowIn = state(hass, 'binary_sensor.octopus_tomorrow_data_available') === 'on';
     const free = state(hass, 'sensor.octopus_tomorrow_negative_windows');
     const hasFree = tomorrowIn && usable(free) && free !== '—' && free.trim() !== '';
     const note = `${tomorrowIn ? "Tomorrow's rates are in." : "Tomorrow's rates are not in yet."}${hasFree ? ' Free window ' + esc(free) + '.' : ''}`;
-    return `<div class="card pad" style="border-top-left-radius:0;border-top-right-radius:0;padding-top:6px">${cheapest}<div style="font-size:12px;color:${TOKENS.text2};margin-top:6px">${note}</div></div>`;
+    return `<div class="lbl" style="margin:4px 4px -10px">Energy</div>
+<div class="card pad"><div style="display:flex;gap:16px;align-items:flex-end">
+<div><div class="lbl">Now</div><div style="font-size:26px;font-weight:700;letter-spacing:-.5px;line-height:1.1">${nowP === null ? '–' : fmt1(nowP)}<span style="font-size:13px;font-weight:500;color:${TOKENS.text2}"> p/kWh</span></div></div>
+<div><div class="lbl">Next</div><div style="font-size:18px;font-weight:600;color:${priceColor(nextP)};line-height:1.5">${nextP === null ? '–' : fmt1(nextP) + 'p'}</div></div>
+<div style="flex:1"></div><div style="text-align:right"><div class="lbl">Usage</div><div style="font-size:18px;font-weight:600;line-height:1.5">${usageText}</div></div></div>
+${priceChart(rates, at)}${cheapest}<div style="font-size:12px;color:${TOKENS.text2};margin-top:8px">${note}</div></div>`;
   }
 
   function sectionBins(hass) {
@@ -684,29 +751,29 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return { on: list.filter(([id]) => state(hass, id) === 'on').length, total: list.length };
   }
 
-  function sectionLightsTitle(hass, key) {
+  // Collapsible section kept inside the card (no expander-card): one header button with a single
+  // chevron, collapsed by default. The open flag lives in the element instance (ui.open), so hass
+  // updates do not reset it.
+  function sectionLights(hass, key, ui) {
     const m = roomModel(hass, key);
     if (m.cfg.lights.length === 0) return '';
+    const open = !!(ui && ui.open);
     const c = lightCounts(hass, key);
-    return `<div style="display:flex;justify-content:space-between;align-items:center;min-height:52px;padding:0 14px"><span class="lbl">Individual lights</span><span style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:${TOKENS.text2}">${c.on} of ${c.total} on ${svg(ICON.chev, 18)}</span></div>`;
-  }
-
-  function sectionLights(hass, key) {
-    const m = roomModel(hass, key);
-    if (m.cfg.lights.length === 0) return '';
+    const head = `<button class="lh tap" data-act="lights-toggle" aria-expanded="${open}"><span class="lbl">Individual lights</span><span style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:${TOKENS.text2}">${c.on} of ${c.total} on<span style="display:flex;transform:${open ? 'rotate(180deg)' : 'none'}">${svg(ICON.chev, 18)}</span></span></button>`;
+    if (!open) return `<div class="card">${head}</div>`;
     const rows = m.cfg.lights.map(([id, label]) => {
       const s = stateObj(hass, id);
-      const name = esc(str(attr(hass, id, 'friendly_name')) || label);
       if (!s || !usable(s.state)) return `<div class="tog"><div><div class="h">${esc(label)}</div><div class="s">${s ? 'Unavailable' : 'Not found'}</div></div></div>`;
       const on = s.state === 'on';
-      const dimmable = id.startsWith('light.') && Array.isArray(attr(hass, id, 'supported_color_modes')) && attr(hass, id, 'supported_color_modes').some((c) => c !== 'onoff');
+      const modes = attr(hass, id, 'supported_color_modes');
+      const dimmable = id.startsWith('light.') && Array.isArray(modes) && modes.some((x) => x !== 'onoff');
       if (dimmable) {
-        const pct = on ? Math.round(((num(attr(hass, id, 'brightness')) || 0) / 255) * 100) : 0;
-        return `<div class="lt"><div><div class="h">${esc(label)}</div><div class="s">${on ? pct + '%' : 'Off'}</div></div><input type="range" min="0" max="100" value="${pct}" data-act="brightness" data-entity="${esc(id)}" aria-label="${esc(label)} brightness"></div>`;
+        const pct = on ? Math.max(0, Math.min(100, Math.round(((num(attr(hass, id, 'brightness')) || 0) / 255) * 100))) : 0;
+        return `<div class="lt"><div><div class="h">${esc(label)}</div><div class="s">${on ? pct + '%' : 'Off'}</div></div><input type="range" min="0" max="100" value="${pct}" style="--p:${pct}%" data-act="brightness" data-entity="${esc(id)}" aria-label="${esc(label)} brightness"></div>`;
       }
       return `<button class="tog tap" data-act="toggle" data-entity="${esc(id)}" aria-pressed="${on}"><div><div class="h">${esc(label)}</div><div class="s">${on ? 'On' : 'Off'}</div></div><span class="sw${on ? '' : ' off'}" role="img" aria-label="${on ? 'On' : 'Off'}"></span></button>`;
     }).join('');
-    return `<div>${rows}</div>`;
+    return `<div class="card">${head}${rows}</div>`;
   }
 
   function sectionMedia(hass, key) {
@@ -758,7 +825,6 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     attention: (h) => sectionAttention(h),
     rooms: (h, c, n) => sectionRooms(h, n),
     energy: (h, c, n) => sectionEnergy(h, n),
-    'energy-foot': (h) => sectionEnergyFoot(h),
     bins: (h) => sectionBins(h),
     heating: (h) => sectionHeating(h),
     feed: (h, c, n) => sectionFeed(h, n),
@@ -766,22 +832,21 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     'room-head': (h, c) => sectionRoomHead(h, c.room),
     why: (h, c, n) => sectionWhy(h, c.room, n),
     scenes: (h, c, n) => sectionScenes(h, c.room, n),
-    'lights-title': (h, c) => sectionLightsTitle(h, c.room),
-    lights: (h, c) => sectionLights(h, c.room),
+    lights: (h, c, n, ui) => sectionLights(h, c.room, ui),
     media: (h, c) => sectionMedia(h, c.room),
     automations: (h, c) => sectionAutomations(h, c.room),
     'room-feed': (h, c, n) => sectionRoomFeed(h, c.room, n),
   };
-  const ROOM_MODES = ['room-head', 'why', 'scenes', 'lights-title', 'lights', 'media', 'automations', 'room-feed'];
+  const ROOM_MODES = ['room-head', 'why', 'scenes', 'lights', 'media', 'automations', 'room-feed'];
 
   function validate(config) {
     if (!isObj(config) || !MODES[config.mode]) throw new Error(`pulse-card: unknown mode "${config && config.mode}"`);
     if (ROOM_MODES.includes(config.mode) && !ROOMS[config.room]) throw new Error(`pulse-card: mode "${config.mode}" needs a known room, got "${config.room}"`);
   }
 
-  function render(mode, config, hass, now) {
+  function render(mode, config, hass, now, ui) {
     validate({ ...config, mode });
-    const html = MODES[mode](hass, config || {}, Number.isFinite(now) ? now : Date.now());
+    const html = MODES[mode](hass, config || {}, Number.isFinite(now) ? now : Date.now(), ui || {});
     return html ? `<div class="p">${html}</div>` : '';
   }
 
@@ -834,7 +899,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     }
   }
 
-  const api = { DASH, MOBILE, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, ALL_ROOM_KEYS, ALLOWED, render, rateSeries, roomModel, attentionItems, handleAction, callService, num, parseList };
+  const api = { rateBands, DASH, MOBILE, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, ALL_ROOM_KEYS, ALLOWED, render, rateSeries, roomModel, attentionItems, handleAction, callService, num, parseList };
   root.PulseLib = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 
@@ -846,8 +911,11 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         this._root = this.attachShadow({ mode: 'open' });
         this._html = null;
         this._busy = false;
+        this._ui = { open: false };
         this._root.addEventListener('click', (ev) => this._click(ev));
         this._root.addEventListener('change', (ev) => this._change(ev));
+        // Keep the track fill under the thumb while dragging (no re-render mid-drag).
+        this._root.addEventListener('input', (ev) => { const t = ev.target; if (t && t.type === 'range') t.style.setProperty('--p', `${t.value}%`); });
         this._root.addEventListener('pointerdown', (ev) => { if (ev.target && ev.target.type === 'range') this._busy = true; });
         this._root.addEventListener('pointerup', () => { this._busy = false; });
         this._root.addEventListener('pointercancel', () => { this._busy = false; });
@@ -865,7 +933,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         if (!this._config || !this._hass || this._busy) return;
         let html;
         try {
-          html = render(this._config.mode, this._config, this._hass, Date.now());
+          html = render(this._config.mode, this._config, this._hass, Date.now(), this._ui);
         } catch (err) {
           // Fail loudly in the card itself rather than leaving a blank hole.
           html = `<div class="p"><div class="card warn pad"><b>pulse-card error</b><div class="s">${esc(err && err.message)}</div></div></div>`;
@@ -884,6 +952,11 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
             window.history.pushState(null, '', path);
             window.dispatchEvent(new CustomEvent('location-changed', { detail: { replace: false } }));
           }
+          return;
+        }
+        if (el.dataset.act === 'lights-toggle') {
+          this._ui.open = !this._ui.open;
+          this._paint();
           return;
         }
         if (el.type === 'range') return;

@@ -60,8 +60,8 @@ const withRooms = (rooms, attention, extra = {}) => mk({
   ...extra,
 });
 const NOISE = /undefined|NaN|\[object|null/;
-const ALL_MODES = ['now-header', 'attention', 'rooms', 'energy', 'energy-foot', 'bins', 'heating', 'feed', 'footer'];
-const ROOM_MODES = ['room-head', 'why', 'scenes', 'lights-title', 'lights', 'media', 'automations', 'room-feed'];
+const ALL_MODES = ['now-header', 'attention', 'rooms', 'energy', 'bins', 'heating', 'feed', 'footer'];
+const ROOM_MODES = ['room-head', 'why', 'scenes', 'lights', 'media', 'automations', 'room-feed'];
 const renderAll = (hass) => {
   const out = {};
   for (const m of ALL_MODES) out[m] = P.render(m, {}, hass, NOW);
@@ -125,7 +125,6 @@ ok('no-climate rooms: no numbers card, "no climate" in row', () => {
   for (const g of ['back_garden', 'front_garden']) {
     assert.match(out[`room-head:${g}`], /Lights only/);
     assert.equal(out[`lights:${g}`], '');
-    assert.equal(out[`lights-title:${g}`], '');
     assert.equal(out[`why:${g}`], '');
   }
 });
@@ -149,13 +148,34 @@ ok('scene tiles use the spike scene map and highlight the active scene', () => {
   for (const [k, ids] of Object.entries(want)) assert.deepEqual([...P.ROOMS[k].scenes].sort(), [...ids].sort(), k);
 });
 
-ok('individual lights: dimmable gets a slider, switches a toggle, missing entity is honest', () => {
-  const html = P.render('lights', { room: 'parlour' }, mk(), NOW);
-  assert.match(html, /type="range"[^>]*data-entity="light.parlour_light_floor_lamp"/);
-  assert.match(html, /data-act="toggle" data-entity="switch.parlour_plug_table_lamp"/);
-  assert.match(html, /Not found/);
-  assert.match(P.render('lights-title', { room: 'parlour' }, withRooms([{ ...FULL('parlour'), lights_on: 2, lights_total: 5 }], []), NOW), /2 of 5 on/);
-  assert.match(P.render('lights-title', { room: 'parlour' }, mk(), NOW), /2 of 5 on/); // falls back to entity states: 2 on
+ok('individual lights: collapsed by default with one chevron, expanded shows sliders/toggles/missing honestly', () => {
+  const closed = P.render('lights', { room: 'parlour' }, mk(), NOW);
+  assert.match(closed, /aria-expanded="false"/);
+  assert.match(closed, /2 of 5 on/);
+  assert.doesNotMatch(closed, /type="range"|class="tog/);
+  assert.equal((closed.match(/<svg/g) || []).length, 1, 'a single chevron, no second dropdown arrow');
+  const open = P.render('lights', { room: 'parlour' }, mk(), NOW, { open: true });
+  assert.match(open, /aria-expanded="true"/);
+  assert.equal((open.match(/data-act="lights-toggle"/g) || []).length, 1);
+  assert.match(open, /type="range"[^>]*data-entity="light.parlour_light_floor_lamp"/);
+  assert.match(open, /style="--p:40%"/);
+  assert.match(open, /data-act="toggle" data-entity="switch.parlour_plug_table_lamp"/);
+  assert.match(open, /Not found/);
+  assert.match(P.render('lights', { room: 'parlour' }, withRooms([{ ...FULL('parlour'), lights_on: 3, lights_total: 5 }], []), NOW), /3 of 5 on/);
+  for (const k of P.ALL_ROOM_KEYS) {
+    const want = P.ROOMS[k].lights.length === 0;
+    assert.equal(P.render('lights', { room: k }, mk(), NOW) === '', want, `${k} collapsed`);
+    assert.equal(P.render('lights', { room: k }, mk(), NOW, { open: true }) === '', want, `${k} open`);
+  }
+  noNoise({ open }, 'lights open');
+  assert.throws(() => P.render('lights-title', { room: 'parlour' }, mk(), NOW), /unknown mode/);
+});
+
+ok('expander-card is gone; Now no longer uses apexcharts', () => {
+  for (const f of ['info_templates.yaml', 'info-dashboard.yaml', ...readdirSync(root + 'views').filter((x) => x.startsWith('info-')).map((x) => 'views/' + x)]) {
+    assert.doesNotMatch(readFileSync(root + f, 'utf8'), /expander-card|lights-title/, f);
+  }
+  assert.doesNotMatch(readFileSync(root + 'views/info-now.yaml', 'utf8'), /apexcharts-card/, 'Now has no apexcharts: energy block is drawn by pulse-card');
 });
 
 ok('media only for rooms with players', () => {
@@ -251,37 +271,6 @@ ok('dashboard YAML parses', () => {
   for (const f of ['info-dashboard.yaml', 'info_templates.yaml', ...readdirSync(root + 'views').filter((x) => x.startsWith('info-')).map((x) => 'views/' + x)]) loadYaml(f);
 });
 
-ok('price bar data_generators: empty, 48, 50 and garbage lists', () => {
-  const gens = [];
-  for (const f of readdirSync(root + 'views').filter((x) => x.startsWith('info-'))) walk(loadYaml('views/' + f), (o) => { if (typeof o.data_generator === 'string') gens.push(o.data_generator); });
-  assert.equal(gens.length, 7, 'one generator per band: 3 past, current, 3 future');
-  const slots = (count, startIso) => Array.from({ length: count }, (_, i) => {
-    const s = Date.parse(startIso) + i * 1800000;
-    return { start: new Date(s).toISOString().replace('Z', '+00:00'), end: new Date(s + 1800000).toISOString().replace('Z', '+00:00'), value_inc_vat: i % 7 === 0 ? 0.08 : i % 5 === 0 ? 0.42 : 0.25 };
-  });
-  const cases = { empty: [], fortyEight: slots(48, '2026-10-25T00:00:00Z'), fifty: slots(50, '2026-10-24T23:00:00Z'), garbage: [null, 5, { start: 'x' }, { start: '2026-10-25T00:00:00Z', end: '2026-10-25T00:30:00Z', value_inc_vat: 'abc' }] };
-  const realNow = Date.now;
-  Date.now = () => NOW;
-  try {
-    for (const [name, rates] of Object.entries(cases)) {
-      const hass = { states: { 'event.octopus_energy_electricity_24e8140196_1012483035417_current_day_rates': { attributes: { rates } } } };
-      const perSlot = new Map();
-      for (const g of gens) {
-        const fn = new Function('entity', 'start', 'end', 'hass', 'window', g);
-        const out = fn({}, 0, 0, hass, { PulseLib: P });
-        assert.ok(Array.isArray(out), name);
-        assert.equal(out.length, name === 'garbage' ? 0 : rates.length, `${name}: one point per valid slot, no assumption of 48`);
-        out.forEach((p, i) => { if (p.y !== null) perSlot.set(i, (perSlot.get(i) || 0) + 1); });
-      }
-      for (const c of perSlot.values()) assert.equal(c, 1, `${name}: each slot is in exactly one category`);
-      assert.equal(perSlot.size, name === 'garbage' ? 0 : rates.length, `${name}: every slot categorised`);
-    }
-    // missing entity entirely
-    const fn = new Function('entity', 'start', 'end', 'hass', 'window', gens[0]);
-    assert.deepEqual(fn({}, 0, 0, { states: {} }, { PulseLib: P }), []);
-  } finally { Date.now = realNow; }
-});
-
 ok('rateSeries marks the current slot and dims past', () => {
   const rates = [
     { start: '2026-10-25T18:00:00+00:00', end: '2026-10-25T18:30:00+00:00', value_inc_vat: 0.2 },
@@ -305,9 +294,6 @@ ok('past slots keep their band so they stay readable', () => {
   ];
   assert.deepEqual(P.rateSeries(rates, 'past_cheap', NOW).map((p) => p.y !== null), [true, false]);
   assert.deepEqual(P.rateSeries(rates, 'past_peak', NOW).map((p) => p.y !== null), [false, true]);
-  const yaml = readFileSync(root + 'views/info-now.yaml', 'utf8');
-  assert.match(yaml, /height: 110/);
-  assert.match(yaml, /rgba\(111,207,151,0\.45\)/);
 });
 
 ok('feed collapses consecutive identical sentences and has no second "just now"', () => {
@@ -379,7 +365,7 @@ ok('Mo chip: ate today / yesterday / weekday from sensor.mo_timeline, bare Mo wi
   assert.match(chip([{ ts: 1 }]), />Mo<\/a>/);
 });
 
-ok('negative-heavy 50-slot day: negatives are kept, banded cheap, one category per slot, zero line configured', () => {
+ok('negative-heavy 50-slot day: negatives are kept, banded cheap, one category per slot, zero baseline drawn', () => {
   const rates = Array.from({ length: 50 }, (_, i) => {
     const s = Date.parse('2026-10-24T23:00:00Z') + i * 1800000;
     const pence = i < 30 ? -7.54 + (i % 6) * 1.7 : i < 38 ? 31 : 12;
@@ -392,17 +378,90 @@ ok('negative-heavy 50-slot day: negatives are kept, banded cheap, one category p
   assert.ok(neg.length > 20, 'past negative slots are drawn, below zero, in the cheap (green) band');
   assert.ok(series.past_cheap.every((p) => p.y === null || p.y < 15));
   assert.equal(series.cheap.concat(series.mid, series.peak).filter((p) => p.y !== null && p.y < 0).length, series.cheap.filter((p) => p.y !== null && p.y < 0).length, 'future negatives are cheap too');
-  const yaml = readFileSync(root + 'views/info-now.yaml', 'utf8');
-  assert.match(yaml, /annotations:\n\s+yaxis:\n\s+- y: 0/);
-  assert.match(yaml, /stacked: true/); // one non-null series per x, so stacking only keeps full-width bars
 });
 
 ok('cheapest 2h line: shown with data, running now, hidden when unknown', () => {
-  assert.match(P.render('energy-foot', {}, mk(), NOW), /Cheapest 2h<\/span><span>02:00 → 04:00 · avg 9\.8p/);
-  const running = P.render('energy-foot', {}, mk({ 'binary_sensor.octopus_energy_target_cheapest_2h_waking_hours': { state: 'on', attributes: {} } }), NOW);
+  assert.match(P.render('energy', {}, mk(), NOW), /Cheapest 2h<\/span><span>02:00 → 04:00 · avg 9\.8p/);
+  const running = P.render('energy', {}, mk({ 'binary_sensor.octopus_energy_target_cheapest_2h_waking_hours': { state: 'on', attributes: {} } }), NOW);
   assert.match(running, /Running now, until 04:00/);
-  const none = P.render('energy-foot', {}, mk({ 'sensor.cheapest_2h_waking_start': { state: 'unknown', attributes: {} }, 'sensor.cheapest_2h_waking_end': { state: 'unknown', attributes: {} } }), NOW);
+  const none = P.render('energy', {}, mk({ 'sensor.cheapest_2h_waking_start': { state: 'unknown', attributes: {} }, 'sensor.cheapest_2h_waking_end': { state: 'unknown', attributes: {} } }), NOW);
   assert.doesNotMatch(none, /Cheapest 2h/);
+});
+
+const rect = (html) => [...html.matchAll(/<rect x="(\d+)" y="([\d.]+)" width="(\d+)" height="([\d.]+)" rx="1" fill="([^"]+)" opacity="([\d.]+)"\/>/g)].map((m) => ({ x: +m[1], y: +m[2], h: +m[4], fill: m[5], op: +m[6] }));
+const real = JSON.parse(readFileSync(root + 'tests/fixtures/rates-2026-10-25-clock-change.json', 'utf8'));
+const energyAt = (rates, now) => P.render('energy', {}, mk({ 'event.octopus_energy_electricity_24e8140196_1012483035417_current_day_rates': { state: 'x', attributes: { rates } } }), now);
+
+ok('energy block is one card with an SVG chart: every slot of the real 50-slot clock-change day is drawn', () => {
+  assert.equal(real.length, 50);
+  const html = energyAt(real, Date.parse('2026-10-25T18:29:00Z'));
+  assert.equal((html.match(/class="card/g) || []).length, 1, 'one surface, no inner cards');
+  assert.doesNotMatch(html, /border-radius:0|apexcharts/);
+  const bars = rect(html);
+  assert.equal(bars.length, 50);
+  assert.match(html, /viewBox="0 0 300 96"/); // 50 slots x 6, anchored to first start .. last end
+  assert.match(html, /<line x1="0" x2="300"/); // zero baseline spans the whole day
+  noNoise({ html }, 'real energy');
+});
+
+ok('real data at 18:29Z: slots 0-37 past (dimmed, visible), slot 38 now, 39-49 future; negatives sit below the baseline', () => {
+  const html = energyAt(real, Date.parse('2026-10-25T18:29:00Z'));
+  const bars = rect(html);
+  const base = Number(html.match(/<line x1="0" x2="300" y1="([\d.]+)"/)[1]);
+  assert.deepEqual(bars.slice(0, 38).map((b) => b.op), Array(38).fill(0.45));
+  assert.equal(bars[38].fill, '#e8ebef');
+  assert.equal(bars[38].op, 1);
+  assert.deepEqual(bars.slice(39).map((b) => b.op), Array(11).fill(1));
+  // 16:00-18:30Z (slots 34-37) are 29-33p: mid band, drawn above the baseline, clearly tall
+  for (const i of [34, 35, 36, 37]) { assert.equal(bars[i].fill, '#5d7390'); assert.ok(bars[i].y + bars[i].h <= base + 0.5 && bars[i].h > 30, `slot ${i}`); }
+  // overnight slots are negative: green, hanging from the baseline
+  const neg = bars.slice(0, 34).filter((b) => Math.abs(b.y - base) < 0.6);
+  assert.ok(neg.length >= 20, 'negative slots start at the baseline and extend down');
+  assert.ok(bars.slice(0, 34).every((b) => b.fill === '#6fcf97' || b.fill === '#5d7390'));
+  assert.ok(bars.every((b) => b.h >= 1.5));
+  const nowX = Number(html.match(/<line x1="([\d.]+)" x2="[\d.]+" y1="0"/)[1]);
+  assert.equal(nowX, 38 * 6 + 2.5, 'now marker sits on the current slot');
+});
+
+ok('hour labels follow real slot start times in the viewer zone (TZ=UTC here)', () => {
+  const html = energyAt(real, Date.parse('2026-10-25T18:29:00Z'));
+  const labels = [...html.matchAll(/left:([\d.]+)%;transform:translateX\(-50%\)">(\d\d)</g)].map((m) => m[2]);
+  assert.deepEqual(labels, ['00', '06', '12', '18', '00'].filter(() => true).slice(0, labels.length));
+  assert.ok(labels.includes('06') && labels.includes('12') && labels.includes('18'));
+});
+
+ok('energy chart edge cases: empty, garbage, 48 slots, single slot, all negative, flat', () => {
+  for (const rates of [[], undefined, 'x', [null, 5, {}], [{ start: 'a', end: 'b', value_inc_vat: 1 }]]) {
+    const html = energyAt(rates, NOW);
+    assert.match(html, /No price data for today/);
+    noNoise({ html }, 'empty energy');
+  }
+  const slots = (n, f) => Array.from({ length: n }, (_, i) => { const s = Date.parse('2026-10-25T00:00:00Z') + i * 1800000; return { start: new Date(s).toISOString(), end: new Date(s + 1800000).toISOString(), value_inc_vat: f(i) / 100 }; });
+  for (const [n, f] of [[48, (i) => (i % 9) - 3], [1, () => 12], [46, () => -5], [48, () => 0], [48, () => 25]]) {
+    const html = energyAt(slots(n, f), Date.parse('2026-10-25T05:10:00Z'));
+    assert.equal(rect(html).length, n);
+    noNoise({ html }, `energy ${n}`);
+  }
+});
+
+ok('rooms list: occupancy icon beside the name (occupied / empty / unavailable), dot stays health', () => {
+  const rooms = [{ ...FULL('parlour'), occupied: true, target_reason: '', labels: [], pres_labels: [], heat_labels: [] }, { ...FULL('kitchen'), occupied: false, target_reason: '', labels: [], pres_labels: [], heat_labels: [] }, { ...FULL('bedroom'), occupancy_unavailable: true, target_reason: '', labels: [], pres_labels: [], heat_labels: [] }];
+  const html = P.render('rooms', {}, withRooms(rooms, []), NOW);
+  assert.match(html, /Parlour<svg class="occ" role="img" aria-label="Occupied"[^>]*fill="currentColor"/);
+  assert.match(html, /Kitchen<svg class="occ" role="img" aria-label="Empty"[^>]*fill="none"/);
+  assert.match(html, /Bedroom<svg class="occ" role="img" aria-label="Occupancy unavailable"/);
+  assert.match(html, /<span class="dot"><\/span>/);
+  assert.equal((P.render('rooms', {}, mk(), NOW).match(/class="occ"/g) || []).length, 0, 'no report, no icon');
+  const flagged = P.render('rooms', {}, withRooms([FULL('bedroom')], [{ room: 'Bedroom', key: 'bedroom', kind: 'x', text: 't', nav: '/x' }]), NOW);
+  assert.match(flagged, /Bedroom<svg class="occ" role="img" aria-label="Occupied"/);
+  const calm = P.render('attention', {}, withRooms(rooms, []), NOW);
+  assert.match(calm, /2 rooms occupied/);
+  assert.match(P.render('attention', {}, withRooms([rooms[0]], []), NOW), /1 room occupied/);
+});
+
+ok('frontend module URL is cache-busted and the card says to bump it', () => {
+  assert.match(readFileSync(root + 'packages/frontend.yaml', 'utf8'), /\/local\/pulse-card\.js\?v=\d+/);
+  assert.match(readFileSync(root + 'www/pulse-card.js', 'utf8'), /Bump N|Cache busting/);
 });
 
 console.log(`\n${n} test groups passed`);
