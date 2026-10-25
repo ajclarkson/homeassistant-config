@@ -80,21 +80,10 @@ pulse_room:
       - type: custom:pulse-card
         mode: scenes
         room: '[[room]]'
-      # Collapsed by default; the header text is a pulse-card so it can show "N of M on".
-      - type: custom:expander-card
-        expanded: false
-        title-card-clickable: true
-        gap: 0
-        padding: 0
-        child-padding: 0
-        title-card:
-          type: custom:pulse-card
-          mode: lights-title
-          room: '[[room]]'
-        cards:
-          - type: custom:pulse-card
-            mode: lights
-            room: '[[room]]'
+      # Individual lights: a collapsible section inside pulse-card (collapsed by default).
+      - type: custom:pulse-card
+        mode: lights
+        room: '[[room]]'
       - type: custom:pulse-card
         mode: media
         room: '[[room]]'
