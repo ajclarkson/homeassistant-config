@@ -75,33 +75,33 @@ template:
                 'activate_scene': 'scene set', 'set_occupied': 'marked occupied',
                 'clear_occupied': 'marked empty', 'notify': 'notification sent',
                 'join': 'joined the speaker group', 'unjoin': 'left the speaker group',
-                'exit_sleep': 'left sleep mode', 'clear_recent_auto_off': 'auto-off memory cleared'
+                'exit_sleep': 'left sleep mode', 'clear_recent_auto_off': 'reset after switching off'
               } %}
               {% set nouns = {'lighting': 'lights', 'occupied': 'occupancy', 'heating': 'heating'} %}
               {% set reasons = {
                 'occupancy_on': 'room occupied', 'occupancy_off': 'room emptied',
                 'motion_detected': 'motion detected', 'kitchen_motion_detected': 'kitchen motion',
-                'normal_clear_timer': 'empty timer expired', 'timer_expired': 'timer expired',
-                'door_open_tighten_timer': 'door open, shorter timer',
+                'normal_clear_timer': 'empty for a while', 'timer_expired': 'timer ran out',
+                'door_open_tighten_timer': 'door open, so it switches off sooner',
                 'sunset': 'sunset', 'sunrise': 'sunrise', 'end_of_day': 'end of day',
                 'lux_low': 'getting dark', 'lux_high': 'bright enough',
-                'theme_changed': 'theme changed', 'theme_changed_while_off': 'theme changed while off',
+                'theme_changed': 'lighting theme changed', 'theme_changed_while_off': 'lighting theme changed while off',
                 'house_sleep_mode': 'house asleep', 'sleep_mode': 'sleep mode',
                 'already_in_sleep_mode': 'already asleep', 'not_in_sleep_mode': 'not asleep',
-                'house_away': 'house away', 'house_not_away': 'house not away',
+                'house_away': 'house away', 'house_not_away': 'someone home',
                 'guest_mode_active': 'guest mode', 'away_but_guest_present': 'away but guest present',
                 'bed_occupied': 'bed occupied', 'bed_not_occupied': 'bed empty',
                 'button_off': 'button pressed off', 'button_cycle': 'button pressed',
                 'button_pressed': 'button pressed', 'button_double_press': 'button double press',
-                'strong_hold_active': 'held on', 'recent_auto_off': 'recently switched off',
-                'recent_auto_off_expired': 'recent-off window ended', 'startup_sync': 'startup sync',
-                'schedule_off': 'schedule', 'door_open_heating_on': 'door open while heating',
+                'strong_hold_active': 'kept on by a hold', 'recent_auto_off': 'just switched off',
+                'recent_auto_off_expired': 'lights back to automatic', 'startup_sync': 'checked after a restart',
+                'schedule_off': 'scheduled off', 'door_open_heating_on': 'door open while heating',
                 'door_closed_was_suspended': 'door closed, heating resumed',
                 'open_door': 'door opened', 'close_door': 'door closed',
                 'outside_morning_window': 'outside the morning window',
-                'contained_failsafe_wait': 'waiting on door failsafe',
-                'containment_failsafe_expired': 'door failsafe expired',
-                'parlour_active': 'parlour in use', 'overtemp_heater_on': 'over temperature'
+                'contained_failsafe_wait': 'waiting in case a door was left shut',
+                'containment_failsafe_expired': 'closed-door timeout ended',
+                'parlour_active': 'parlour in use', 'overtemp_heater_on': 'too hot'
               } %}
               {% set loc = e.get('location') | string %}
               {% set sub = e.get('subsystem') | string %}

@@ -27,7 +27,7 @@ sections:
             now: {show: true, label: ''}
             apex_config:
               chart:
-                height: 90
+                height: 110
                 stacked: true
                 toolbar: {show: false}
                 zoom: {enabled: false}
@@ -49,20 +49,43 @@ sections:
                   format: HH
                   style: {colors: '#8f9aa8', fontSize: 10px}
               yaxis: {show: false}
+              # Zero baseline: today's rates are often negative, so bars drop below this line.
+              annotations:
+                yaxis:
+                  - y: 0
+                    borderColor: '#8f9aa8'
+                    strokeDashArray: 0
+                    label:
+                      text: '0'
+                      position: left
+                      textAnchor: start
+                      borderWidth: 0
+                      style: {color: '#8f9aa8', background: transparent, fontSize: 10px}
               tooltip: {enabled: false}
             card_mod:
               style: |
                 ha-card { border: none; border-radius: 0; box-shadow: none; background: #1a1f26; padding: 0 6px; }
             series:
-              # Past slots dimmed, current slot bright, future slots green (cheap) / amber (peak) / blue.
+              # Past slots keep their band colour at 45% opacity, the current slot is bright, future slots
+              # are green (cheap) / blue (mid) / amber (peak). One series per band so colour is per bar.
               - &price_series
                 entity: sensor.octopus_energy_electricity_24e8140196_1012483035417_current_rate
-                name: Past
+                name: Past cheap
                 type: column
-                color: '#3b4a5c'
+                color: 'rgba(111,207,151,0.45)'
                 show: {legend_value: false}
                 data_generator: |
-                  return window.PulseLib ? window.PulseLib.rateSeries(hass.states['event.octopus_energy_electricity_24e8140196_1012483035417_current_day_rates']?.attributes?.rates, 'past', Date.now()) : [];
+                  return window.PulseLib ? window.PulseLib.rateSeries(hass.states['event.octopus_energy_electricity_24e8140196_1012483035417_current_day_rates']?.attributes?.rates, 'past_cheap', Date.now()) : [];
+              - <<: *price_series
+                name: Past mid
+                color: 'rgba(93,115,144,0.45)'
+                data_generator: |
+                  return window.PulseLib ? window.PulseLib.rateSeries(hass.states['event.octopus_energy_electricity_24e8140196_1012483035417_current_day_rates']?.attributes?.rates, 'past_mid', Date.now()) : [];
+              - <<: *price_series
+                name: Past peak
+                color: 'rgba(242,184,75,0.45)'
+                data_generator: |
+                  return window.PulseLib ? window.PulseLib.rateSeries(hass.states['event.octopus_energy_electricity_24e8140196_1012483035417_current_day_rates']?.attributes?.rates, 'past_peak', Date.now()) : [];
               - <<: *price_series
                 name: Now
                 color: '#e8ebef'
