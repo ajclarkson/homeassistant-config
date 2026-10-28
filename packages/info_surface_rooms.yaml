@@ -4,6 +4,8 @@
 #                          heating, automation flags, `holds` (every reason currently true),
 #                          `reason_text`, last meaningful decision and a one-line `verdict`.
 # `sensor.info_attention`  state = number of exceptions, attribute `items` = [{room, key, kind, text, nav}].
+#                          Each kind is flagged only after its state has held past a duration (thresholds at the top of
+#                          `info_attention_calc`; the stale limit in `info_stale_sensors`).
 #
 # The room table below is the single definition of rooms and hold reasons. Hold reasons are
 # seeded from the `presence_section` config in views/*.yaml (reason_N_*) and extended with the
@@ -181,32 +183,63 @@ template:
           items: >-
             {% set rooms = state_attr('sensor.info_rooms', 'rooms') %}
             {% set rooms = rooms | from_json if rooms is string else (rooms or []) %}
+            {# Durations (seconds): a state is flagged only once it has held this long, measured from the
+               entity's own last_changed. The stale limit is in `info_stale_sensors`. #}
+            {% set window_s = 5 * 60 %}
+            {% set disabled_s = 12 * 3600 %}
+            {% set hold_presence_s = 6 * 3600 %}
+            {% set hold_bare_s = 30 * 60 %}
+            {% set unavailable_s = 15 * 60 %}
+            {# Seconds since the entity last changed; -1 for a missing entity so it never passes a threshold. #}
+            {% macro age(e) %}{{ (now() - states[e].last_changed).total_seconds() if states[e] is not none else -1 }}{% endmacro %}
+            {% macro dur(sec) %}{{ (sec // 3600) | int }} h {{ ((sec % 3600) // 60) | int }} min{% endmacro %}
             {% set heating_master = is_state('input_boolean.house_heating_enabled', 'on') %}
+            {% set sl = state_attr('sensor.info_stale_sensors', 'stale') %}
+            {% set stale = sl | from_json if sl is string else (sl or []) %}
             {% set out = namespace(items=[]) %}
             {% for r in rooms %}
-              {% if r['ext_open'] and r['hvac_action'] == 'heating' and heating_master %}
-                {% set out.items = out.items + [{'room': r['n'], 'key': r['k'], 'kind': 'window_open_heating_on',
+              {% set k = r['k'] %}
+              {# The openings sensor must itself have been on past the threshold, not just the room held. #}
+              {% set open_long = namespace(v=false) %}
+              {% for h in r['holds'] if h['s'] == 'heating' and (age(h['entity']) | trim | float(-1)) > window_s %}
+                {% set open_long.v = true %}
+              {% endfor %}
+              {% if open_long.v and r['hvac_action'] == 'heating' and heating_master %}
+                {% set out.items = out.items + [{'room': r['n'], 'key': k, 'kind': 'window_open_heating_on',
                   'text': 'Open window or door while heating is on', 'nav': r['nav']}] %}
               {% endif %}
               {% set off = [] %}
-              {% if not r['lights_enabled'] %}{% set off = off + ['lights'] %}{% endif %}
-              {% if r['heating_enabled'] == false %}{% set off = off + ['heating'] %}{% endif %}
+              {% if not r['lights_enabled'] and (age('input_boolean.' ~ k ~ '_automation_lights_enabled') | trim | float(-1)) > disabled_s %}{% set off = off + ['lights'] %}{% endif %}
+              {% if r['heating_enabled'] == false and (age('input_boolean.' ~ k ~ '_automation_heating_enabled') | trim | float(-1)) > disabled_s %}{% set off = off + ['heating'] %}{% endif %}
               {% if off %}
-                {% set out.items = out.items + [{'room': r['n'], 'key': r['k'], 'kind': 'automation_disabled',
+                {% set out.items = out.items + [{'room': r['n'], 'key': k, 'kind': 'automation_disabled',
                   'text': (off | join(' and ') | capitalize) ~ ' automation off', 'nav': r['nav']}] %}
               {% endif %}
-              {% if r['override'] %}
-                {% set out.items = out.items + [{'room': r['n'], 'key': r['k'], 'kind': 'hold_active',
+              {# A presence reason makes an override expected for longer; with none it is probably forgotten. #}
+              {% set hold_s = hold_presence_s if r['pres_labels'] else hold_bare_s %}
+              {% if r['override'] and (age('input_boolean.' ~ k ~ '_automation_presence_override') | trim | float(-1)) > hold_s %}
+                {% set out.items = out.items + [{'room': r['n'], 'key': k, 'kind': 'hold_active',
                   'text': r['override_text'] ~ (' · held by ' ~ (r['labels'] | join(' · ')) if r['labels'] else ''),
                   'nav': r['nav']}] %}
               {% endif %}
-              {% if r['unavailable'] %}
-                {% set out.items = out.items + [{'room': r['n'], 'key': r['k'], 'kind': 'sensor_unavailable',
-                  'text': (r['unavailable'] | join(' and ') | capitalize) ~ ' sensor unavailable', 'nav': r['nav']}] %}
+              {# Only room entities are checked (never binary_sensor.test_location_occupied). #}
+              {% set un_entities = {'temperature': r['temp_entity'], 'occupancy': 'binary_sensor.' ~ k ~ '_occupied'} %}
+              {% set un = namespace(items=[]) %}
+              {% for w in r['unavailable'] if un_entities.get(w) and (age(un_entities[w]) | trim | float(-1)) > unavailable_s %}
+                {% set un.items = un.items + [w] %}
+              {% endfor %}
+              {% if un.items %}
+                {% set out.items = out.items + [{'room': r['n'], 'key': k, 'kind': 'sensor_unavailable',
+                  'text': (un.items | join(' and ') | capitalize) ~ ' sensor unavailable', 'nav': r['nav']}] %}
               {% endif %}
+              {% for s in stale if s['k'] == k %}
+                {% set out.items = out.items + [{'room': r['n'], 'key': k, 'kind': 'sensor_stale',
+                  'text': s['entity'] ~ ': no update for ' ~ (dur(s['age_s'] | float(0)) | trim), 'nav': r['nav']}] %}
+              {% endfor %}
             {% endfor %}
             {% for g in [['back_garden', 'Back garden', '/mobile-dashboard/back-garden'], ['front_garden', 'Front garden', '/mobile-dashboard/front-garden']] %}
-              {% if is_state('input_boolean.' ~ g[0] ~ '_automation_lights_enabled', 'off') %}
+              {% set gh = 'input_boolean.' ~ g[0] ~ '_automation_lights_enabled' %}
+              {% if is_state(gh, 'off') and (age(gh) | trim | float(-1)) > disabled_s %}
                 {% set out.items = out.items + [{'room': g[1], 'key': g[0], 'kind': 'automation_disabled',
                   'text': 'Lights automation off', 'nav': g[2]}] %}
               {% endif %}
