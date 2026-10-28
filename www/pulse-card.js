@@ -402,6 +402,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     m.occupied = !!e.occupied;
     m.occupancy_unavailable = !!e.occupancy_unavailable;
     m.ext_open = !!e.ext_open;
+    m.house_heating_off = state(hass, 'input_boolean.house_heating_enabled') === 'off';
     // Fall back to live entity states for the climate readings when the report is absent.
     if (m.temp === null && cfg.temp) m.temp = num(state(hass, cfg.temp));
     if (m.humidity === null && cfg.hum) m.humidity = num(state(hass, cfg.hum));
@@ -556,6 +557,11 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     // diverge from the mode: a safety minimum can make the target equal the mode's own.
     if ((m.target_reason === 'window open' || m.heat_labels.length) && m.cfg.climate) {
       const why = m.heat_labels.length ? m.heat_labels.join(' · ') : 'Window open';
+      // The controller waits out a grace period before forcing the minimum; until then the hold is
+      // true but heating is not yet suspended.
+      if (m.heat_labels.length && m.target_reason !== 'window open' && m.heating_source !== 'safety') {
+        return { warn: true, title: why, body: 'Heating drops to minimum if it stays open.' };
+      }
       const set = m.target === null ? 'The valve is held' : `The valve is set to ${fmt1(m.target)}°`;
       const ends = m.target_reason === 'window open' && m.mode_name && m.mode_target !== null ? ` and returns to ${m.mode_name} (${fmt1(m.mode_target)}°) once it closes` : ' until all clear';
       return { warn: true, title: 'Heating suspended', body: `${why}. ${set}${ends}.` };
@@ -1327,6 +1333,13 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return null;
   }
 
+  // Why the controller forced the minimum (heating source "safety"): a window or door held open past its
+  // grace period, else house heating switched off. Named for the reader; "safety" is the controller's word.
+  function safetyCause(m) {
+    if (m.heat_labels.length) return m.heat_labels.join(' · ').toLowerCase();
+    return m.house_heating_off ? 'house heating off' : '';
+  }
+
   function sectionRoomHead(hass, key) {
     const m = roomModel(hass, key);
     const b = bannerFor(m, attentionItems(hass));
@@ -1355,8 +1368,12 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       const differs = !!m.target_reason;
       const h = m.target !== null ? `Heating target ${fmt1(m.target)}°` : 'Heating';
       const s = differs ? `${esc(m.target_reason.replace(/^./, (c) => c.toUpperCase()))}${m.mode_name && m.mode_target !== null ? `. Normally ${esc(m.mode_name)}, ${fmt1(m.mode_target)}°` : ''}.` : [m.mode_name && m.mode_target !== null ? `${esc(m.mode_name.replace(/^./, (c) => c.toUpperCase()))} ${fmt1(m.mode_target)}°` : '', m.heating_source ? esc(m.heating_source.replace(/_/g, ' ')) : ''].filter(Boolean).join(' from ') || 'No mode reported.';
-      const sub = !differs && m.heat_labels.length ? `${esc(m.heat_labels.join(' · '))}. ${s}` : s;
-      const tag = differs ? `<span class="tag">${esc(m.target_reason.replace(/^./, (c) => c.toUpperCase()))}</span>` : m.heat_labels.length ? '<span class="tag">Suspended</span>' : m.heating_enabled === false ? '<span class="tag">Automation off</span>' : m.hvac_action === 'heating' ? '<span class="tag heat">Heating</span>' : m.hvac_action === 'idle' ? '<span class="tag off">Idle</span>' : '';
+      const safety = !differs && m.heating_source === 'safety';
+      const held = !differs && m.heat_labels.length > 0;
+      const minT = m.mode_target !== null ? m.mode_target : m.target;
+      const cause = safetyCause(m);
+      const sub = safety ? `Held at ${esc(m.mode_name || 'minimum')}${minT !== null ? ' ' + fmt1(minT) + '°' : ''}${cause ? ' · ' + esc(cause) : ''}` : held ? `${esc(m.heat_labels.join(' · '))}. ${s}` : s;
+      const tag = differs ? `<span class="tag">${esc(m.target_reason.replace(/^./, (c) => c.toUpperCase()))}</span>` : safety ? '<span class="tag">Suspended</span>' : held ? '<span class="tag">Pending</span>' : m.heating_enabled === false ? '<span class="tag">Automation off</span>' : m.hvac_action === 'heating' ? '<span class="tag heat">Heating</span>' : m.hvac_action === 'idle' ? '<span class="tag off">Idle</span>' : '';
       rows.push(`<div class="item">${svg(ICON.flame, 18)}<div><div class="h">${esc(h)}</div><div class="s">${sub}</div></div>${tag}</div>`);
     }
     // Presence holds belong to the occupancy row; heating holds (window, door) to the heating row.

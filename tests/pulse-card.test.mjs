@@ -1811,10 +1811,22 @@ ok('heating holds read as heating, not occupancy: banner, heating row and occupi
   assert.match(head, /Heating suspended/);
   assert.match(head, /Window open\. The valve is set to 5\.0° until all clear\./);
   const why = P.render('why', { room: 'bedroom' }, hass, NOW);
-  assert.match(why, /Window open\. Minimum 5\.0° from safety/);
+  assert.match(why, /Held at minimum 5\.0° · window open/);
+  assert.doesNotMatch(why, /from safety/);
   assert.match(why, /<span class="tag">Suspended<\/span>/);
   assert.match(why, /<div class="s">Bed occupied\.<\/div>/);
   assert.doesNotMatch(why, /Bed occupied · Window open|All are true/);
+  // Window just opened: the hold is true but the controller has not forced the minimum yet.
+  const grace = { ...bed, heating_source: 'schedule', heating_active: 'baseline_day', mode_name: 'baseline day', mode_target: 18, target: 18 };
+  const gh = P.render('room-head', { room: 'bedroom' }, withRooms([grace], []), NOW);
+  assert.doesNotMatch(gh, /Heating suspended/);
+  assert.match(gh, /Window open<\/div>[^]*Heating drops to minimum if it stays open\./);
+  const gw = P.render('why', { room: 'bedroom' }, withRooms([grace], []), NOW);
+  assert.match(gw, /<span class="tag">Pending<\/span>/);
+  // House heating off forces the minimum with no window: name that cause.
+  const off = { ...bed, heat_labels: [], labels: ['Bed occupied'] };
+  const offHass = withRooms([off], [], { 'input_boolean.house_heating_enabled': { state: 'off', attributes: {} } });
+  assert.match(P.render('why', { room: 'bedroom' }, offHass, NOW), /Held at minimum 5\.0° · house heating off/);
   const calm = P.render('room-head', { room: 'bedroom' }, withRooms([{ ...bed, heat_labels: [], labels: ['Bed occupied'], verdict: 'Occupied · lights on · held occupied by Bed occupied' }], []), NOW);
   assert.match(calm, /All good/);
   assert.match(calm, /Occupied · lights on</);
