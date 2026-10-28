@@ -386,9 +386,11 @@ ok('energy chart edge cases: empty, garbage, 48 slots, single slot, all negative
   }
 });
 
-ok('frontend module URL is cache-busted and the card says to bump it', () => {
-  assert.match(readFileSync(root + 'packages/frontend.yaml', 'utf8'), /\/local\/pulse-card\.js\?v=\d+/);
-  assert.match(readFileSync(root + 'www/pulse-card.js', 'utf8'), /Bump N|Cache busting/);
+ok('frontend registers the fixed loader, not a versioned card URL', () => {
+  const y = readFileSync(root + 'packages/frontend.yaml', 'utf8');
+  assert.match(y, /- \/local\/pulse-card-loader\.js\n/);
+  assert.doesNotMatch(y, /pulse-card\.js\?v=/);
+  assert.match(readFileSync(root + 'www/pulse-card.js', 'utf8'), /Cache busting: none needed/);
 });
 
 const hexRgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
@@ -552,7 +554,6 @@ ok('chart markup: focusable, pan-y, one summary label, live region, guide and to
   assert.match(css, /\.tip\{position:absolute;top:-36px/);
 });
 
-ok('module URL carries the current version', () => assert.match(readFileSync(root + 'packages/frontend.yaml', 'utf8'), /pulse-card\.js\?v=2\b/));
 
 // ── Now v2 ─────────────────────────────────────────────────────────────────────────────────────
 const quietRoom = (k, over = {}) => ({ ...FULL(k), occupied: false, target_reason: '', labels: [], pres_labels: [], heat_labels: [], ext_open: false, manual: null, lights_on: 0, lights_why: 'lights back to automatic', lights_ts: '2026-10-25T16:40:00+00:00', last: 'Off', last_ts: '2026-10-25T16:40:00+00:00', humidity: 55, scene: '', verdict: 'Empty', ...over });
@@ -730,7 +731,7 @@ ok('Now v2 view layout: one status card first, groups, prices, bins/heating, fee
 });
 
 ok('Now v2 changes nothing HA only reads at startup', () => {
-  assert.match(readFileSync(root + 'packages/frontend.yaml', 'utf8'), /pulse-card\.js\?v=2\b/);
+  assert.match(readFileSync(root + 'packages/frontend.yaml', 'utf8'), /pulse-card-loader\.js/);
 });
 
 // ── Energy page ──────────────────────────────────────────────────────────────────────────────
@@ -995,7 +996,7 @@ ok('energy view is registered and adds no write paths', () => {
   assert.deepEqual(v.sections[0].cards.map((c) => c.mode), ['energy-head', 'energy-day', 'energy-cost', 'energy-history', 'energy-usage', 'tabbar']);
   assert.match(readFileSync(root + 'info-dashboard.yaml', 'utf8'), /views\/info-energy\.yaml/);
   assert.deepEqual(Object.keys(P.ALLOWED).sort(), ['input_boolean', 'light', 'media_player', 'scene', 'switch']);
-  assert.match(readFileSync(root + 'packages/frontend.yaml', 'utf8'), /pulse-card\.js\?v=2\b/);
+  assert.match(readFileSync(root + 'packages/frontend.yaml', 'utf8'), /pulse-card-loader\.js/);
 });
 
 // ── Daily cost history ───────────────────────────────────────────────────────────────────────
@@ -1590,7 +1591,7 @@ ok('every non-classic Pulse view has exactly one tabbar card, last in its sectio
 
 ok('tab bar adds no write path and the module URL is untouched', () => {
   assert.deepEqual(Object.keys(P.ALLOWED).sort(), ['input_boolean', 'light', 'media_player', 'scene', 'switch']);
-  assert.match(readFileSync(root + 'packages/frontend.yaml', 'utf8'), /pulse-card\.js\?v=2\b/);
+  assert.match(readFileSync(root + 'packages/frontend.yaml', 'utf8'), /pulse-card-loader\.js/);
   const src = readFileSync(root + 'www/pulse-card.js', 'utf8');
   assert.doesNotMatch(src.slice(src.indexOf('function sectionTabbar'), src.indexOf('function sectionTabbar') + 900), /callService|callWS/);
 });
