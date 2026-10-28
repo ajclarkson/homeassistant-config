@@ -535,8 +535,14 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return 'Off';
   }
 
-  // The sensor's verdict says "held occupied by Sofa occupied"; read it as "held occupied · Sofa occupied".
-  const tidyVerdict = (v) => str(v).replace(/held occupied by /gi, 'held occupied · ');
+  // The sensor's verdict says "Occupied · lights on · held occupied by Sofa occupied"; fold the hold into the
+  // first clause so "occupied" is said once: "Occupied (Sofa occupied) · lights on".
+  const tidyVerdict = (v, labels = []) => {
+    const s = str(v);
+    const held = ` · held occupied by ${labels.join(' · ')}`;
+    if (!labels.length || !s.includes(held) || !/^Occupied/.test(s)) return s.replace(/held occupied by /gi, 'held occupied · ');
+    return s.replace(held, '').replace(/^Occupied/, `Occupied (${labels.join(' · ')})`);
+  };
   function bannerFor(m, items) {
     const mine = items.filter((i) => i.key === m.key);
     if (m.target_reason === 'window open' && m.cfg.climate) {
@@ -550,7 +556,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     }
     if (m.cfg.report && !m.hasReport) return { warn: false, dim: true, title: 'No report yet', body: 'sensor.info_rooms has no entry for this room.' };
     if (!m.cfg.report) return { warn: false, title: 'Lights only', body: 'This area has scenes and a lights automation, no climate or presence report.' };
-    return { warn: false, title: 'All good', body: tidyVerdict(m.verdict) || 'No reasons to show.' };
+    return { warn: false, title: 'All good', body: tidyVerdict(m.verdict, m.pres_labels) || 'No reasons to show.' };
   }
 
   // ── Sections ─────────────────────────────────────────────────────────────────────────────────
@@ -1257,7 +1263,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 
   function sectionFeed(hass, now) {
     const entries = feedEntries(hass);
-    const body = entries.length ? feedRows(entries, now, 3) : `<div class="feed"><span class="a"></span><span style="color:${TOKENS.text2}">No decisions seen since HA started.</span></div>`;
+    const body = entries.length ? feedRows(entries, now, 3) : `<div class="feed"><span class="a"></span><span style="color:${TOKENS.text2}">No decisions seen since Home Assistant started.</span></div>`;
     return `<div class="lbl" style="margin:4px 4px -10px">What the house did</div><div class="card">${body}</div>`;
   }
 
@@ -1323,7 +1329,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const scene = activeScene(hass, key);
     const rows = [];
     const lightsTag = m.manual ? '<span class="tag">Manual</span>' : m.pres_labels.length ? '<span class="tag off">Hold</span>' : '<span class="tag ok">Auto</span>';
-    const lightsSub = m.lights_why ? `${esc(m.lights_why.replace(/^./, (c) => c.toUpperCase()))}${m.lights_ts ? ' at ' + esc(hhmm(m.lights_ts)) : ''}.` : 'No lighting decision seen since HA started.';
+    const lightsSub = m.lights_why ? `${esc(m.lights_why.replace(/^./, (c) => c.toUpperCase()))}${m.lights_ts ? ' at ' + esc(hhmm(m.lights_ts)) : ''}.` : 'No lighting decision seen since Home Assistant started.';
     rows.push(`<div class="item">${svg(ICON.bulb, 18)}<div><div class="h">${esc(m.lights_on > 0 ? lightsPhrase(m, scene) : 'Lights off')}</div><div class="s">${lightsSub}</div></div>${lightsTag}</div>`);
     if (m.cfg.climate) {
       const differs = !!m.target_reason;
@@ -1334,9 +1340,9 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     }
     const holds = m.labels.length ? m.labels : [];
     const occ = m.occupancy_unavailable ? 'Occupancy unavailable' : m.occupied ? 'Occupied' : 'Empty';
-    const pres = holds.length ? `Held occupied · ${esc(holds.join(' · '))}.${holds.length > 1 ? ' All are true, so it stays held until all clear.' : ''}` : 'No holds.';
+    const pres = holds.length ? `${esc(holds.join(' · '))}.${holds.length > 1 ? ' All are true, so it stays occupied until all clear.' : ''}` : 'No holds.';
     const ovr = m.override_text ? ` ${esc(m.override_text)}.` : '';
-    rows.push(`<div class="item">${svg(ICON.person, 18)}<div><div class="h">${occ}</div><div class="s">${pres}${ovr}</div></div><span class="tag${holds.length || m.override ? '' : ' off'}">${holds.length ? holds.length + ' ' + plural(holds.length, 'reason', 'reasons') : m.override ? 'Override' : 'Clear'}</span></div>`);
+    rows.push(`<div class="item">${svg(ICON.person, 18)}<div><div class="h">${occ}</div><div class="s">${pres}${ovr}</div></div><span class="tag${m.override && !holds.length ? '' : ' off'}">${holds.length ? 'Held' : m.override ? 'Override' : 'Clear'}</span></div>`);
     return `<div class="lbl" style="margin:4px 4px -10px">Why it is like this</div><div class="card">${rows.join('')}</div>`;
   }
 
@@ -1356,12 +1362,12 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       const pill = `Manual · ${how}${when ? ' · ' + when : ''}`;
       // One quiet second line, only when it adds something: what was done (dashboard/switch changes) and
       // what the automation last did.
-      const second = [m.manual.source !== 'wall_button' && m.manual.what ? m.manual.what : '', m.lights_why ? `Automation had: ${m.lights_why}` : ''].filter(Boolean).join(' · ');
+      const second = [m.manual.source !== 'wall_button' && m.manual.what ? m.manual.what : '', m.lights_why ? `Last automation event: ${m.lights_why}` : ''].filter(Boolean).join(' · ');
       foot = `<div class="mrow"><span class="tag">${esc(pill)}</span></div>${second ? `<div class="note" style="margin-top:6px">${esc(second)}</div>` : ''}`;
     } else if (m.lights_why) {
       foot = `<div class="note">Set by automation${m.lights_ts ? ' at ' + esc(hhmm(m.lights_ts)) : ''}: ${esc(m.lights_why)}. Tap a scene to take over.</div>`;
     } else {
-      foot = '<div class="note">No automation action seen since HA started. Tap a scene to set one.</div>';
+      foot = '<div class="note">No automation action seen since Home Assistant started. Tap a scene to set one.</div>';
     }
     return `<div class="lbl" style="margin:4px 4px -10px">Lighting</div><div class="card" style="padding:12px 12px 10px"><div class="tiles" style="grid-template-columns:repeat(${cols},minmax(0,1fr))">${tiles}</div>${foot}</div>`;
   }
@@ -1437,8 +1443,8 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 
   function sectionRoomFeed(hass, key, now) {
     const entries = roomFeed(hass, key);
-    const body = entries.length ? feedRows(entries, now, 6) : `<div class="feed"><span class="a"></span><span style="color:${TOKENS.text2}">Nothing seen in this room since HA started.</span></div>`;
-    return `<div class="lbl" style="margin:4px 4px -10px">In this room</div><div class="card">${body}</div>`;
+    const body = entries.length ? feedRows(entries, now, 6) : `<div class="feed"><span class="a"></span><span style="color:${TOKENS.text2}">No activity in this room since Home Assistant started.</span></div>`;
+    return `<div class="lbl" style="margin:4px 4px -10px">Recent activity</div><div class="card">${body}</div>`;
   }
 
   // ── Dispatcher ───────────────────────────────────────────────────────────────────────────────

@@ -138,7 +138,7 @@ ok('manual marker set vs null', () => {
   const manual = { source: 'wall_button', ts: '2026-10-25T18:40:00+00:00', what: 'Wall button: scene cycled' };
   const set = P.render('scenes', { room: 'parlour' }, withRooms([{ ...FULL('parlour'), manual }], []), NOW);
   assert.match(set, /<span class="tag">Manual · wall button · 2 min ago<\/span>/);
-  assert.match(set, /Automation had: sleep hold/);
+  assert.match(set, /Last automation event: sleep hold/);
   assert.doesNotMatch(set, /Automation last acted|may change them again|Wall button: scene cycled/);
   assert.equal((set.match(/Manual/g) || []).length, 1, 'one clear line');
   const dash = P.render('scenes', { room: 'parlour' }, withRooms([{ ...FULL('parlour'), manual: { source: 'dashboard', ts: '2026-10-25T18:40:00+00:00', what: 'lamps scene' }, lights_why: '' }], []), NOW);
@@ -232,7 +232,7 @@ ok('feed hides stored plumbing entries', () => {
   assert.doesNotMatch(feed, /PLUMB/);
   assert.match(feed, /Kitchen lights turned off/);
   assert.doesNotMatch(P.render('room-feed', { room: 'kitchen' }, hass, NOW), /PLUMB/);
-  assert.match(P.render('feed', {}, mk(), NOW), /No decisions seen since HA started/);
+  assert.match(P.render('feed', {}, mk(), NOW), /No decisions seen since Home Assistant started/);
 });
 
 ok('unknown room and unknown mode fail loudly', () => {
@@ -1292,14 +1292,15 @@ ok('held-occupied wording has no redundancy', () => {
   const m = quietRoom('parlour', { occupied: true, pres_labels: ['Sofa occupied'], labels: ['Sofa occupied'], verdict: 'Occupied · lights on · held occupied by Sofa occupied' });
   const hass = withRooms([m], []);
   const why = P.render('why', { room: 'parlour' }, hass, NOW);
-  assert.match(why, /Held occupied · Sofa occupied\./);
-  assert.doesNotMatch(why, /Held by|occupied by Sofa occupied/);
+  assert.match(why, /<div class="s">Sofa occupied\./);
+  assert.doesNotMatch(why, /Held occupied|Held by|occupied by Sofa occupied|1 reason/);
   const head = P.render('room-head', { room: 'parlour' }, hass, NOW);
-  assert.match(head, /held occupied · Sofa occupied/);
-  assert.doesNotMatch(head, /held occupied by/);
+  assert.match(head, /Occupied \(Sofa occupied\) · lights on/);
+  assert.doesNotMatch(head, /held occupied/i);
   const att = P.render('rooms', {}, withRooms([m], [attn('Parlour', 'parlour', 'automation_disabled', 'Lights automation off')]), NOW);
   assert.match(att, /<b>Held occupied<\/b><span>Sofa occupied<\/span>/);
   assert.equal(P.tidyVerdict('a · held occupied by X'), 'a · held occupied · X');
+  assert.equal(P.tidyVerdict('Occupied · lights on · held occupied by Monitor on', ['Monitor on']), 'Occupied (Monitor on) · lights on');
 });
 
 ok('rooms without a climate sensor show no temperature at all; rooms with one but no reading keep a muted dash', () => {
