@@ -93,7 +93,7 @@ template:
                 'bed_occupied': 'bed occupied', 'bed_not_occupied': 'bed empty',
                 'button_off': 'button pressed off', 'button_cycle': 'button pressed',
                 'button_pressed': 'button pressed', 'button_double_press': 'button double press',
-                'strong_hold_active': 'kept on by a hold', 'recent_auto_off': 'just switched off',
+                'strong_hold_active': 'kept on by a hold', 'recent_auto_off': 'back soon after lights went off',
                 'recent_auto_off_expired': 'lights back to automatic', 'startup_sync': 'checked after a restart',
                 'schedule_off': 'scheduled off', 'door_open_heating_on': 'door open while heating',
                 'door_closed_was_suspended': 'door closed, heating resumed',

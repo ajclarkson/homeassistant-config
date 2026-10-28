@@ -1834,4 +1834,10 @@ ok('heating holds read as heating, not occupancy: banner, heating row and occupi
   assert.doesNotMatch(calm, /Occupied \(/);
 });
 
+ok('recent_auto_off is worded as a return after switch-off, not as the lights being off', () => {
+  const feed = readFileSync(root + 'packages/info_surface_feed.yaml', 'utf8');
+  assert.match(feed, /'recent_auto_off': 'back soon after lights went off'/);
+  assert.doesNotMatch(feed, /just switched off/);
+});
+
 console.log(`\n${n} test groups passed`);
