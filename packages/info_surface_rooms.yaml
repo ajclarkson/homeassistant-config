@@ -262,9 +262,10 @@ template:
               {% set age_t = (now() - states[tsens].last_updated).total_seconds() if states[tsens] is not none else stale_s + 1 %}
               {% set age_c = (now() - states[cl].last_updated).total_seconds() if states[cl] is not none else stale_s + 1 %}
               {% if age_t <= stale_s and age_c <= stale_s %}
-                {# Cold: an idle TRV is the fault; exclusions are the reasons a cold room is expected. #}
+                {# Cold: an idle TRV is the fault; exclusions are the reasons a cold room is expected. Mode minimum or off
+                   means no heating was asked for; an unavailable/unknown mode is unproven, so it never raises a flag. #}
                 {% set cold_explained = r['heat_labels'] or r['heating_enabled'] == false or not master
-                   or r['heating_active'] == 'minimum' or is_state(cl, 'off') %}
+                   or r['heating_active'] in ['minimum', 'off', 'unavailable', 'unknown'] or is_state(cl, 'off') %}
                 {% if r['temp'] < r['target'] - delta and r['hvac_action'] != 'heating' and not cold_explained %}
                   {% set out.cold = out.cold + [k] %}
                 {% endif %}
