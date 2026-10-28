@@ -386,9 +386,11 @@ ok('energy chart edge cases: empty, garbage, 48 slots, single slot, all negative
   }
 });
 
-ok('frontend module URL is cache-busted and the card says to bump it', () => {
-  assert.match(readFileSync(root + 'packages/frontend.yaml', 'utf8'), /\/local\/pulse-card\.js\?v=\d+/);
-  assert.match(readFileSync(root + 'www/pulse-card.js', 'utf8'), /Bump N|Cache busting/);
+ok('frontend registers the fixed loader, not a versioned card URL', () => {
+  const y = readFileSync(root + 'packages/frontend.yaml', 'utf8');
+  assert.match(y, /- \/local\/pulse-card-loader\.js\n/);
+  assert.doesNotMatch(y, /pulse-card\.js\?v=/);
+  assert.match(readFileSync(root + 'www/pulse-card.js', 'utf8'), /Cache busting: none needed/);
 });
 
 const hexRgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
@@ -552,7 +554,6 @@ ok('chart markup: focusable, pan-y, one summary label, live region, guide and to
   assert.match(css, /\.tip\{position:absolute;top:-36px/);
 });
 
-ok('module URL carries the current version', () => assert.match(readFileSync(root + 'packages/frontend.yaml', 'utf8'), /pulse-card\.js\?v=2\b/));
 
 // ── Now v2 ─────────────────────────────────────────────────────────────────────────────────────
 const quietRoom = (k, over = {}) => ({ ...FULL(k), occupied: false, target_reason: '', labels: [], pres_labels: [], heat_labels: [], ext_open: false, manual: null, lights_on: 0, lights_why: 'lights back to automatic', lights_ts: '2026-10-25T16:40:00+00:00', last: 'Off', last_ts: '2026-10-25T16:40:00+00:00', humidity: 55, scene: '', verdict: 'Empty', ...over });
@@ -730,7 +731,7 @@ ok('Now v2 view layout: one status card first, groups, prices, bins/heating, fee
 });
 
 ok('Now v2 changes nothing HA only reads at startup', () => {
-  assert.match(readFileSync(root + 'packages/frontend.yaml', 'utf8'), /pulse-card\.js\?v=2\b/);
+  assert.match(readFileSync(root + 'packages/frontend.yaml', 'utf8'), /pulse-card-loader\.js/);
 });
 
 // ── Energy page ──────────────────────────────────────────────────────────────────────────────
@@ -995,7 +996,7 @@ ok('energy view is registered and adds no write paths', () => {
   assert.deepEqual(v.sections[0].cards.map((c) => c.mode), ['energy-head', 'energy-day', 'energy-cost', 'energy-history', 'energy-usage', 'tabbar']);
   assert.match(readFileSync(root + 'info-dashboard.yaml', 'utf8'), /views\/info-energy\.yaml/);
   assert.deepEqual(Object.keys(P.ALLOWED).sort(), ['input_boolean', 'light', 'media_player', 'scene', 'switch']);
-  assert.match(readFileSync(root + 'packages/frontend.yaml', 'utf8'), /pulse-card\.js\?v=2\b/);
+  assert.match(readFileSync(root + 'packages/frontend.yaml', 'utf8'), /pulse-card-loader\.js/);
 });
 
 // ── Daily cost history ───────────────────────────────────────────────────────────────────────
@@ -1409,6 +1410,18 @@ ok('attention labels: temperature kinds say which way and whether heating is on;
   assert.match(P.render('status', {}, wet, NOW), /Bathroom<\/b> · Too cold, heating off/);
 });
 
+ok('attention labels: sensor_stale names the entity and age; the original four labels are unchanged', () => {
+  const stale = withRooms(calmRooms({ bedroom: { occupied: true } }), [attn('Bedroom', 'bedroom', 'sensor_stale', 'climate.bedroom_trv: no update for 5 h 12 min')]);
+  assert.match(P.render('status', {}, stale, NOW), /Bedroom<\/b> · Sensor not updating/);
+  assert.match(P.render('rooms', {}, stale, NOW), /climate\.bedroom_trv: no update for 5 h 12 min/);
+  const four = [['window_open_heating_on', 'Window open, heating on'], ['automation_disabled', 'Automation off'], ['hold_active', 'Override on'], ['sensor_unavailable', 'Sensor unavailable']];
+  for (const [kind, label] of four) {
+    const h = withRooms(calmRooms({ bedroom: { occupied: true } }), [attn('Bedroom', 'bedroom', kind, 'detail text')]);
+    assert.match(P.render('status', {}, h, NOW), new RegExp(`Bedroom</b> · ${label}`));
+    assert.match(P.render('rooms', {}, h, NOW), /detail text/);
+  }
+});
+
 ok('Now v3 occupied card is two lines: icon + name + temperature, then badges (amber manual badge, holds, phrase)', () => {
   const manual = { source: 'wall_button', ts: '2026-10-25T15:42:00+00:00', what: 'x' };
   const feed = { 'sensor.info_decision_feed': { state: 'x', attributes: { entries: JSON.stringify([{ loc: 'parlour', sub: 'lighting', decision: 'turn_on', ts: new Date(NOW - 60000).toISOString(), sentence: 'x', auto: 'p:l' }]), by_room: '[]' } } };
@@ -1578,7 +1591,7 @@ ok('every non-classic Pulse view has exactly one tabbar card, last in its sectio
 
 ok('tab bar adds no write path and the module URL is untouched', () => {
   assert.deepEqual(Object.keys(P.ALLOWED).sort(), ['input_boolean', 'light', 'media_player', 'scene', 'switch']);
-  assert.match(readFileSync(root + 'packages/frontend.yaml', 'utf8'), /pulse-card\.js\?v=2\b/);
+  assert.match(readFileSync(root + 'packages/frontend.yaml', 'utf8'), /pulse-card-loader\.js/);
   const src = readFileSync(root + 'www/pulse-card.js', 'utf8');
   assert.doesNotMatch(src.slice(src.indexOf('function sectionTabbar'), src.indexOf('function sectionTabbar') + 900), /callService|callWS/);
 });

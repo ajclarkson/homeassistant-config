@@ -4,8 +4,9 @@
  * One card, many sections: `mode` picks the section and `room` (where relevant) the room, so
  * every room page is the same template with a different room key.
  *
- * Cache busting: the module URL in packages/frontend.yaml carries ?v=N. Bump N in the same change
- * whenever this file changes (the companion app caches JS modules hard).
+ * Cache busting: none needed. packages/frontend.yaml registers www/pulse-card-loader.js, which
+ * fetches this file with revalidation and imports it from a Blob URL. After a change, wait ~60 s
+ * for www-sync and reopen the dashboard; no ?v= bump, no HA restart.
  *
  * Rules this file keeps:
  *  - Rendering is a pure function (render(mode, config, hass, nowMs) -> html string) with no DOM,
@@ -425,6 +426,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       case 'automation_disabled': return 'Automation off';
       case 'hold_active': return 'Override on';
       case 'sensor_unavailable': return 'Sensor unavailable';
+      case 'sensor_stale': return 'Sensor not updating';
       case 'cold_not_heating': return 'Too cold, heating off';
       case 'warm_heating': return isSteamy(m) ? 'Steamy' : 'Too warm, heating on';
       default: return item.kind ? item.kind.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase()) : 'Needs attention';
