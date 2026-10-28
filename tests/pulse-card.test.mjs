@@ -1834,6 +1834,19 @@ ok('heating holds read as heating, not occupancy: banner, heating row and occupi
   assert.doesNotMatch(calm, /Occupied \(/);
 });
 
+ok('room page puts lighting straight under the head, before the chart and the why card', () => {
+  const cards = loadYaml('info_templates.yaml').pulse_room.card.cards;
+  const order = cards.map((c) => (c.type === 'conditional' ? 'chart' : c.mode));
+  assert.deepEqual(order, ['room-head', 'scenes', 'lights', 'chart', 'why', 'media', 'automations', 'room-feed']);
+});
+
+ok('speaker play button is quiet unless playing; the amber pause button marks active playback', () => {
+  const media = (state) => P.render('media', { room: 'kitchen' }, mk({ 'media_player.kitchen': { state, attributes: { friendly_name: 'Kitchen', volume_level: 0.2 } } }), NOW);
+  assert.match(media('idle'), /class="round quiet" data-act="media-play"/);
+  assert.match(media('paused'), /class="round quiet"/);
+  assert.match(media('playing'), /class="round" data-act="media-play"/);
+});
+
 ok('recent_auto_off is worded as a return after switch-off, not as the lights being off', () => {
   const feed = readFileSync(root + 'packages/info_surface_feed.yaml', 'utf8');
   assert.match(feed, /'recent_auto_off': 'back soon after lights went off'/);
