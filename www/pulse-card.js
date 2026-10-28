@@ -36,6 +36,8 @@
     amberBorder: '#4a3d1c',
     amberTag: '#2b2415',
     ok: '#6fcf97',
+    heat: '#f08a4b',
+    heatBg: '#2a1a10',
     okBg: '#14281d',
     link: '#7aa7ff',
     sceneActive: '#f2c46b',
@@ -101,6 +103,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 .tag{font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:${TOKENS.amberTag};color:${TOKENS.amber};white-space:nowrap}
 .tag.ok{background:${TOKENS.okBg};color:${TOKENS.ok}}
 .tag.off{background:${TOKENS.divider};color:${TOKENS.text2}}
+.tag.heat{background:${TOKENS.heatBg};color:${TOKENS.heat}}
 .link{display:flex;align-items:center;min-height:44px;font-size:13px;font-weight:600;color:${TOKENS.link}}
 .feed{display:grid;grid-template-columns:44px 1fr;gap:8px;font-size:12.5px;line-height:1.4;padding:8px 14px;border-top:1px solid ${TOKENS.divider}}
 .feed:first-child{border-top:0}
@@ -1303,6 +1306,15 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   }
 
   // ── Room page sections ───────────────────────────────────────────────────────────────────────
+  // Whether the valve is calling for heat right now, from the climate entity's hvac_action. Unknown
+  // actions say nothing rather than guess "not heating".
+  function heatingStatus(m) {
+    if (m.hvac_action === 'heating') return { on: true, text: 'Heating now' };
+    if (m.hvac_action === 'idle') return { on: false, text: 'Not heating' };
+    if (m.hvac_action === 'off') return { on: false, text: 'Heating off' };
+    return null;
+  }
+
   function sectionRoomHead(hass, key) {
     const m = roomModel(hass, key);
     const b = bannerFor(m, attentionItems(hass));
@@ -1310,9 +1322,11 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     let numbers = '';
     if (m.cfg.climate) {
       const differs = !!m.target_reason;
-      const sub2 = differs ? (m.mode_name && m.mode_target !== null ? `mode ${m.mode_name} ${fmt1(m.mode_target)}°` : esc(m.target_reason)) : [m.heating_active.replace(/_/g, ' '), m.heating_source].filter(Boolean).join(' · ');
+      const sub2 = differs ? (m.mode_name && m.mode_target !== null ? `Mode ${m.mode_name} ${fmt1(m.mode_target)}°` : m.target_reason.replace(/^./, (c) => c.toUpperCase())) : [m.heating_active.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase()), m.heating_source ? 'from ' + m.heating_source.replace(/_/g, ' ') : ''].filter(Boolean).join(' ');
+      const hs = heatingStatus(m);
+      const status = hs ? `<div style="display:flex;align-items:center;gap:5px;font-size:12.5px;font-weight:600;margin-top:2px;color:${hs.on ? TOKENS.heat : TOKENS.text2}">${hs.on ? svg(ICON.flame, 14) : ''}${hs.text}</div>` : '';
       numbers = `<div class="two"><div class="card pad"><div class="lbl">Room</div><div class="big">${m.temp === null ? '–' : fmt1(m.temp) + '°'}</div><div style="font-size:12px;color:${TOKENS.text2};margin-top:2px">${m.humidity === null ? 'no humidity' : Math.round(m.humidity) + '% humidity'}</div></div>
-<div class="card pad"><div class="lbl">${differs ? 'Valve target' : 'Heating'}</div><div class="big" style="${differs ? 'color:' + TOKENS.amber : ''}">${m.target === null ? '–' : fmt1(m.target) + '°'}</div><div style="font-size:12px;color:${TOKENS.text2};margin-top:2px">${esc(sub2)}</div></div></div>`;
+<div class="card pad"><div class="lbl">${differs ? 'Valve target' : 'Target'}</div><div class="big" style="${differs ? 'color:' + TOKENS.amber : ''}">${m.target === null ? '–' : fmt1(m.target) + '°'}</div>${status}<div style="font-size:12px;color:${TOKENS.text2};margin-top:2px">${esc(sub2)}</div></div></div>`;
     }
     return `<div style="display:flex;align-items:center;gap:4px"><a class="tap" data-act="nav" data-path="${DASH}/now" aria-label="Back to Now" style="min-height:44px;min-width:44px;display:flex;align-items:center;color:${TOKENS.text2}">${svg(ICON.back, 22)}</a><div style="font-size:28px;font-weight:700;letter-spacing:-.4px">${esc(m.cfg.name)}</div></div>${banner}${numbers}`;
   }
@@ -1329,7 +1343,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       const differs = !!m.target_reason;
       const h = m.target !== null ? `Heating target ${fmt1(m.target)}°` : 'Heating';
       const s = differs ? `${esc(m.target_reason.replace(/^./, (c) => c.toUpperCase()))}${m.mode_name && m.mode_target !== null ? `. Normally ${esc(m.mode_name)}, ${fmt1(m.mode_target)}°` : ''}.` : [m.mode_name && m.mode_target !== null ? `${esc(m.mode_name.replace(/^./, (c) => c.toUpperCase()))} ${fmt1(m.mode_target)}°` : '', m.heating_source ? esc(m.heating_source.replace(/_/g, ' ')) : ''].filter(Boolean).join(' from ') || 'No mode reported.';
-      const tag = differs ? `<span class="tag">${esc(m.target_reason.replace(/^./, (c) => c.toUpperCase()))}</span>` : m.heating_enabled === false ? '<span class="tag">Automation off</span>' : '<span class="tag ok">On target</span>';
+      const tag = differs ? `<span class="tag">${esc(m.target_reason.replace(/^./, (c) => c.toUpperCase()))}</span>` : m.heating_enabled === false ? '<span class="tag">Automation off</span>' : m.hvac_action === 'heating' ? '<span class="tag heat">Heating</span>' : m.hvac_action === 'idle' ? '<span class="tag off">Idle</span>' : '';
       rows.push(`<div class="item">${svg(ICON.flame, 18)}<div><div class="h">${esc(h)}</div><div class="s">${s}</div></div>${tag}</div>`);
     }
     const holds = m.labels.length ? m.labels : [];

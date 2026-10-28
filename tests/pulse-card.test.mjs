@@ -94,7 +94,7 @@ ok('calm state: no attention, All good', () => {
   assert.match(out.status, /All good/);
   assert.doesNotMatch(out.rooms, /details ›/);
   assert.match(out['room-head:parlour'], /All good/);
-  assert.match(out['room-head:parlour'], /Heating<\/div>/);
+  assert.match(out['room-head:parlour'], /class="lbl">Target<\/div>/);
 });
 
 ok('sparse report entries (only k) never throw and keep a calm render', () => {
@@ -1755,6 +1755,37 @@ ok('tab bar fixed height has its arithmetic: bar content area (49px) holds the 4
   assert.deepEqual(varHeights, ['.tabbar-spacer', '.tabs']);
   // the tab bar is the only fixed-position element and stays out of the tile/occupied card rules
   assert.deepEqual(cssRules().filter((r) => /position:fixed/.test(r.body)).map((r) => r.sel), ['.tabs.fixed']);
+});
+
+ok('room heating tile says whether the room is heating right now; unknown action says nothing', () => {
+  const head = (over) => P.render('room-head', { room: 'parlour' }, withRooms([quietRoom('parlour', { target: 20, mode_target: 20, mode_name: 'comfort', heating_active: 'comfort', heating_source: 'schedule', ...over })], []), NOW);
+  const on = head({ hvac_action: 'heating' });
+  assert.match(on, /Heating now/);
+  assert.match(on, /class="lbl">Target</);
+  assert.match(on, /Comfort from schedule/);
+  assert.match(head({ hvac_action: 'idle' }), /Not heating/);
+  assert.match(head({ hvac_action: 'off' }), /Heating off/);
+  assert.doesNotMatch(head({ hvac_action: null }), /Heating now|Not heating|Heating off/);
+  const why = (a) => P.render('why', { room: 'parlour' }, withRooms([quietRoom('parlour', { target: 20, hvac_action: a })], []), NOW);
+  assert.match(why('heating'), /<span class="tag heat">Heating<\/span>/);
+  assert.match(why('idle'), /<span class="tag off">Idle<\/span>/);
+  assert.doesNotMatch(why('idle'), /On target/);
+});
+
+ok('room chart overlays heat demand from hvac_action on a hidden 0..1 axis, with a legend', () => {
+  const t = loadYaml('info_templates.yaml').pulse_room.card.cards;
+  const chart = t.find((c) => c.type === 'conditional').card;
+  const demand = chart.series.find((x) => x.attribute === 'hvac_action');
+  assert.equal(demand.entity, '[[climate]]');
+  assert.equal(demand.yaxis_id, 'demand');
+  assert.equal(demand.type, 'area');
+  const run = (x) => new Function('x', demand.transform)(x);
+  assert.deepEqual(['heating', 'idle', 'off', 'unavailable', null].map(run), [1, 0, 0, null, null]);
+  const ids = chart.yaxis.map((a) => a.id);
+  assert.deepEqual(ids, ['temp', 'demand']);
+  assert.equal(chart.apex_config.yaxis, undefined, 'apexcharts-card forbids yaxis in apex_config beside the yaxis list');
+  assert.ok(chart.series.every((x) => ids.includes(x.yaxis_id)), 'every series names a declared axis');
+  assert.equal(chart.apex_config.legend.show, true);
 });
 
 console.log(`\n${n} test groups passed`);
