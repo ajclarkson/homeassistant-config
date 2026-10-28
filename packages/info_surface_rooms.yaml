@@ -210,18 +210,17 @@ template:
                   'text': 'Lights automation off', 'nav': g[2]}] %}
               {% endif %}
             {% endfor %}
-            {# Outliers use the room sensor (rooms[].temp), not the TRV reading that sensor.house_comfort_outliers uses.
-               A cold room is not an exception when a true window/door hold, a disabled heating automation or the house master switch explains it. #}
-            {% set band_min = state_attr('sensor.house_comfort_outliers', 'band_min') | float(17.0) %}
-            {% set band_max = state_attr('sensor.house_comfort_outliers', 'band_max') | float(21.5) %}
-            {% for r in rooms if r['temp'] is not none and r['k'] != 'foreign_office' %}
-              {% set explained = r['heat_labels'] or r['heating_enabled'] == false or not heating_master %}
-              {% if r['temp'] < band_min and not explained %}
-                {% set out.items = out.items + [{'room': r['n'], 'key': r['k'], 'kind': 'comfort_outlier',
-                  'text': r['temp'] ~ '° (room sensor) is too cold', 'nav': r['nav']}] %}
-              {% elif r['temp'] > band_max %}
-                {% set out.items = out.items + [{'room': r['n'], 'key': r['k'], 'kind': 'comfort_outlier',
-                  'text': r['temp'] ~ '° (room sensor) is too warm', 'nav': r['nav']}] %}
+            {# Temperature kinds come from the debounced binary sensors (see Info Temperature Rule); the room
+               sensor (rooms[].temp), not the TRV reading, is the temperature. A non-numeric temp or target gives
+               no item rather than a guessed one. #}
+            {% for r in rooms if r['temp'] is number and r['target'] is number %}
+              {% if is_state('binary_sensor.info_' ~ r['k'] ~ '_cold_not_heating', 'on') %}
+                {% set out.items = out.items + [{'room': r['n'], 'key': r['k'], 'kind': 'cold_not_heating',
+                  'text': r['temp'] ~ '° vs ' ~ r['target'] ~ '° target, heating not on', 'nav': r['nav']}] %}
+              {% endif %}
+              {% if is_state('binary_sensor.info_' ~ r['k'] ~ '_warm_heating', 'on') %}
+                {% set out.items = out.items + [{'room': r['n'], 'key': r['k'], 'kind': 'warm_heating',
+                  'text': r['temp'] ~ '° vs ' ~ r['target'] ~ '° target, heating on', 'nav': r['nav']}] %}
               {% endif %}
             {% endfor %}
             {{ out.items | tojson }}
@@ -236,3 +235,150 @@ template:
           items: >-
             {% set x = state_attr('sensor.info_attention_calc', 'items') %}
             {{ (x | from_json if x is string else (x or [])) | tojson }}
+
+      # Temperature rule behind the `cold_not_heating` / `warm_heating` attention kinds.
+      # `rooms` lists, undebounced, the rooms meeting each condition right now; the binary sensors
+      # below add the debounce. The delta and stale limit are defined only here.
+      # Foreign office is included on purpose (the old outlier check skipped it with no recorded
+      # reason). A missing or non-numeric reading, or a TRV or room sensor with no update for over
+      # the stale limit, puts a room in neither list: a dead sensor must never raise a flag.
+      - name: Info Temperature Rule
+        unique_id: info_temperature_rule
+        icon: mdi:thermometer-alert
+        state: "ok"
+        attributes:
+          flagged: >-
+            {% set delta = 1.5 %}
+            {% set stale_s = 4 * 3600 %}
+            {% set rooms = state_attr('sensor.info_rooms', 'rooms') %}
+            {% set rooms = rooms | from_json if rooms is string else (rooms or []) %}
+            {% set master = is_state('input_boolean.house_heating_enabled', 'on') %}
+            {% set trvs = {'foreign_office': 'climate.foreign_office'} %}
+            {% set out = namespace(cold=[], warm=[]) %}
+            {% for r in rooms if r['temp'] is number and r['target'] is number and r['hvac_action'] in ['idle', 'heating'] %}
+              {% set k = r['k'] %}
+              {% set cl = trvs.get(k, 'climate.' ~ k ~ '_trv') %}
+              {% set tsens = 'sensor.' ~ k ~ '_sensor_climate_temperature' %}
+              {% set age_t = (now() - states[tsens].last_updated).total_seconds() if states[tsens] is not none else stale_s + 1 %}
+              {% set age_c = (now() - states[cl].last_updated).total_seconds() if states[cl] is not none else stale_s + 1 %}
+              {% if age_t <= stale_s and age_c <= stale_s %}
+                {# Cold: an idle TRV is the fault; exclusions are the reasons a cold room is expected. Mode minimum or off
+                   means no heating was asked for; an unavailable/unknown mode is unproven, so it never raises a flag. #}
+                {% set cold_explained = r['heat_labels'] or r['heating_enabled'] == false or not master
+                   or r['heating_active'] in ['minimum', 'off', 'unavailable', 'unknown'] or is_state(cl, 'off') %}
+                {% if r['temp'] < r['target'] - delta and r['hvac_action'] != 'heating' and not cold_explained %}
+                  {% set out.cold = out.cold + [k] %}
+                {% endif %}
+                {# Warm: a window/door hold already explains heating and is its own attention item. #}
+                {% if r['temp'] > r['target'] + delta and r['hvac_action'] == 'heating' and not r['ext_open'] %}
+                  {% set out.warm = out.warm + [k] %}
+                {% endif %}
+              {% endif %}
+            {% endfor %}
+            {{ {'cold': out.cold, 'warm': out.warm} | tojson }}
+
+  # Debounced temperature flags, one pair per room with a climate entity. Cold is held longer than
+  # warm: a room warming up after a schedule change lags the target, an overheating room does not.
+  # The durations are YAML anchors so each is written once.
+  - binary_sensor:
+      - name: Info Parlour Cold Not Heating
+        unique_id: info_parlour_cold_not_heating
+        state: >-
+          {% set x = state_attr('sensor.info_temperature_rule', 'flagged') %}
+          {% set x = x | from_json if x is string else (x or {}) %}
+          {{ 'parlour' in x.get('cold', []) }}
+        delay_on: &cold_debounce
+          minutes: 60
+      - name: Info Kitchen Cold Not Heating
+        unique_id: info_kitchen_cold_not_heating
+        state: >-
+          {% set x = state_attr('sensor.info_temperature_rule', 'flagged') %}
+          {% set x = x | from_json if x is string else (x or {}) %}
+          {{ 'kitchen' in x.get('cold', []) }}
+        delay_on: *cold_debounce
+      - name: Info Hallway Downstairs Cold Not Heating
+        unique_id: info_hallway_downstairs_cold_not_heating
+        state: >-
+          {% set x = state_attr('sensor.info_temperature_rule', 'flagged') %}
+          {% set x = x | from_json if x is string else (x or {}) %}
+          {{ 'hallway_downstairs' in x.get('cold', []) }}
+        delay_on: *cold_debounce
+      - name: Info Bedroom Cold Not Heating
+        unique_id: info_bedroom_cold_not_heating
+        state: >-
+          {% set x = state_attr('sensor.info_temperature_rule', 'flagged') %}
+          {% set x = x | from_json if x is string else (x or {}) %}
+          {{ 'bedroom' in x.get('cold', []) }}
+        delay_on: *cold_debounce
+      - name: Info Bathroom Cold Not Heating
+        unique_id: info_bathroom_cold_not_heating
+        state: >-
+          {% set x = state_attr('sensor.info_temperature_rule', 'flagged') %}
+          {% set x = x | from_json if x is string else (x or {}) %}
+          {{ 'bathroom' in x.get('cold', []) }}
+        delay_on: *cold_debounce
+      - name: Info Home Office Cold Not Heating
+        unique_id: info_home_office_cold_not_heating
+        state: >-
+          {% set x = state_attr('sensor.info_temperature_rule', 'flagged') %}
+          {% set x = x | from_json if x is string else (x or {}) %}
+          {{ 'home_office' in x.get('cold', []) }}
+        delay_on: *cold_debounce
+      - name: Info Foreign Office Cold Not Heating
+        unique_id: info_foreign_office_cold_not_heating
+        state: >-
+          {% set x = state_attr('sensor.info_temperature_rule', 'flagged') %}
+          {% set x = x | from_json if x is string else (x or {}) %}
+          {{ 'foreign_office' in x.get('cold', []) }}
+        delay_on: *cold_debounce
+  - binary_sensor:
+      - name: Info Parlour Warm Heating
+        unique_id: info_parlour_warm_heating
+        state: >-
+          {% set x = state_attr('sensor.info_temperature_rule', 'flagged') %}
+          {% set x = x | from_json if x is string else (x or {}) %}
+          {{ 'parlour' in x.get('warm', []) }}
+        delay_on: &warm_debounce
+          minutes: 30
+      - name: Info Kitchen Warm Heating
+        unique_id: info_kitchen_warm_heating
+        state: >-
+          {% set x = state_attr('sensor.info_temperature_rule', 'flagged') %}
+          {% set x = x | from_json if x is string else (x or {}) %}
+          {{ 'kitchen' in x.get('warm', []) }}
+        delay_on: *warm_debounce
+      - name: Info Hallway Downstairs Warm Heating
+        unique_id: info_hallway_downstairs_warm_heating
+        state: >-
+          {% set x = state_attr('sensor.info_temperature_rule', 'flagged') %}
+          {% set x = x | from_json if x is string else (x or {}) %}
+          {{ 'hallway_downstairs' in x.get('warm', []) }}
+        delay_on: *warm_debounce
+      - name: Info Bedroom Warm Heating
+        unique_id: info_bedroom_warm_heating
+        state: >-
+          {% set x = state_attr('sensor.info_temperature_rule', 'flagged') %}
+          {% set x = x | from_json if x is string else (x or {}) %}
+          {{ 'bedroom' in x.get('warm', []) }}
+        delay_on: *warm_debounce
+      - name: Info Bathroom Warm Heating
+        unique_id: info_bathroom_warm_heating
+        state: >-
+          {% set x = state_attr('sensor.info_temperature_rule', 'flagged') %}
+          {% set x = x | from_json if x is string else (x or {}) %}
+          {{ 'bathroom' in x.get('warm', []) }}
+        delay_on: *warm_debounce
+      - name: Info Home Office Warm Heating
+        unique_id: info_home_office_warm_heating
+        state: >-
+          {% set x = state_attr('sensor.info_temperature_rule', 'flagged') %}
+          {% set x = x | from_json if x is string else (x or {}) %}
+          {{ 'home_office' in x.get('warm', []) }}
+        delay_on: *warm_debounce
+      - name: Info Foreign Office Warm Heating
+        unique_id: info_foreign_office_warm_heating
+        state: >-
+          {% set x = state_attr('sensor.info_temperature_rule', 'flagged') %}
+          {% set x = x | from_json if x is string else (x or {}) %}
+          {{ 'foreign_office' in x.get('warm', []) }}
+        delay_on: *warm_debounce

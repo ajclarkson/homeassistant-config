@@ -5,7 +5,7 @@ frontend:
   extra_module_url:
     - /hacsfiles/material-you-utilities/material-you-utilities.min.js
     - /local/mo-timeline-card.js
-    - /local/pulse-card.js?v=1
+    - /local/pulse-card.js?v=2
 
 panel_custom:
   - name: material-you-panel

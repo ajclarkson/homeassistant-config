@@ -411,29 +411,27 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     }));
   }
 
-  // Human label for an attention item. Comfort outliers say which way, and say "steamy" when the
-  // room's own data (humidity, or occupied with lights on) points at a shower.
+  // A warm room with heating on reads "steamy" when the room's own data (humidity, or occupied
+  // with lights on) points at a shower rather than a heating fault.
+  function isSteamy(m) {
+    const h = m ? m.humidity : null;
+    return h !== null && (h >= 85 || (h >= 70 && m.occupied && m.lights_on > 0));
+  }
+
+  // Human label for an attention item.
   function itemLabel(item, m) {
-    const t = item.text.toLowerCase();
     switch (item.kind) {
       case 'window_open_heating_on': return 'Window open, heating on';
       case 'automation_disabled': return 'Automation off';
       case 'hold_active': return 'Override on';
       case 'sensor_unavailable': return 'Sensor unavailable';
-      case 'comfort_outlier': {
-        if (t.includes('too cold')) return 'Too cold';
-        if (t.includes('too warm')) {
-          const h = m ? m.humidity : null;
-          const shower = h !== null && (h >= 85 || (h >= 70 && m.occupied && m.lights_on > 0));
-          return shower ? 'Steamy' : 'Too warm';
-        }
-        return 'Outside comfort band';
-      }
+      case 'cold_not_heating': return 'Too cold, heating off';
+      case 'warm_heating': return isSteamy(m) ? 'Steamy' : 'Too warm, heating on';
       default: return item.kind ? item.kind.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase()) : 'Needs attention';
     }
   }
   function itemDetail(item, m) {
-    if (item.kind === 'comfort_outlier' && itemLabel(item, m) === 'Steamy') return `${item.text} · ${Math.round(m.humidity)}% humidity, probably a shower`;
+    if (item.kind === 'warm_heating' && itemLabel(item, m) === 'Steamy') return `${item.text} · ${Math.round(m.humidity)}% humidity, probably a shower`;
     return item.text;
   }
 
