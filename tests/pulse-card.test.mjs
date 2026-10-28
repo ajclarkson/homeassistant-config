@@ -1409,6 +1409,18 @@ ok('attention labels: temperature kinds say which way and whether heating is on;
   assert.match(P.render('status', {}, wet, NOW), /Bathroom<\/b> · Too cold, heating off/);
 });
 
+ok('attention labels: sensor_stale names the entity and age; the original four labels are unchanged', () => {
+  const stale = withRooms(calmRooms({ bedroom: { occupied: true } }), [attn('Bedroom', 'bedroom', 'sensor_stale', 'climate.bedroom_trv: no update for 5 h 12 min')]);
+  assert.match(P.render('status', {}, stale, NOW), /Bedroom<\/b> · Sensor not updating/);
+  assert.match(P.render('rooms', {}, stale, NOW), /climate\.bedroom_trv: no update for 5 h 12 min/);
+  const four = [['window_open_heating_on', 'Window open, heating on'], ['automation_disabled', 'Automation off'], ['hold_active', 'Override on'], ['sensor_unavailable', 'Sensor unavailable']];
+  for (const [kind, label] of four) {
+    const h = withRooms(calmRooms({ bedroom: { occupied: true } }), [attn('Bedroom', 'bedroom', kind, 'detail text')]);
+    assert.match(P.render('status', {}, h, NOW), new RegExp(`Bedroom</b> · ${label}`));
+    assert.match(P.render('rooms', {}, h, NOW), /detail text/);
+  }
+});
+
 ok('Now v3 occupied card is two lines: icon + name + temperature, then badges (amber manual badge, holds, phrase)', () => {
   const manual = { source: 'wall_button', ts: '2026-10-25T15:42:00+00:00', what: 'x' };
   const feed = { 'sensor.info_decision_feed': { state: 'x', attributes: { entries: JSON.stringify([{ loc: 'parlour', sub: 'lighting', decision: 'turn_on', ts: new Date(NOW - 60000).toISOString(), sentence: 'x', auto: 'p:l' }]), by_room: '[]' } } };

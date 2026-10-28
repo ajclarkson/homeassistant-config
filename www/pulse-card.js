@@ -425,6 +425,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       case 'automation_disabled': return 'Automation off';
       case 'hold_active': return 'Override on';
       case 'sensor_unavailable': return 'Sensor unavailable';
+      case 'sensor_stale': return 'Sensor not updating';
       case 'cold_not_heating': return 'Too cold, heating off';
       case 'warm_heating': return isSteamy(m) ? 'Steamy' : 'Too warm, heating on';
       default: return item.kind ? item.kind.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase()) : 'Needs attention';
