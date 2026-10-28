@@ -139,12 +139,13 @@ ok('manual marker set vs null', () => {
   const manual = { source: 'wall_button', ts: '2026-10-25T18:40:00+00:00', what: 'Wall button: scene cycled' };
   const set = P.render('scenes', { room: 'parlour' }, withRooms([{ ...FULL('parlour'), manual }], []), NOW);
   assert.match(set, /<span class="tag">Manual · wall button · 2 min ago<\/span>/);
-  assert.match(set, /Last automation event: sleep hold/);
+  assert.match(set, /Stays until the room is empty/);
+  assert.doesNotMatch(set, /Last automation event|sleep hold/);
   assert.doesNotMatch(set, /Automation last acted|may change them again|Wall button: scene cycled/);
   assert.equal((set.match(/Manual/g) || []).length, 1, 'one clear line');
   const dash = P.render('scenes', { room: 'parlour' }, withRooms([{ ...FULL('parlour'), manual: { source: 'dashboard', ts: '2026-10-25T18:40:00+00:00', what: 'lamps scene' }, lights_why: '' }], []), NOW);
   assert.match(dash, /Manual · dashboard · 2 min ago/);
-  assert.match(dash, /<div class="note"[^>]*>lamps scene<\/div>/);
+  assert.match(dash, /<div class="note"[^>]*>lamps scene · Stays until the room is empty<\/div>/);
   const none = P.render('scenes', { room: 'parlour' }, withRooms([FULL('parlour')], []), NOW);
   assert.doesNotMatch(none, /Manual ·/);
   assert.match(none, /Set by automation at/);
