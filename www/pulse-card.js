@@ -1399,9 +1399,9 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       const how = SOURCE_WORDS[m.manual.source] || m.manual.source;
       const when = ago(m.manual.ts, now);
       const pill = `Manual · ${how}${when ? ' · ' + when : ''}`;
-      // One quiet second line, only when it adds something: what was done (dashboard/switch changes) and
-      // what the automation last did.
-      const second = [m.manual.source !== 'wall_button' && m.manual.what ? m.manual.what : '', m.lights_why ? `Last automation event: ${m.lights_why}` : ''].filter(Boolean).join(' · ');
+      // One quiet second line: what was done (dashboard/switch changes) and when the automation takes over
+      // again. The lighting controller only acts on triggers, so a manual scene holds until the room clears.
+      const second = [m.manual.source !== 'wall_button' && m.manual.what ? m.manual.what : '', 'Stays until the room is empty'].filter(Boolean).join(' · ');
       foot = `<div class="mrow"><span class="tag">${esc(pill)}</span></div>${second ? `<div class="note" style="margin-top:6px">${esc(second)}</div>` : ''}`;
     } else if (m.lights_why) {
       foot = `<div class="note">Set by automation${m.lights_ts ? ' at ' + esc(hhmm(m.lights_ts)) : ''}: ${esc(m.lights_why)}. Tap a scene to take over.</div>`;
