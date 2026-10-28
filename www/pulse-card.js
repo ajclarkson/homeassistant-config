@@ -546,15 +546,19 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const s = str(v);
     const held = ` · held occupied by ${labels.join(' · ')}`;
     if (!labels.length || !s.includes(held) || !/^Occupied/.test(s)) return s.replace(/held occupied by /gi, 'held occupied · ');
-    return s.replace(held, '').replace(/^Occupied/, `Occupied (${labels.join(' · ')})`);
+    // A label that already says "occupied" (Bed occupied) adds nothing in brackets.
+    const extra = labels.filter((l) => !/occupied/i.test(l));
+    return s.replace(held, '').replace(/^Occupied/, extra.length ? `Occupied (${extra.join(' · ')})` : 'Occupied');
   };
   function bannerFor(m, items) {
     const mine = items.filter((i) => i.key === m.key);
-    if (m.target_reason === 'window open' && m.cfg.climate) {
-      return {
-        warn: true, title: 'Heating suspended',
-        body: `Window open. The valve is set to ${fmt1(m.target)}°${m.mode_name && m.mode_target !== null ? ` and returns to ${m.mode_name} (${fmt1(m.mode_target)}°) once it closes` : ''}.`,
-      };
+    // A heating hold (window or door open) suspends heating whether or not the sensor saw the target
+    // diverge from the mode: a safety minimum can make the target equal the mode's own.
+    if ((m.target_reason === 'window open' || m.heat_labels.length) && m.cfg.climate) {
+      const why = m.heat_labels.length ? m.heat_labels.join(' · ') : 'Window open';
+      const set = m.target === null ? 'The valve is held' : `The valve is set to ${fmt1(m.target)}°`;
+      const ends = m.target_reason === 'window open' && m.mode_name && m.mode_target !== null ? ` and returns to ${m.mode_name} (${fmt1(m.mode_target)}°) once it closes` : ' until all clear';
+      return { warn: true, title: 'Heating suspended', body: `${why}. ${set}${ends}.` };
     }
     if (mine.length) {
       return { warn: true, title: mine.length === 1 ? itemLabel(mine[0], m) : `${mine.length} things need attention`, body: mine.length === 1 ? itemDetail(mine[0], m) : mine.map((i) => itemDetail(i, m)).join('. ') };
@@ -1351,10 +1355,12 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       const differs = !!m.target_reason;
       const h = m.target !== null ? `Heating target ${fmt1(m.target)}°` : 'Heating';
       const s = differs ? `${esc(m.target_reason.replace(/^./, (c) => c.toUpperCase()))}${m.mode_name && m.mode_target !== null ? `. Normally ${esc(m.mode_name)}, ${fmt1(m.mode_target)}°` : ''}.` : [m.mode_name && m.mode_target !== null ? `${esc(m.mode_name.replace(/^./, (c) => c.toUpperCase()))} ${fmt1(m.mode_target)}°` : '', m.heating_source ? esc(m.heating_source.replace(/_/g, ' ')) : ''].filter(Boolean).join(' from ') || 'No mode reported.';
-      const tag = differs ? `<span class="tag">${esc(m.target_reason.replace(/^./, (c) => c.toUpperCase()))}</span>` : m.heating_enabled === false ? '<span class="tag">Automation off</span>' : m.hvac_action === 'heating' ? '<span class="tag heat">Heating</span>' : m.hvac_action === 'idle' ? '<span class="tag off">Idle</span>' : '';
-      rows.push(`<div class="item">${svg(ICON.flame, 18)}<div><div class="h">${esc(h)}</div><div class="s">${s}</div></div>${tag}</div>`);
+      const sub = !differs && m.heat_labels.length ? `${esc(m.heat_labels.join(' · '))}. ${s}` : s;
+      const tag = differs ? `<span class="tag">${esc(m.target_reason.replace(/^./, (c) => c.toUpperCase()))}</span>` : m.heat_labels.length ? '<span class="tag">Suspended</span>' : m.heating_enabled === false ? '<span class="tag">Automation off</span>' : m.hvac_action === 'heating' ? '<span class="tag heat">Heating</span>' : m.hvac_action === 'idle' ? '<span class="tag off">Idle</span>' : '';
+      rows.push(`<div class="item">${svg(ICON.flame, 18)}<div><div class="h">${esc(h)}</div><div class="s">${sub}</div></div>${tag}</div>`);
     }
-    const holds = m.labels.length ? m.labels : [];
+    // Presence holds belong to the occupancy row; heating holds (window, door) to the heating row.
+    const holds = m.pres_labels;
     const occ = m.occupancy_unavailable ? 'Occupancy unavailable' : m.occupied ? 'Occupied' : 'Empty';
     const pres = holds.length ? `${esc(holds.join(' · '))}.${holds.length > 1 ? ' All are true, so it stays occupied until all clear.' : ''}` : 'No holds.';
     const ovr = m.override_text ? ` ${esc(m.override_text)}.` : '';
