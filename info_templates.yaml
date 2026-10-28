@@ -19,6 +19,15 @@ pulse_room:
       - type: custom:pulse-card
         mode: room-head
         room: '[[room]]'
+      # Lighting is the control used most, so it sits straight under the status and numbers; the chart and
+      # the explanation of why the room is like this follow.
+      - type: custom:pulse-card
+        mode: scenes
+        room: '[[room]]'
+      # Individual lights: a collapsible section inside pulse-card (collapsed by default).
+      - type: custom:pulse-card
+        mode: lights
+        room: '[[room]]'
       # Only rooms with a temperature sensor chart: the numeric condition is false for a missing
       # entity, so gardens and the upstairs hallway show nothing here.
       - type: conditional
@@ -105,13 +114,6 @@ pulse_room:
               show: {legend_value: false}
       - type: custom:pulse-card
         mode: why
-        room: '[[room]]'
-      - type: custom:pulse-card
-        mode: scenes
-        room: '[[room]]'
-      # Individual lights: a collapsible section inside pulse-card (collapsed by default).
-      - type: custom:pulse-card
-        mode: lights
         room: '[[room]]'
       - type: custom:pulse-card
         mode: media

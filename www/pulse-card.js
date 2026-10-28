@@ -175,6 +175,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 .lt input[type=range]::-moz-range-progress{height:6px;border-radius:3px;background:${TOKENS.sceneActive}}
 .lt input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:${TOKENS.sceneActive};border:2px solid ${TOKENS.surface}}
 .round{min-height:44px;min-width:44px;border-radius:999px;border:0;background:${TOKENS.sceneActive};color:${TOKENS.sceneActiveText};display:flex;align-items:center;justify-content:center;cursor:pointer;flex:none}
+.round.quiet{background:${TOKENS.divider};color:${TOKENS.text}}
 .big{font-size:32px;font-weight:700;letter-spacing:-.6px;line-height:1.1;margin-top:4px}
 .two{display:flex;gap:10px}
 .two .card{flex:1}
@@ -1461,7 +1462,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       }
       const vol = num(attr(hass, id, 'volume_level'));
       const volRow = vol === null ? '' : `<div class="lt"><div><div class="h">Volume</div><div class="s">${Math.round(vol * 100)}%</div></div><input type="range" min="0" max="100" value="${Math.round(vol * 100)}" data-act="volume" data-entity="${esc(id)}" aria-label="${name} volume"></div>`;
-      return `<div class="tog"><div><div class="h">${name}</div><div class="s">${esc(text)}</div></div><button class="round" data-act="media-play" data-entity="${esc(id)}" aria-label="${playing ? 'Pause' : 'Play'}">${svg(playing ? ICON.pause : ICON.play, 20)}</button></div>${volRow}`;
+      return `<div class="tog"><div><div class="h">${name}</div><div class="s">${esc(text)}</div></div><button class="round${playing ? '' : ' quiet'}" data-act="media-play" data-entity="${esc(id)}" aria-label="${playing ? 'Pause' : 'Play'}">${svg(playing ? ICON.pause : ICON.play, 20)}</button></div>${volRow}`;
     }).join('');
     return `<div class="lbl" style="margin:4px 4px -10px">Media</div><div class="card">${rows}</div>`;
   }
