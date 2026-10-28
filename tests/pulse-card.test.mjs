@@ -250,7 +250,7 @@ ok('every nav path targets the registered dashboard (/pulse-dashboard) or Mobile
     assert.doesNotMatch(readFileSync(root + 'views/' + f, 'utf8'), /\/info-dashboard/, f);
   }
   const rooms = P.ROOM_ORDER.map(FULL);
-  const items = P.ALL_ROOM_KEYS.map((k) => ({ room: k, key: k, kind: 'comfort_outlier', text: '20.0° is too warm', nav: '/x' }));
+  const items = P.ALL_ROOM_KEYS.map((k) => ({ room: k, key: k, kind: 'warm_heating', text: '20.0° vs 18° target, heating on', nav: '/x' }));
   const hass = withRooms(rooms, items);
   const out = renderAll(hass);
   let seen = 0;
@@ -552,7 +552,7 @@ ok('chart markup: focusable, pan-y, one summary label, live region, guide and to
   assert.match(css, /\.tip\{position:absolute;top:-36px/);
 });
 
-ok('module URL version is untouched', () => assert.match(readFileSync(root + 'packages/frontend.yaml', 'utf8'), /pulse-card\.js\?v=1\b/));
+ok('module URL carries the current version', () => assert.match(readFileSync(root + 'packages/frontend.yaml', 'utf8'), /pulse-card\.js\?v=2\b/));
 
 // ── Now v2 ─────────────────────────────────────────────────────────────────────────────────────
 const quietRoom = (k, over = {}) => ({ ...FULL(k), occupied: false, target_reason: '', labels: [], pres_labels: [], heat_labels: [], ext_open: false, manual: null, lights_on: 0, lights_why: 'lights back to automatic', lights_ts: '2026-10-25T16:40:00+00:00', last: 'Off', last_ts: '2026-10-25T16:40:00+00:00', humidity: 55, scene: '', verdict: 'Empty', ...over });
@@ -607,7 +607,7 @@ ok('Now v2 attention: Bathroom (steamy) and Bedroom (window open) sit in Needs a
     bathroom: { occupied: true, temp: 23.1, humidity: 88, lights_on: 1 },
     bedroom: { occupied: true, target: 5, target_reason: 'window open', mode_name: 'baseline day', mode_target: 18, heat_labels: ['Window open'], labels: ['Window open'], temp: 20.8 },
   });
-  const items = [attn('Bathroom', 'bathroom', 'comfort_outlier', '23.1° (room sensor) is too warm'), attn('Bedroom', 'bedroom', 'window_open_heating_on', 'Open window while heating is on')];
+  const items = [attn('Bathroom', 'bathroom', 'warm_heating', '23.1° vs 18° target, heating on'), attn('Bedroom', 'bedroom', 'window_open_heating_on', 'Open window while heating is on')];
   const hass = withRooms(rooms, items);
   const status = P.render('status', {}, hass, NOW);
   assert.match(status, /card pad warn/);
@@ -621,7 +621,7 @@ ok('Now v2 attention: Bathroom (steamy) and Bedroom (window open) sit in Needs a
   assert.equal(count(html, /Bathroom/g) - count(html.slice(html.indexOf('Other rooms')), /Bathroom/g), count(att, /Bathroom/g));
   assert.equal(count(html, /Bathroom details ›/g), 1);
   assert.equal(count(html, /Bedroom details ›/g), 1);
-  assert.equal(count(html, /23\.1° \(room sensor\) is too warm/g), 1, 'sentence once');
+  assert.equal(count(html, /23\.1° vs 18° target, heating on/g), 1, 'sentence once');
   assert.match(html, /probably a shower/);
   assert.match(html, /target 5\.0° \(window open\)/);
   assert.equal(count(html.slice(html.indexOf('Other rooms')), /Bathroom|Bedroom/g), 0, 'not in the tiles either');
@@ -730,7 +730,7 @@ ok('Now v2 view layout: one status card first, groups, prices, bins/heating, fee
 });
 
 ok('Now v2 changes nothing HA only reads at startup', () => {
-  assert.match(readFileSync(root + 'packages/frontend.yaml', 'utf8'), /pulse-card\.js\?v=1\b/);
+  assert.match(readFileSync(root + 'packages/frontend.yaml', 'utf8'), /pulse-card\.js\?v=2\b/);
 });
 
 // ── Energy page ──────────────────────────────────────────────────────────────────────────────
@@ -995,7 +995,7 @@ ok('energy view is registered and adds no write paths', () => {
   assert.deepEqual(v.sections[0].cards.map((c) => c.mode), ['energy-head', 'energy-day', 'energy-cost', 'energy-history', 'energy-usage', 'tabbar']);
   assert.match(readFileSync(root + 'info-dashboard.yaml', 'utf8'), /views\/info-energy\.yaml/);
   assert.deepEqual(Object.keys(P.ALLOWED).sort(), ['input_boolean', 'light', 'media_player', 'scene', 'switch']);
-  assert.match(readFileSync(root + 'packages/frontend.yaml', 'utf8'), /pulse-card\.js\?v=1\b/);
+  assert.match(readFileSync(root + 'packages/frontend.yaml', 'utf8'), /pulse-card\.js\?v=2\b/);
 });
 
 // ── Daily cost history ───────────────────────────────────────────────────────────────────────
@@ -1376,7 +1376,7 @@ ok('Now v3 calm / 4 occupied / attention: partition rules and the amber state', 
   assert.match(rooms, />Occupied now</);
   assert.match(rooms, />Other rooms</);
   assert.match(P.render('status', {}, four, NOW), /4 rooms occupied · heating idle/);
-  const att = withRooms(calmRooms({ bathroom: { occupied: true, temp: 23.1, humidity: 88, lights_on: 1 }, bedroom: { occupied: true, target: 5, target_reason: 'window open', mode_name: 'baseline day', mode_target: 18, heat_labels: ['Window open'], labels: ['Window open'] } }), [attn('Bathroom', 'bathroom', 'comfort_outlier', '23.1° (room sensor) is too warm'), attn('Bedroom', 'bedroom', 'window_open_heating_on', 'Open window while heating is on')]);
+  const att = withRooms(calmRooms({ bathroom: { occupied: true, temp: 23.1, humidity: 88, lights_on: 1 }, bedroom: { occupied: true, target: 5, target_reason: 'window open', mode_name: 'baseline day', mode_target: 18, heat_labels: ['Window open'], labels: ['Window open'] } }), [attn('Bathroom', 'bathroom', 'warm_heating', '23.1° vs 18° target, heating on'), attn('Bedroom', 'bedroom', 'window_open_heating_on', 'Open window while heating is on')]);
   const status = P.render('status', {}, att, NOW);
   assert.match(status, /card pad warn/);
   assert.match(status, /2 need attention<\/span><div style="flex:1"><\/div><div style="font-size:12px;color:#a3adba;text-align:right">2 rooms occupied · heating idle/);
@@ -1389,6 +1389,24 @@ ok('Now v3 calm / 4 occupied / attention: partition rules and the amber state', 
   assert.equal(count(r, /class="rt tap[" ]/g), 6);
   const heating = withRooms(calmRooms({ kitchen: { hvac_action: 'heating' }, parlour: { hvac_action: 'heating' } }), []);
   assert.match(P.render('status', {}, heating, NOW), /heating in 2 rooms/);
+});
+
+ok('attention labels: temperature kinds say which way and whether heating is on; Steamy only for warm with shower evidence', () => {
+  const cold = withRooms(calmRooms({ bedroom: { occupied: true, temp: 17.2, target: 19 } }), [attn('Bedroom', 'bedroom', 'cold_not_heating', '17.2° vs 19° target, heating not on')]);
+  const status = P.render('status', {}, cold, NOW);
+  assert.match(status, /Bedroom<\/b> · Too cold, heating off/);
+  assert.doesNotMatch(status, /Steamy/);
+  assert.match(P.render('rooms', {}, cold, NOW), /17\.2° vs 19° target, heating not on/);
+  const warm = withRooms(calmRooms({ bedroom: { occupied: true, temp: 21.4, target: 19, humidity: 50 } }), [attn('Bedroom', 'bedroom', 'warm_heating', '21.4° vs 19° target, heating on')]);
+  const ws = P.render('status', {}, warm, NOW);
+  assert.match(ws, /Bedroom<\/b> · Too warm, heating on/);
+  assert.doesNotMatch(ws, /Steamy|probably a shower/);
+  const steamy = withRooms(calmRooms({ bathroom: { occupied: true, temp: 23.1, target: 18, humidity: 88, lights_on: 1 } }), [attn('Bathroom', 'bathroom', 'warm_heating', '23.1° vs 18° target, heating on')]);
+  assert.match(P.render('status', {}, steamy, NOW), /Bathroom<\/b> · Steamy/);
+  assert.match(P.render('rooms', {}, steamy, NOW), /23\.1° vs 18° target, heating on · 88% humidity, probably a shower/);
+  // A cold room is never steamy, even with high humidity.
+  const wet = withRooms(calmRooms({ bathroom: { occupied: true, temp: 15, target: 18, humidity: 90, lights_on: 1 } }), [attn('Bathroom', 'bathroom', 'cold_not_heating', '15° vs 18° target, heating not on')]);
+  assert.match(P.render('status', {}, wet, NOW), /Bathroom<\/b> · Too cold, heating off/);
 });
 
 ok('Now v3 occupied card is two lines: icon + name + temperature, then badges (amber manual badge, holds, phrase)', () => {
@@ -1560,7 +1578,7 @@ ok('every non-classic Pulse view has exactly one tabbar card, last in its sectio
 
 ok('tab bar adds no write path and the module URL is untouched', () => {
   assert.deepEqual(Object.keys(P.ALLOWED).sort(), ['input_boolean', 'light', 'media_player', 'scene', 'switch']);
-  assert.match(readFileSync(root + 'packages/frontend.yaml', 'utf8'), /pulse-card\.js\?v=1\b/);
+  assert.match(readFileSync(root + 'packages/frontend.yaml', 'utf8'), /pulse-card\.js\?v=2\b/);
   const src = readFileSync(root + 'www/pulse-card.js', 'utf8');
   assert.doesNotMatch(src.slice(src.indexOf('function sectionTabbar'), src.indexOf('function sectionTabbar') + 900), /callService|callWS/);
 });
