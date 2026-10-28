@@ -84,7 +84,8 @@ ok('every mode renders for all 10 rooms with full report data (attention state)'
   assert.match(out['room-head:bedroom'], /Heating suspended/);
   assert.match(out['room-head:bedroom'], /Valve target/);
   assert.match(out.rooms, /Bedroom details/);
-  assert.match(out['why:bedroom'], /Bed occupied · Window open/);
+  assert.match(out['why:bedroom'], /Bed occupied/);
+  assert.doesNotMatch(out['why:bedroom'], /Bed occupied · Window open/);
 });
 
 ok('calm state: no attention, All good', () => {
@@ -1296,7 +1297,8 @@ ok('held-occupied wording has no redundancy', () => {
   assert.match(why, /<div class="s">Sofa occupied\./);
   assert.doesNotMatch(why, /Held occupied|Held by|occupied by Sofa occupied|1 reason/);
   const head = P.render('room-head', { room: 'parlour' }, hass, NOW);
-  assert.match(head, /Occupied \(Sofa occupied\) · lights on/);
+  assert.match(head, /Occupied · lights on/);
+  assert.doesNotMatch(head, /Occupied \(/);
   assert.doesNotMatch(head, /held occupied/i);
   const att = P.render('rooms', {}, withRooms([m], [attn('Parlour', 'parlour', 'automation_disabled', 'Lights automation off')]), NOW);
   assert.match(att, /<b>Held occupied<\/b><span>Sofa occupied<\/span>/);
@@ -1800,6 +1802,35 @@ ok('room chart overlays heat demand from hvac_action on a hidden 0..1 axis, with
   assert.equal(chart.apex_config.yaxis, undefined, 'apexcharts-card forbids yaxis in apex_config beside the yaxis list');
   assert.ok(chart.series.every((x) => ids.includes(x.yaxis_id)), 'every series names a declared axis');
   assert.equal(chart.apex_config.legend.show, true);
+});
+
+ok('heating holds read as heating, not occupancy: banner, heating row and occupied row', () => {
+  const bed = quietRoom('bedroom', { occupied: true, lights_on: 2, target: 5, mode_target: 5, mode_name: 'minimum', heating_active: 'minimum', heating_source: 'safety', hvac_action: 'idle', pres_labels: ['Bed occupied'], heat_labels: ['Window open'], labels: ['Bed occupied', 'Window open'], verdict: 'Occupied · lights on · held occupied by Bed occupied · heating suspended: window open' });
+  const hass = withRooms([bed], []);
+  const head = P.render('room-head', { room: 'bedroom' }, hass, NOW);
+  assert.match(head, /Heating suspended/);
+  assert.match(head, /Window open\. The valve is set to 5\.0° until all clear\./);
+  const why = P.render('why', { room: 'bedroom' }, hass, NOW);
+  assert.match(why, /Held at minimum 5\.0° · window open/);
+  assert.doesNotMatch(why, /from safety/);
+  assert.match(why, /<span class="tag">Suspended<\/span>/);
+  assert.match(why, /<div class="s">Bed occupied\.<\/div>/);
+  assert.doesNotMatch(why, /Bed occupied · Window open|All are true/);
+  // Window just opened: the hold is true but the controller has not forced the minimum yet.
+  const grace = { ...bed, heating_source: 'schedule', heating_active: 'baseline_day', mode_name: 'baseline day', mode_target: 18, target: 18 };
+  const gh = P.render('room-head', { room: 'bedroom' }, withRooms([grace], []), NOW);
+  assert.doesNotMatch(gh, /Heating suspended/);
+  assert.match(gh, /Window open<\/div>[^]*Heating drops to minimum if it stays open\./);
+  const gw = P.render('why', { room: 'bedroom' }, withRooms([grace], []), NOW);
+  assert.match(gw, /<span class="tag">Pending<\/span>/);
+  // House heating off forces the minimum with no window: name that cause.
+  const off = { ...bed, heat_labels: [], labels: ['Bed occupied'] };
+  const offHass = withRooms([off], [], { 'input_boolean.house_heating_enabled': { state: 'off', attributes: {} } });
+  assert.match(P.render('why', { room: 'bedroom' }, offHass, NOW), /Held at minimum 5\.0° · house heating off/);
+  const calm = P.render('room-head', { room: 'bedroom' }, withRooms([{ ...bed, heat_labels: [], labels: ['Bed occupied'], verdict: 'Occupied · lights on · held occupied by Bed occupied' }], []), NOW);
+  assert.match(calm, /All good/);
+  assert.match(calm, /Occupied · lights on</);
+  assert.doesNotMatch(calm, /Occupied \(/);
 });
 
 console.log(`\n${n} test groups passed`);
