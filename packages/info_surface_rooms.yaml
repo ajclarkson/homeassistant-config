@@ -142,6 +142,7 @@ template:
                 'occupied': occupied,
                 'occupancy_unavailable': 'occupancy' in un.items,
                 'unavailable': un.items,
+                'climate': c['cl'], 'temp_entity': tsens if c['cl'] else '',
                 'temp': temp, 'target': target, 'mode_target': mode_target,
                 'target_reason': target_reason, 'mode_name': active | replace('_', ' '),
                 'pres_labels': pres_labels, 'heat_labels': heat_labels,
@@ -236,12 +237,40 @@ template:
             {% set x = state_attr('sensor.info_attention_calc', 'items') %}
             {{ (x | from_json if x is string else (x or [])) | tojson }}
 
+      # Room temperature sensors and climate entities with no state update for over the stale limit.
+      # The limit is defined only here; `info_temperature_rule` and `info_attention_calc` read the list.
+      # `last_updated` is the clock (room sensors change at least every 1.5 h). An unavailable entity is
+      # its own attention kind (`sensor_unavailable`) and a missing entity is skipped, so neither is
+      # reported as stale. Rooms without a climate entity have no entities listed and are never checked.
+      - name: Info Stale Sensors
+        unique_id: info_stale_sensors
+        icon: mdi:clock-alert-outline
+        state: "ok"
+        attributes:
+          stale: >-
+            {% set stale_s = 4 * 3600 %}
+            {% set rooms = state_attr('sensor.info_rooms', 'rooms') %}
+            {% set rooms = rooms | from_json if rooms is string else (rooms or []) %}
+            {% set out = namespace(items=[]) %}
+            {% for r in rooms if r['climate'] %}
+              {% for e in [r['temp_entity'], r['climate']] %}
+                {% set st = states[e] %}
+                {% if st is not none and st.state != 'unavailable' %}
+                  {% set age = (now() - st.last_updated).total_seconds() %}
+                  {% if age > stale_s %}
+                    {% set out.items = out.items + [{'k': r['k'], 'entity': e, 'age_s': age | int}] %}
+                  {% endif %}
+                {% endif %}
+              {% endfor %}
+            {% endfor %}
+            {{ out.items | tojson }}
+
       # Temperature rule behind the `cold_not_heating` / `warm_heating` attention kinds.
       # `rooms` lists, undebounced, the rooms meeting each condition right now; the binary sensors
-      # below add the debounce. The delta and stale limit are defined only here.
+      # below add the debounce. The delta is defined only here; the stale limit is in `info_stale_sensors`.
       # Foreign office is included on purpose (the old outlier check skipped it with no recorded
-      # reason). A missing or non-numeric reading, or a TRV or room sensor with no update for over
-      # the stale limit, puts a room in neither list: a dead sensor must never raise a flag.
+      # reason). A missing or non-numeric reading, or a TRV or room sensor listed by
+      # `info_stale_sensors`, puts a room in neither list: a dead sensor must never raise a flag.
       - name: Info Temperature Rule
         unique_id: info_temperature_rule
         icon: mdi:thermometer-alert
@@ -249,19 +278,16 @@ template:
         attributes:
           flagged: >-
             {% set delta = 1.5 %}
-            {% set stale_s = 4 * 3600 %}
+            {% set st = state_attr('sensor.info_stale_sensors', 'stale') %}
+            {% set stale_rooms = (st | from_json if st is string else (st or [])) | map(attribute='k') | list %}
             {% set rooms = state_attr('sensor.info_rooms', 'rooms') %}
             {% set rooms = rooms | from_json if rooms is string else (rooms or []) %}
             {% set master = is_state('input_boolean.house_heating_enabled', 'on') %}
-            {% set trvs = {'foreign_office': 'climate.foreign_office'} %}
             {% set out = namespace(cold=[], warm=[]) %}
             {% for r in rooms if r['temp'] is number and r['target'] is number and r['hvac_action'] in ['idle', 'heating'] %}
               {% set k = r['k'] %}
-              {% set cl = trvs.get(k, 'climate.' ~ k ~ '_trv') %}
-              {% set tsens = 'sensor.' ~ k ~ '_sensor_climate_temperature' %}
-              {% set age_t = (now() - states[tsens].last_updated).total_seconds() if states[tsens] is not none else stale_s + 1 %}
-              {% set age_c = (now() - states[cl].last_updated).total_seconds() if states[cl] is not none else stale_s + 1 %}
-              {% if age_t <= stale_s and age_c <= stale_s %}
+              {% set cl = r['climate'] %}
+              {% if k not in stale_rooms %}
                 {# Cold: an idle TRV is the fault; exclusions are the reasons a cold room is expected. Mode minimum or off
                    means no heating was asked for; an unavailable/unknown mode is unproven, so it never raises a flag. #}
                 {% set cold_explained = r['heat_labels'] or r['heating_enabled'] == false or not master
