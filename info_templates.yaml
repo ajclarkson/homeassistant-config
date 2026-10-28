@@ -36,11 +36,17 @@ pulse_room:
           graph_span: 24h
           apex_config:
             chart:
-              height: 140
+              height: 170
               toolbar: {show: false}
               zoom: {enabled: false}
               background: '#1a1f26'
-            legend: {show: false}
+            legend:
+              show: true
+              position: bottom
+              horizontalAlign: left
+              fontSize: 11px
+              labels: {colors: '#a3adba'}
+              markers: {size: 5}
             dataLabels: {enabled: false}
             grid: {borderColor: '#232a33'}
             tooltip: {x: {format: HH:mm}}
@@ -53,16 +59,25 @@ pulse_room:
                 datetimeUTC: false
                 format: HH:mm
                 style: {colors: '#8f9aa8', fontSize: 10px}
-            yaxis:
-              decimalsInFloat: 0
-              labels:
-                style: {colors: '#8f9aa8', fontSize: 10px}
+          # Two axes: temperature, and a hidden 0..1 axis so heat demand draws as a band along the bottom.
+          # apexcharts-card forbids `yaxis` inside apex_config once this list is used.
+          yaxis:
+            - id: temp
+              decimals: 0
+              apex_config:
+                labels:
+                  style: {colors: '#8f9aa8', fontSize: 10px}
+            - id: demand
+              show: false
+              min: 0
+              max: 1
           card_mod:
             style: |
               ha-card { border: none; border-radius: 16px; box-shadow: none; background: #1a1f26; }
           series:
             - entity: '[[temp]]'
               name: Room
+              yaxis_id: temp
               color: '#e8ebef'
               stroke_width: 2
               curve: smooth
@@ -70,9 +85,23 @@ pulse_room:
             - entity: '[[climate]]'
               attribute: temperature
               name: Target
+              yaxis_id: temp
               color: '#f2b84b'
               stroke_width: 2
               curve: stepline
+              show: {legend_value: false}
+            # hvac_action is the valve calling for heat. Unknown states (unavailable after a restart) map
+            # to null so they leave a gap rather than read as "not heating".
+            - entity: '[[climate]]'
+              attribute: hvac_action
+              name: Heating
+              yaxis_id: demand
+              type: area
+              curve: stepline
+              color: '#f08a4b'
+              opacity: 0.3
+              stroke_width: 0
+              transform: "return x === 'heating' ? 1 : (x === 'idle' || x === 'off') ? 0 : null;"
               show: {legend_value: false}
       - type: custom:pulse-card
         mode: why
