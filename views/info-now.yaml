@@ -18,6 +18,7 @@ sections:
       # Needs attention (full width), Occupied now (full width), Other rooms (2-column tiles).
       - {type: custom:pulse-card, mode: rooms}
       - {type: custom:pulse-card, mode: bins-heating}
+      - {type: custom:pulse-card, mode: cameras-card}
       - {type: custom:pulse-card, mode: feed}
       - {type: custom:pulse-card, mode: footer}
       # Bottom tab bar: fixed when HA's ancestors allow it, otherwise an in-flow bar (see pulse-card.js).

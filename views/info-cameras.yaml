@@ -1,0 +1,27 @@
+title: Cameras
+path: cameras
+subview: true
+back_path: /pulse-dashboard/now
+type: sections
+max_columns: 1
+background: '#12151a'
+sections:
+  - type: grid
+    cards:
+      - {type: custom:pulse-card, mode: cameras-head}
+      # Status and the on/off switch are pulse-card; live view, pan/tilt and recordings are the existing
+      # camera-events-card in its `pulse` variant (header and privacy button hidden, recordings inline).
+      - type: vertical-stack
+        cards:
+          - {type: custom:pulse-card, mode: camera, camera: parlour}
+          - {type: custom:camera-events-card, variant: pulse, camera: parlour, entity: camera.parlour, privacy: switch.parlour_privacy, title: Parlour, ptz: true}
+      - type: vertical-stack
+        cards:
+          - {type: custom:pulse-card, mode: camera, camera: kitchen}
+          - {type: custom:camera-events-card, variant: pulse, camera: kitchen, entity: camera.kitchen, privacy: switch.kitchen_privacy, title: Kitchen, ptz: true}
+      - type: vertical-stack
+        cards:
+          - {type: custom:pulse-card, mode: camera, camera: home_office}
+          - {type: custom:camera-events-card, variant: pulse, camera: home_office, entity: camera.home_office, privacy: switch.home_office_privacy, title: Home Office, ptz: true}
+      # Bottom tab bar: fixed when HA's ancestors allow it, otherwise an in-flow bar (see pulse-card.js).
+      - {type: custom:pulse-card, mode: tabbar, active: now}

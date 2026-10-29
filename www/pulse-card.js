@@ -277,6 +277,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   // `details_path`, and only when that view exists in info-dashboard.yaml (tests enforce both).
   const ENERGY_PATH = `${DASH}/energy`;
   const HOUSE_PATH = `${DASH}/house`;
+  const CAMERAS_PATH = `${DASH}/cameras`;
   const RECENT_MS = 15 * 60 * 1000;
 
 
@@ -521,6 +522,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     bed: 'M4 20v-8a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8M4 16h16M7 10V7a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v3',
     back: 'M15 5l-7 7 7 7',
     chev: 'M6 9l6 6 6-6',
+    camera: 'M3 7h11a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1zM15 10.5l6-3v9l-6-3',
     sliders: 'M4 12h10M18 12h2M4 6h4M12 6h8M4 18h12M20 18h0M16 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM10 4a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM18 16a2 2 0 1 0 0 4 2 2 0 0 0 0-4z',
     play: 'M8 5v14l11-7z',
     home: 'M3 11l9-8 9 8M5 10v10h14V10',
@@ -1613,6 +1615,76 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return rows ? `<div class="lbl" style="margin:4px 4px -10px">People</div><div class="card">${rows}</div>` : '';
   }
 
+  // ── Cameras ──────────────────────────────────────────────────────────────────────────────────
+  // The privacy switch is the source of truth per camera (on = camera off). group.cameras_privacy is not
+  // used: it reads "off" as soon as one member is unavailable, which looks like cameras on.
+  // Writes name a camera from this table, never an entity id taken from the page.
+  const CAMERAS = [
+    { k: 'parlour', name: 'Parlour' },
+    { k: 'kitchen', name: 'Kitchen' },
+    { k: 'home_office', name: 'Home office' },
+  ];
+  const cameraSwitch = (k) => `switch.${k}_privacy`;
+
+  function cameraStatus(hass, c, now) {
+    const sw = stateObj(hass, cameraSwitch(c.k));
+    const s = sw && typeof sw.state === 'string' ? sw.state : '';
+    if (!usable(s)) return { key: 'offline', tag: 'Offline', live: false, offline: true, since: ago(sw && sw.last_changed, now) };
+    if (s === 'on') return { key: 'private', tag: 'Privacy on', live: false, offline: false };
+    const person = state(hass, `binary_sensor.${c.k}_person_occupancy`) === 'on';
+    return { key: 'live', tag: person ? 'Live · person' : 'Live', live: true, offline: false, person };
+  }
+
+  // What camera-mode-sync does for the current house mode; `want` is null when it leaves cameras alone.
+  function cameraRule(hass) {
+    const mode = state(hass, 'sensor.house_active_mode');
+    const guest = state(hass, HOUSE_MODIFIER) === 'guest';
+    const all = (v, over = {}) => Object.assign(Object.fromEntries(CAMERAS.map((c) => [c.k, v])), over);
+    if (mode === 'away') return guest ? { text: 'House is away, but a guest is staying so cameras are left as they are', want: null } : { text: 'House is away · cameras on', want: all(true) };
+    if (mode === 'sleep') return { text: 'House is asleep · only the kitchen camera is on, for Mo', want: all(false, { kitchen: true }) };
+    if (mode === 'normal') return { text: 'House is at home · cameras off', want: all(false) };
+    return { text: 'Cameras follow the house mode', want: null };
+  }
+
+  function camerasSummary(hass, now) {
+    const st = CAMERAS.map((c) => ({ c, s: cameraStatus(hass, c, now) }));
+    const live = st.filter((x) => x.s.live);
+    const offline = st.filter((x) => x.s.offline);
+    const rule = cameraRule(hass);
+    const byHand = !!rule.want && st.some((x) => !x.s.offline && x.s.live !== rule.want[x.c.k]);
+    const title = live.length === 0 ? 'All cameras off' : live.length === st.length ? 'All cameras on' : `${live.map((x) => x.c.name).join(' · ')} on`;
+    return { st, live, offline, rule, byHand, title };
+  }
+
+  function sectionCamerasHead(hass, now) {
+    const sum = camerasSummary(hass, now);
+    const notes = [sum.rule.text, sum.byHand ? 'set by hand' : '', sum.offline.length ? `${sum.offline.map((x) => x.c.name).join(' · ')} offline` : ''].filter(Boolean);
+    const warn = sum.offline.length > 0;
+    const banner = `<div class="card pad${warn ? ' warn' : ''}" style="display:flex;gap:10px;align-items:flex-start"><span class="dot${warn ? ' warn' : sum.live.length ? '' : ' dim'}" style="margin-top:5px"></span><div><div style="font-size:15px;font-weight:700">${esc(sum.title)}</div><div style="font-size:13px;color:${TOKENS.text2};margin-top:3px;line-height:1.45">${esc(notes.join(' · '))}</div></div></div>`;
+    const usableCams = sum.st.filter((x) => !x.s.offline).length;
+    const master = usableCams ? `<div class="card"><button class="tog tap" data-act="cameras-all" aria-pressed="${sum.live.length > 0}"><div><div class="h">Cameras</div><div class="s">${sum.live.length ? 'Tap to turn all off' : 'Tap to turn all on'}</div></div><span class="sw${sum.live.length ? '' : ' off'}" role="img" aria-label="${sum.live.length ? 'On' : 'Off'}"></span></button></div>` : '';
+    return `<div style="display:flex;align-items:center;gap:4px"><a class="tap" data-act="nav" data-path="${DASH}/now" aria-label="Back to Now" style="min-height:44px;min-width:44px;display:flex;align-items:center;color:${TOKENS.text2}">${svg(ICON.back, 22)}</a><div style="font-size:28px;font-weight:700;letter-spacing:-.4px">Cameras</div></div>${banner}${master}`;
+  }
+
+  function sectionCamera(hass, camera, now) {
+    const c = CAMERAS.find((x) => x.k === camera);
+    const s = cameraStatus(hass, c, now);
+    const cls = s.key === 'live' ? 'tag ok' : s.key === 'private' ? 'tag off' : 'tag';
+    const sub = s.offline ? `Offline${s.since ? ' · ' + s.since : ''}` : s.live ? (s.person ? 'Person in view' : 'No one in view') : 'Camera is off';
+    const head = `<div class="tog"><div style="display:flex;align-items:center;gap:10px">${svg(ICON.camera, 20)}<div><div class="h">${c.name}</div><div class="s">${esc(sub)}</div></div></div><span class="${cls}">${esc(s.tag)}</span></div>`;
+    const toggle = s.offline ? '' : `<button class="tog tap" data-act="toggle" data-entity="${cameraSwitch(c.k)}" aria-pressed="${s.live}"><div><div class="h">Camera on</div><div class="s">${s.live ? 'Tap to turn off' : 'Tap to turn on'}</div></div><span class="sw${s.live ? '' : ' off'}" role="img" aria-label="${s.live ? 'On' : 'Off'}"></span></button>`;
+    return `<div class="card">${head}${toggle}</div>`;
+  }
+
+  // Now: one row, quiet when all is as expected, amber when a camera is offline.
+  function sectionCamerasCard(hass, now) {
+    const sum = camerasSummary(hass, now);
+    if (!CAMERAS.some((c) => stateObj(hass, cameraSwitch(c.k)))) return '';
+    const warn = sum.offline.length > 0;
+    const sub = warn ? `${sum.offline.map((x) => x.c.name).join(' · ')} offline` : sum.rule.text;
+    return `<a class="card tap" data-act="nav" data-path="${CAMERAS_PATH}" aria-label="Open cameras" style="display:flex;align-items:center;gap:12px;padding:12px 14px${warn ? ';background:' + TOKENS.amberTag : ''}"><span style="color:${warn ? TOKENS.amber : TOKENS.text2};display:flex">${svg(ICON.camera, 22)}</span><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:600">${esc(sum.title)}</div><div style="font-size:12px;color:${TOKENS.text2}">${esc(sub)}</div></div><span style="color:${TOKENS.link};display:flex">${svg('M9 5l7 7-7 7', 20)}</span></a>`;
+  }
+
   function sectionRoomFeed(hass, key, now) {
     const entries = roomFeed(hass, key);
     const body = entries.length ? feedRows(entries, now, 6) : `<div class="feed"><span class="a"></span><span style="color:${TOKENS.text2}">No activity in this room since Home Assistant started</span></div>`;
@@ -1643,11 +1715,15 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     'house-mode': (h, c, n) => sectionHouseMode(h, n),
     'house-people': (h) => sectionHousePeople(h),
     'house-heating': (h) => sectionHouseHeating(h),
+    'cameras-card': (h, c, n) => sectionCamerasCard(h, n),
+    'cameras-head': (h, c, n) => sectionCamerasHead(h, n),
+    camera: (h, c, n) => sectionCamera(h, c.camera, n),
   };
   const ROOM_MODES = ['room-head', 'why', 'scenes', 'media', 'automations', 'room-feed'];
 
   function validate(config) {
     if (!isObj(config) || !MODES[config.mode]) throw new Error(`pulse-card: unknown mode "${config && config.mode}"`);
+    if (config.mode === 'camera' && !CAMERAS.some((c) => c.k === config.camera)) throw new Error(`pulse-card: mode "camera" needs a known camera, got "${config.camera}"`);
     if (ROOM_MODES.includes(config.mode) && !ROOMS[config.room]) throw new Error(`pulse-card: mode "${config.mode}" needs a known room, got "${config.room}"`);
   }
 
@@ -1675,6 +1751,11 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       case 'brightness': {
         const pct = Math.max(0, Math.min(100, Math.round(Number(value))));
         return pct === 0 ? callService(hass, 'light', 'turn_off', { entity_id: id }) : callService(hass, 'light', 'turn_on', { entity_id: id, brightness_pct: pct });
+      }
+      case 'cameras-all': {
+        const known = CAMERAS.filter((c) => usable(state(hass, cameraSwitch(c.k))));
+        const anyLive = known.some((c) => state(hass, cameraSwitch(c.k)) === 'off');
+        return Promise.all(known.map((c) => callService(hass, 'switch', anyLive ? 'turn_on' : 'turn_off', { entity_id: cameraSwitch(c.k) })));
       }
       case 'house-modifier': {
         const option = el.dataset.option;
@@ -1704,7 +1785,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     }
   }
 
-  const api = { TILE, TILE_H, TILE_WIDE_H, tileNeededHeight, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, entrySentence, tidyVerdict, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, roomGroups, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, MOBILE, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, ALL_ROOM_KEYS, ALLOWED, render, priceColour, PRICE_STOPS, PRICE_EXTREME_P, roomModel, attentionItems, handleAction, callService, num, parseList };
+  const api = { TILE, TILE_H, TILE_WIDE_H, tileNeededHeight, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, entrySentence, tidyVerdict, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, CAMERAS_PATH, roomGroups, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, MOBILE, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, ALL_ROOM_KEYS, ALLOWED, render, priceColour, PRICE_STOPS, PRICE_EXTREME_P, roomModel, attentionItems, handleAction, callService, num, parseList };
   root.PulseLib = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 
