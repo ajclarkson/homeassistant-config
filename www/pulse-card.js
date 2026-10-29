@@ -741,7 +741,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   function attentionCard(hass, k, items) {
     const m = roomModel(hass, k);
     const lines = [];
-    if (m.target_reason && m.target !== null) lines.push(`<div class="l"><b>Heating</b><span>target ${fmt1(m.target)}° (${esc(m.target_reason)})${m.mode_name && m.mode_target !== null ? `. Normally ${esc(m.mode_name)}, ${fmt1(m.mode_target)}°.` : '.'}</span></div>`);
+    if (m.target_reason && m.target !== null) lines.push(`<div class="l"><b>Heating</b><span>target ${fmt1(m.target)}° (${esc(m.target_reason)})${m.mode_name && m.mode_target !== null ? ` · normally ${esc(m.mode_name)} ${fmt1(m.mode_target)}°` : ''}</span></div>`);
     if (m.pres_labels.length) lines.push(`<div class="l"><b>Held occupied</b><span>${esc(m.pres_labels.join(' · '))}</span></div>`);
     for (const i of items.filter((x) => x.key === k)) lines.push(`<div class="l"><b>${esc(itemLabel(i, m))}</b><span>${esc(itemDetail(i, m))}</span></div>`);
     const tags = m.labels.concat(m.heat_labels.filter((l) => !m.labels.includes(l))).map((l) => `<span class="tag">${esc(l)}</span>`).join('');
@@ -903,7 +903,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 
   function priceChart(rates, now, day) {
     const slots = rateBands(rates, now);
-    if (slots.length === 0) return `<div style="font-size:12px;color:${TOKENS.text2};margin-top:12px">No price data for today.</div>`;
+    if (slots.length === 0) return `<div style="font-size:12px;color:${TOKENS.text2};margin-top:12px">No price data for today</div>`;
     const n = slots.length;
     const lo = Math.min(0, ...slots.map((x) => x.v));
     let hi = Math.max(0, ...slots.map((x) => x.v));
@@ -1073,12 +1073,12 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const control = `<div class="segs">${seg('today', 'Today')}${seg('tomorrow', 'Tomorrow')}</div>`;
     if (slots.length === 0) {
       const late = day === 'tomorrow';
-      return `${control}<div class="card pad"><div style="font-size:14px;font-weight:600">${late ? 'Tomorrow\'s rates are not in yet' : 'No price data for today'}</div><div style="font-size:12.5px;color:${TOKENS.text2};margin-top:4px;line-height:1.4">${late ? 'Tomorrow\'s rates are published late afternoon.' : 'The rates list is empty or unavailable.'}</div></div>${windowsCard(hass, [], at)}`;
+      return `${control}<div class="card pad"><div style="font-size:14px;font-weight:600">${late ? 'Tomorrow\'s rates are not in yet' : 'No price data for today'}</div><div style="font-size:12.5px;color:${TOKENS.text2};margin-top:4px;line-height:1.4">${late ? 'Tomorrow\'s rates are published late afternoon' : 'The rates list is empty or unavailable'}</div></div>${windowsCard(hass, [], at)}`;
     }
     const st = energyStats(slots);
     const stat = (k, v, sub, col) => `<div class="card stat"><div class="k">${k}</div><div class="v" style="${col ? 'color:' + col : ''}">${v}</div><div class="s">${sub}</div></div>`;
     const stats = `<div style="display:flex;gap:8px">${stat('Cheapest', penceText(st.cheapest.v), 'at ' + st.cheapest.time, priceColour(st.cheapest.v, { text: true }))}${stat('Dearest', penceText(st.dearest.v), 'at ' + st.dearest.time, priceColour(st.dearest.v, { text: true }))}${stat('Average', penceText(st.avg), 'per kWh', priceColour(st.avg, { text: true }))}</div>`;
-    return `${control}<div class="card pad">${priceChart(rates, at, day)}<div style="font-size:11.5px;color:${TOKENS.text3};margin-top:8px">Drag across the chart to read any half hour.</div></div>${stats}${windowsCard(hass, slots, at)}`;
+    return `${control}<div class="card pad">${priceChart(rates, at, day)}<div style="font-size:11.5px;color:${TOKENS.text3};margin-top:8px">Drag across the chart to read any half hour</div></div>${stats}${windowsCard(hass, slots, at)}`;
   }
 
   function windowsCard(hass, slots, at) {
@@ -1104,7 +1104,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const g = 'sensor.octopus_energy_gas_e6s15257822462_2986733608_previous_accumulative';
     return `<div class="lbl" style="margin:4px 4px -10px">Cost (latest published day)</div>
 <div style="display:flex;gap:8px">${costTile(hass, 'Electricity', `${e}_cost`, `${e}_consumption`)}${costTile(hass, 'Gas', `${g}_cost`, `${g}_consumption_kwh`)}</div>
-<div style="font-size:11.5px;color:${TOKENS.text3};margin:-6px 4px 0">Octopus publishes about 1-2 days late, so these cover an earlier day, not today.</div>`;
+<div style="font-size:11.5px;color:${TOKENS.text3};margin:-6px 4px 0">Octopus publishes about 1-2 days late, so these cover an earlier day, not today</div>`;
   }
 
   // ── Daily cost history (recorder long-term statistics) ────────────────────────────────────────
@@ -1231,12 +1231,12 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const days = Array.isArray(h.days) ? h.days : [];
     let body;
     if (h.status === 'loading') body = `<div style="font-size:13px;color:${TOKENS.text2}">Loading history…</div>`;
-    else if (h.status !== 'ok' || days.length === 0) body = `<div style="font-size:14px;font-weight:600">History unavailable</div><div style="font-size:12.5px;color:${TOKENS.text2};margin-top:4px;line-height:1.4">The recorded cost history could not be read. The latest published day is shown above.</div>`;
+    else if (h.status !== 'ok' || days.length === 0) body = `<div style="font-size:14px;font-weight:600">History unavailable</div><div style="font-size:12.5px;color:${TOKENS.text2};margin-top:4px;line-height:1.4">The recorded cost history could not be read; the latest published day is shown above</div>`;
     else {
       const id = COST_STAT[fuel];
       const total = usable(state(hass, id)) ? num(state(hass, id)) : null;
       const summary = dailySummary(days, standingNote(total, isObj(stateObj(hass, id)) ? stateObj(hass, id).attributes : {}));
-      body = `${costChart(days)}<div style="font-size:12.5px;margin-top:8px">${esc(summary)}</div><div style="font-size:11.5px;color:${TOKENS.text3};margin-top:4px">Drag across the bars to read a day. Published about 1-2 days late.</div>`;
+      body = `${costChart(days)}<div style="font-size:12.5px;margin-top:8px">${esc(summary)}</div><div style="font-size:11.5px;color:${TOKENS.text3};margin-top:4px">Drag across the bars to read a day · Published about 1-2 days late</div>`;
     }
     return `<div class="lbl" style="margin:4px 4px -10px">Daily cost</div><div class="segs">${seg('electricity', 'Electricity')}${seg('gas', 'Gas')}</div><div class="card pad">${body}</div>`;
   }
@@ -1250,7 +1250,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return `<div class="lbl" style="margin:4px 4px -10px">Usage (smart meter, live)</div>
 <div style="display:flex;gap:8px">${tile('Electricity today', 'sensor.glow_electricity_today')}${tile('Gas today', 'sensor.glow_gas_today')}</div>
 <div style="display:flex;gap:8px">${tile('Electricity this month', 'sensor.glow_electricity_month')}${tile('Gas this month', 'sensor.glow_gas_month')}</div>
-<div style="font-size:11.5px;color:${TOKENS.text3};margin:-6px 4px 0">Live from the meter; the Octopus figures above are the supplier's, days late. They are not reconciled.</div>`;
+<div style="font-size:11.5px;color:${TOKENS.text3};margin:-6px 4px 0">Live from the meter; the Octopus figures above are the supplier's, days late, and the two are not reconciled</div>`;
   }
 
   // Bins (what is due next, and when) beside Heating (boiler state, inside/outside).
@@ -1386,7 +1386,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return `<div class="lbl" style="margin:4px 4px -10px">Why it's like this</div><div class="card">${rows.join('')}</div>`;
   }
 
-  function sectionScenes(hass, key, now) {
+  function sectionScenes(hass, key, now, ui) {
     const m = roomModel(hass, key);
     const active = activeScene(hass, key);
     const cols = Math.min(4, Math.max(1, m.cfg.scenes.length));
@@ -1409,7 +1409,10 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     } else {
       foot = '<div class="note">No automation action seen since Home Assistant started · Tap a scene to set one</div>';
     }
-    return `<div class="lbl" style="margin:4px 4px -10px">Lighting</div><div class="card" style="padding:12px 12px 10px"><div class="tiles" style="grid-template-columns:repeat(${cols},minmax(0,1fr))">${tiles}</div>${foot}</div>`;
+    // Individual lights expand inside this card, under a hairline, rather than as a section of their own.
+    const exp = lightsExpander(hass, key, ui);
+    const more = exp ? `<div style="margin:10px -12px -10px;border-top:1px solid ${TOKENS.divider}">${exp}</div>` : '';
+    return `<div class="lbl" style="margin:4px 4px -10px">Lighting</div><div class="card" style="padding:12px 12px 10px"><div class="tiles" style="grid-template-columns:repeat(${cols},minmax(0,1fr))">${tiles}</div>${foot}${more}</div>`;
   }
 
   function lightCounts(hass, key) {
@@ -1419,17 +1422,16 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return { on: list.filter(([id]) => state(hass, id) === 'on').length, total: list.length };
   }
 
-  // Collapsible section kept inside the card (no expander-card): one header button with a single
+  // Collapsible list kept inside the Lighting card (no expander-card): one header row with a single
   // chevron, collapsed by default. The open flag lives in the element instance (ui.open), so hass
   // updates do not reset it.
-  function sectionLights(hass, key, ui) {
+  function lightsExpander(hass, key, ui) {
     const m = roomModel(hass, key);
     if (m.cfg.lights.length === 0) return '';
     const open = !!(ui && ui.open);
     const c = lightCounts(hass, key);
-    const head = `<button class="lh tap" data-act="lights-toggle" aria-expanded="${open}"><span style="font-size:14px;font-weight:600">${c.on} of ${c.total} on</span><span style="display:flex;color:${TOKENS.text2};transform:${open ? 'rotate(180deg)' : 'none'}">${svg(ICON.chev, 18)}</span></button>`;
-    const lbl = '<div class="lbl" style="margin:4px 4px -10px">Individual lights</div>';
-    if (!open) return `${lbl}<div class="card">${head}</div>`;
+    const head = `<button class="lh tap" data-act="lights-toggle" aria-expanded="${open}"><span style="font-size:14px;font-weight:600">Individual lights<span style="font-weight:500;color:${TOKENS.text2}"> · ${c.on} of ${c.total} on</span></span><span style="display:flex;color:${TOKENS.text2};transform:${open ? 'rotate(180deg)' : 'none'}">${svg(ICON.chev, 18)}</span></button>`;
+    if (!open) return head;
     const rows = m.cfg.lights.map(([id, label]) => {
       const s = stateObj(hass, id);
       if (!s || !usable(s.state)) return `<div class="tog"><div><div class="h">${esc(label)}</div><div class="s">${s ? 'Unavailable' : 'Not found'}</div></div></div>`;
@@ -1442,7 +1444,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       }
       return `<button class="tog tap" data-act="toggle" data-entity="${esc(id)}" aria-pressed="${on}"><div><div class="h">${esc(label)}</div><div class="s">${on ? 'On' : 'Off'}</div></div><span class="sw${on ? '' : ' off'}" role="img" aria-label="${on ? 'On' : 'Off'}"></span></button>`;
     }).join('');
-    return `${lbl}<div class="card">${head}${rows}</div>`;
+    return `${head}${rows}`;
   }
 
   function sectionMedia(hass, key) {
@@ -1504,13 +1506,12 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     tabbar: (h, c, n, ui) => sectionTabbar(c, ui),
     'room-head': (h, c) => sectionRoomHead(h, c.room),
     why: (h, c, n) => sectionWhy(h, c.room, n),
-    scenes: (h, c, n) => sectionScenes(h, c.room, n),
-    lights: (h, c, n, ui) => sectionLights(h, c.room, ui),
+    scenes: (h, c, n, ui) => sectionScenes(h, c.room, n, ui),
     media: (h, c) => sectionMedia(h, c.room),
     automations: (h, c) => sectionAutomations(h, c.room),
     'room-feed': (h, c, n) => sectionRoomFeed(h, c.room, n),
   };
-  const ROOM_MODES = ['room-head', 'why', 'scenes', 'lights', 'media', 'automations', 'room-feed'];
+  const ROOM_MODES = ['room-head', 'why', 'scenes', 'media', 'automations', 'room-feed'];
 
   function validate(config) {
     if (!isObj(config) || !MODES[config.mode]) throw new Error(`pulse-card: unknown mode "${config && config.mode}"`);
