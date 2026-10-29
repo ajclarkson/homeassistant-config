@@ -1011,7 +1011,7 @@ ok('energy view is registered and adds no write paths', () => {
   assert.equal(v.back_path, '/pulse-dashboard/now');
   assert.deepEqual(v.sections[0].cards.map((c) => c.mode), ['energy-head', 'energy-day', 'energy-cost', 'energy-history', 'energy-usage', 'tabbar']);
   assert.match(readFileSync(root + 'info-dashboard.yaml', 'utf8'), /views\/info-energy\.yaml/);
-  assert.deepEqual(Object.keys(P.ALLOWED).sort(), ['input_boolean', 'light', 'media_player', 'scene', 'switch']);
+  assert.deepEqual(Object.keys(P.ALLOWED).sort(), ['input_boolean', 'input_number', 'input_select', 'light', 'media_player', 'scene', 'switch']);
   assert.match(readFileSync(root + 'packages/frontend.yaml', 'utf8'), /pulse-card-loader\.js/);
 });
 
@@ -1099,7 +1099,7 @@ ok('history request is a read-only recorder statistics call for the two cost sen
   assert.ok(r.statistic_ids.every((id) => id.startsWith('sensor.') && !id.startsWith('octopus_energy:')));
   assert.equal(r.start_time, '2026-10-04T12:00:00.000Z');
   assert.deepEqual(r.types, ['state', 'last_reset', 'sum', 'change']);
-  assert.deepEqual(Object.keys(P.ALLOWED).sort(), ['input_boolean', 'light', 'media_player', 'scene', 'switch']);
+  assert.deepEqual(Object.keys(P.ALLOWED).sort(), ['input_boolean', 'input_number', 'input_select', 'light', 'media_player', 'scene', 'switch']);
   assert.ok(!('recorder' in P.ALLOWED) && !('mqtt' in P.ALLOWED));
 });
 
@@ -1344,7 +1344,8 @@ ok('Now v3 header is the title and mode pill only; no "Updated" text anywhere on
   const hdr = P.render('now-header', {}, mk(), NOW);
   assert.match(hdr, />Pulse</);
   assert.match(hdr, /● Normal/);
-  assert.doesNotMatch(hdr, /<a |data-path|sliders/, 'no link or icon in the title row');
+  assert.equal(count(hdr, /<a /g), 1, 'the mode pill is the only link in the title row');
+  assert.doesNotMatch(hdr, /sliders/, 'no icon in the title row');
   for (const hass of [mk(), withRooms(calmRooms(), []), withRooms(P.ROOM_ORDER.map((k) => quietRoom(k, { occupied: true })), [attn('Bedroom', 'bedroom', 'automation_disabled', 't')]), { states: {} }]) assert.doesNotMatch(nowPage(hass), /Updated/);
   assert.equal(P.render('footer', {}, mk(), NOW), '', 'the Controls tab carries the Mobile link now');
   assert.equal(count(nowPage(mk()), /data-path="\/mobile-dashboard"/g), 0);
@@ -1604,11 +1605,11 @@ ok('every non-classic Pulse view has exactly one tabbar card, last in its sectio
     assert.equal(bars[0].active, f === 'info-energy.yaml' ? 'energy' : 'now', f);
     assert.equal(bars[0].type, 'custom:pulse-card');
   }
-  assert.equal(files.filter((f) => !f.startsWith('info-classic')).length, 12); // now, energy, 10 rooms
+  assert.equal(files.filter((f) => !f.startsWith('info-classic')).length, 13); // now, energy, house, 10 rooms
 });
 
 ok('tab bar adds no write path and the module URL is untouched', () => {
-  assert.deepEqual(Object.keys(P.ALLOWED).sort(), ['input_boolean', 'light', 'media_player', 'scene', 'switch']);
+  assert.deepEqual(Object.keys(P.ALLOWED).sort(), ['input_boolean', 'input_number', 'input_select', 'light', 'media_player', 'scene', 'switch']);
   assert.match(readFileSync(root + 'packages/frontend.yaml', 'utf8'), /pulse-card-loader\.js/);
   const src = readFileSync(root + 'www/pulse-card.js', 'utf8');
   assert.doesNotMatch(src.slice(src.indexOf('function sectionTabbar'), src.indexOf('function sectionTabbar') + 900), /callService|callWS/);
@@ -1940,6 +1941,55 @@ ok('attention feed labels a motion sensor left off', () => {
   const hass = withRooms([quietRoom('bedroom')], [attn('Bedroom', 'bedroom', 'motion_disabled', 'Motion ignored, the room relies on holds')]);
   assert.match(P.render('rooms', {}, hass, NOW), /Motion sensor off/);
   assert.doesNotMatch(P.render('rooms', {}, hass, NOW), /Motion disabled/);
+});
+
+ok('house page: mode banner, modifier picker and vacation threshold write only to their fixed helpers', () => {
+  const b = (st, extra = {}) => ({ state: st, attributes: {}, ...extra });
+  const hass = mk({
+    'sensor.house_active_mode': b('away', { last_changed: '2026-10-29T10:00:00+00:00' }),
+    'input_select.house_active_mode_modifier': b('sitter'),
+    'input_number.house_automation_vacation_threshold_hours': b('48'),
+    'input_boolean.wfh_sarah': b('off'),
+  });
+  const at = Date.parse('2026-10-29T14:00:00+00:00');
+  const head = P.render('house-head', {}, hass, at);
+  assert.match(head, />House</);
+  assert.match(head, /Away/);
+  assert.match(head, /vacation heating in 44 h/);
+  assert.match(head, /Sitter modifier/);
+  const mode = P.render('house-mode', {}, hass, at);
+  assert.match(mode, /data-option="sitter"/);
+  assert.match(mode, /seg on" data-act="house-modifier" data-option="sitter"/);
+  assert.match(mode, /never goes to away or vacation/);
+  assert.match(mode, /48 h/);
+  const people = P.render('house-people', {}, hass, at);
+  assert.match(people, /data-entity="input_boolean\.wfh_adam"[^>]*aria-pressed="true"/);
+  assert.match(people, /data-entity="input_boolean\.wfh_sarah"[^>]*aria-pressed="false"/);
+  const calls = [];
+  const h2 = { ...hass, callService: (d, s, data) => calls.push([d, s, data]) };
+  P.handleAction(h2, { dataset: { act: 'house-modifier', option: 'guest' } });
+  P.handleAction(h2, { dataset: { act: 'house-threshold', delta: '-1' } });
+  P.handleAction(h2, { dataset: { act: 'house-threshold', delta: '1' } });
+  assert.deepEqual(calls, [
+    ['input_select', 'select_option', { entity_id: 'input_select.house_active_mode_modifier', option: 'guest' }],
+    ['input_number', 'set_value', { entity_id: 'input_number.house_automation_vacation_threshold_hours', value: 42 }],
+    ['input_number', 'set_value', { entity_id: 'input_number.house_automation_vacation_threshold_hours', value: 54 }],
+  ]);
+  assert.throws(() => P.handleAction(h2, { dataset: { act: 'house-modifier', option: 'bogus' } }), /unknown modifier/);
+  const edge = { ...h2, states: { ...h2.states, 'input_number.house_automation_vacation_threshold_hours': b('168') } };
+  calls.length = 0;
+  P.handleAction(edge, { dataset: { act: 'house-threshold', delta: '1' } });
+  assert.equal(calls[0][2].value, 168);
+});
+
+ok('house page is reachable from the Now header pill and the Heating card, and registered in the dashboard', () => {
+  const hdr = P.render('now-header', {}, mk(), NOW);
+  assert.match(hdr, new RegExp(`data-act="nav" data-path="${P.HOUSE_PATH}"`));
+  assert.match(P.render('bins-heating', {}, mk(), NOW), new RegExp(`data-path="${P.HOUSE_PATH}"`));
+  assert.match(readFileSync(root + 'info-dashboard.yaml', 'utf8'), /views\/info-house\.yaml/);
+  const v = yaml.load(readFileSync(root + 'views/info-house.yaml', 'utf8'));
+  assert.deepEqual(v.sections[0].cards.map((c) => c.mode), ['house-head', 'house-mode', 'house-people', 'tabbar']);
+  assert.equal(v.path, 'house');
 });
 
 console.log(`\n${n} test groups passed`);

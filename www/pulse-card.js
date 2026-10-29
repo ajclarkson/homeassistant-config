@@ -276,6 +276,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   // The separate energy page. The Details link only renders when a card names this path in
   // `details_path`, and only when that view exists in info-dashboard.yaml (tests enforce both).
   const ENERGY_PATH = `${DASH}/energy`;
+  const HOUSE_PATH = `${DASH}/house`;
   const RECENT_MS = 15 * 60 * 1000;
 
 
@@ -289,6 +290,8 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     switch: ['turn_on', 'turn_off'],
     media_player: ['media_play_pause', 'volume_set', 'turn_on', 'turn_off'],
     input_boolean: ['turn_on', 'turn_off'],
+    input_select: ['select_option'],
+    input_number: ['set_value'],
   };
 
   const PLUMBING_DECISIONS = ['update_external_temp', 'record'];
@@ -580,7 +583,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   function sectionNowHeader(hass) {
     const mode = state(hass, 'sensor.house_active_mode');
     const mod = state(hass, 'input_select.house_active_mode_modifier');
-    const pill = usable(mode) ? `<div class="tag ok" style="padding:3px 9px">● ${esc(mode.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase()))}${usable(mod) && mod !== 'none' ? ' · ' + esc(mod) : ''}</div>` : '';
+    const pill = usable(mode) ? `<a class="tag ok tap" data-act="nav" data-path="${HOUSE_PATH}" aria-label="Open house settings" style="padding:3px 9px;text-decoration:none">● ${esc(mode.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase()))}${usable(mod) && mod !== 'none' ? ' · ' + esc(mod) : ''}</a>` : '';
     return `<div style="display:flex;align-items:center;gap:10px;min-height:44px"><div style="font-size:28px;font-weight:700;letter-spacing:-.4px">Pulse</div>${pill}</div>`;
   }
 
@@ -1275,7 +1278,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const outside = num(attr(hass, 'weather.forecast_home', 'temperature'));
     const patio = state(hass, 'input_boolean.patio_door_heating_suspended') === 'on' ? ' · patio open' : '';
     const hSub = [inside !== null ? `in ${fmt1(inside)}°` : '', outside !== null ? `out ${fmt1(outside)}°` : ''].filter(Boolean).join(' · ') + patio || 'no readings';
-    return `<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px"><div class="card" style="padding:12px 14px${soon ? ';background:' + TOKENS.amberTag : ''}"><div class="lbl">Bins</div><div style="font-size:15px;font-weight:600;margin-top:4px${soon ? ';color:' + TOKENS.amber : ''}">${esc(binTitle)}</div><div style="font-size:12px;color:${soon ? TOKENS.amber : TOKENS.text2}">${esc(binSub)}</div></div><div class="card" style="padding:12px 14px"><div class="lbl">Heating</div><div style="font-size:15px;font-weight:600;margin-top:4px">${esc(hTitle)}</div><div style="font-size:12px;color:${TOKENS.text2}">${esc(hSub)}</div></div></div>`;
+    return `<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px"><div class="card" style="padding:12px 14px${soon ? ';background:' + TOKENS.amberTag : ''}"><div class="lbl">Bins</div><div style="font-size:15px;font-weight:600;margin-top:4px${soon ? ';color:' + TOKENS.amber : ''}">${esc(binTitle)}</div><div style="font-size:12px;color:${soon ? TOKENS.amber : TOKENS.text2}">${esc(binSub)}</div></div><a class="card tap" data-act="nav" data-path="${HOUSE_PATH}" aria-label="Open house settings" style="padding:12px 14px;display:block"><div class="lbl">Heating</div><div style="font-size:15px;font-weight:600;margin-top:4px">${esc(hTitle)}</div><div style="font-size:12px;color:${TOKENS.text2}">${esc(hSub)}</div></a></div>`;
   }
 
   function sectionFeed(hass, now) {
@@ -1499,6 +1502,75 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return `<div class="lbl" style="margin:4px 4px -10px">Automations</div><div class="card">${rows.join('')}</div>`;
   }
 
+  // ── House page ───────────────────────────────────────────────────────────────────────────────
+  // The house-wide settings. Writes go to fixed helper ids (never an id read from the page), so the
+  // select and number services can only reach these two helpers.
+  const HOUSE_MODIFIER = 'input_select.house_active_mode_modifier';
+  const HOUSE_VACATION_HOURS = 'input_number.house_automation_vacation_threshold_hours';
+  const MODIFIERS = {
+    none: { label: 'None', sub: 'The house follows its modes and presence' },
+    guest: { label: 'Guest', sub: 'Home office held occupied, its lights stay on through sleep, cameras left alone when away' },
+    sitter: { label: 'Sitter', sub: 'The house stays in normal mode while empty, so it never goes to away or vacation' },
+  };
+  const VACATION_MIN_H = 1;
+  const VACATION_MAX_H = 168;
+  const vacationStep = (h) => (h < 24 ? 1 : 6);
+
+  // What the house mode does, in the words a person uses.
+  function houseModeText(mode, hass, now) {
+    const since = parseTs(stateObj(hass, 'sensor.house_active_mode') && stateObj(hass, 'sensor.house_active_mode').last_changed);
+    switch (mode) {
+      case 'normal': return { title: 'At home', body: 'Rooms follow their schedules and presence' };
+      case 'sleep': return { title: 'Asleep', body: 'Heating at night baseline · kitchen camera on for Mo' };
+      case 'away': {
+        const h = num(state(hass, HOUSE_VACATION_HOURS));
+        const left = since !== null && h !== null ? since + h * 3600000 - now : null;
+        const vac = left === null ? '' : left <= 0 ? ' · vacation heating is due' : ` · vacation heating in ${left >= 3600000 ? Math.round(left / 3600000) + ' h' : Math.max(1, Math.round(left / 60000)) + ' min'}`;
+        return { title: 'Away', body: `Heating at night baseline · cameras on${vac}` };
+      }
+      case 'vacation': return { title: 'On holiday', body: 'Heating at minimum' };
+      default: return { title: usable(mode) ? mode.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase()) : 'Mode unknown', body: usable(mode) ? '' : 'No house mode is being reported' };
+    }
+  }
+
+  function sectionHouseHead(hass, now) {
+    const mode = state(hass, 'sensor.house_active_mode');
+    const t = houseModeText(mode, hass, now);
+    const since = stateObj(hass, 'sensor.house_active_mode') && stateObj(hass, 'sensor.house_active_mode').last_changed;
+    const when = usable(mode) && hhmm(since) ? ` · since ${hhmm(since)}` : '';
+    const mod = state(hass, HOUSE_MODIFIER);
+    const modText = usable(mod) && mod !== 'none' && MODIFIERS[mod] ? ` · ${MODIFIERS[mod].label} modifier` : '';
+    const banner = `<div class="card pad" style="display:flex;gap:10px;align-items:flex-start"><span class="dot${usable(mode) ? '' : ' dim'}" style="margin-top:5px"></span><div><div style="font-size:15px;font-weight:700">${esc(t.title)}</div><div style="font-size:13px;color:${TOKENS.text2};margin-top:3px;line-height:1.45">${esc(t.body)}${esc(when)}${esc(modText)}</div></div></div>`;
+    return `<div style="display:flex;align-items:center;gap:4px"><a class="tap" data-act="nav" data-path="${DASH}/now" aria-label="Back to Now" style="min-height:44px;min-width:44px;display:flex;align-items:center;color:${TOKENS.text2}">${svg(ICON.back, 22)}</a><div style="font-size:28px;font-weight:700;letter-spacing:-.4px">House</div></div>${banner}`;
+  }
+
+  function sectionHouseMode(hass, now) {
+    const mod = state(hass, HOUSE_MODIFIER);
+    const vac = num(state(hass, HOUSE_VACATION_HOURS));
+    let out = '';
+    if (usable(mod)) {
+      const segs = Object.keys(MODIFIERS).map((k) => `<button class="seg${mod === k ? ' on' : ''}" data-act="house-modifier" data-option="${k}" aria-pressed="${mod === k}">${MODIFIERS[k].label}</button>`).join('');
+      const sub = (MODIFIERS[mod] || MODIFIERS.none).sub;
+      out += `<div class="lbl" style="margin:4px 4px -10px">House mode</div><div class="card pad"><div class="segs" role="group" aria-label="Mode modifier">${segs}</div><div style="font-size:12.5px;color:${TOKENS.text2};margin-top:8px;line-height:1.45">${esc(sub)}</div></div>`;
+    }
+    if (vac !== null) {
+      const away = state(hass, 'sensor.house_active_mode') === 'away';
+      out += `<div class="card"><div class="tog"><div><div class="h">Vacation threshold</div><div class="s">${away ? 'Away now · counts from when the house went away' : 'How long away lasts before vacation heating'}</div></div><div style="display:flex;align-items:center;gap:6px"><button class="round" data-act="house-threshold" data-delta="-1" aria-label="Shorter">${svg('M5 12h14', 20)}</button><span style="min-width:44px;text-align:center;font-weight:600">${Math.round(vac)} h</span><button class="round" data-act="house-threshold" data-delta="1" aria-label="Longer">${svg('M12 5v14M5 12h14', 20)}</button></div></div></div>`;
+    }
+    return out;
+  }
+
+  function sectionHousePeople(hass) {
+    const rows = [['input_boolean.wfh_adam', 'Adam', 'person.adam'], ['input_boolean.wfh_sarah', 'Sarah', 'person.sarah']].map(([id, name, person]) => {
+      const s = state(hass, id);
+      if (!usable(s)) return '';
+      const on = s === 'on';
+      const where = state(hass, person) === 'home' ? 'Home' : usable(state(hass, person)) ? 'Away' : '';
+      return `<button class="tog tap" data-act="toggle" data-entity="${id}" aria-pressed="${on}"><div><div class="h">${name} working from home</div><div class="s">${[where, 'Set automatically from the weekly pattern, tap to override'].filter(Boolean).join(' · ')}</div></div><span class="sw${on ? '' : ' off'}" role="img" aria-label="${on ? 'On' : 'Off'}"></span></button>`;
+    }).join('');
+    return rows ? `<div class="lbl" style="margin:4px 4px -10px">People</div><div class="card">${rows}</div>` : '';
+  }
+
   function sectionRoomFeed(hass, key, now) {
     const entries = roomFeed(hass, key);
     const body = entries.length ? feedRows(entries, now, 6) : `<div class="feed"><span class="a"></span><span style="color:${TOKENS.text2}">No activity in this room since Home Assistant started</span></div>`;
@@ -1525,6 +1597,9 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     media: (h, c) => sectionMedia(h, c.room),
     automations: (h, c) => sectionAutomations(h, c.room),
     'room-feed': (h, c, n) => sectionRoomFeed(h, c.room, n),
+    'house-head': (h, c, n) => sectionHouseHead(h, n),
+    'house-mode': (h, c, n) => sectionHouseMode(h, n),
+    'house-people': (h) => sectionHousePeople(h),
   };
   const ROOM_MODES = ['room-head', 'why', 'scenes', 'media', 'automations', 'room-feed'];
 
@@ -1558,6 +1633,18 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         const pct = Math.max(0, Math.min(100, Math.round(Number(value))));
         return pct === 0 ? callService(hass, 'light', 'turn_off', { entity_id: id }) : callService(hass, 'light', 'turn_on', { entity_id: id, brightness_pct: pct });
       }
+      case 'house-modifier': {
+        const option = el.dataset.option;
+        if (!Object.prototype.hasOwnProperty.call(MODIFIERS, option)) throw new Error(`pulse-card: unknown modifier "${option}"`);
+        return callService(hass, 'input_select', 'select_option', { entity_id: HOUSE_MODIFIER, option });
+      }
+      case 'house-threshold': {
+        const cur = num(state(hass, HOUSE_VACATION_HOURS));
+        const dir = Number(el.dataset.delta) < 0 ? -1 : 1;
+        if (cur === null) return undefined;
+        const next = Math.max(VACATION_MIN_H, Math.min(VACATION_MAX_H, Math.round(cur + dir * vacationStep(dir < 0 ? cur - 1 : cur))));
+        return callService(hass, 'input_number', 'set_value', { entity_id: HOUSE_VACATION_HOURS, value: next });
+      }
       case 'media-play': return callService(hass, 'media_player', 'media_play_pause', { entity_id: id });
       case 'media-power': return callService(hass, 'media_player', ['off', 'standby'].includes(state(hass, id)) ? 'turn_on' : 'turn_off', { entity_id: id });
       case 'volume': return callService(hass, 'media_player', 'volume_set', { entity_id: id, volume_level: Math.max(0, Math.min(1, Number(value) / 100)) });
@@ -1565,7 +1652,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     }
   }
 
-  const api = { TILE, TILE_H, TILE_WIDE_H, tileNeededHeight, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, entrySentence, tidyVerdict, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, roomGroups, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, MOBILE, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, ALL_ROOM_KEYS, ALLOWED, render, priceColour, PRICE_STOPS, PRICE_EXTREME_P, roomModel, attentionItems, handleAction, callService, num, parseList };
+  const api = { TILE, TILE_H, TILE_WIDE_H, tileNeededHeight, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, entrySentence, tidyVerdict, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, roomGroups, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, MOBILE, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, ALL_ROOM_KEYS, ALLOWED, render, priceColour, PRICE_STOPS, PRICE_EXTREME_P, roomModel, attentionItems, handleAction, callService, num, parseList };
   root.PulseLib = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 
