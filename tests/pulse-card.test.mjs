@@ -82,7 +82,7 @@ ok('every mode renders for all 10 rooms with full report data (attention state)'
   noNoise(out, 'full');
   assert.match(out.status, /1 needs attention/);
   assert.match(out['room-head:bedroom'], /Heating suspended/);
-  assert.match(out['room-head:bedroom'], /Valve target/);
+  assert.match(out['room-head:bedroom'], /class="lbl">Target</);
   assert.match(out.rooms, /Bedroom details/);
   assert.match(out['why:bedroom'], /Bed occupied/);
   assert.doesNotMatch(out['why:bedroom'], /Bed occupied · Window open/);
@@ -123,7 +123,7 @@ ok('attributes arriving as JSON strings, garbage strings or wrong types', () => 
 
 ok('no-climate rooms: no numbers card, "no climate" in row', () => {
   const out = renderAll(withRooms(P.ROOM_ORDER.map(FULL), []));
-  assert.doesNotMatch(out['room-head:hallway_upstairs'], /Valve target|class="lbl">Room/);
+  assert.doesNotMatch(out['room-head:hallway_upstairs'], /class="lbl">Target|class="lbl">Room/);
   const quiet = P.render('rooms', {}, withRooms([{ k: 'hallway_upstairs', n: 'x', occupied: false, temp: null, humidity: null }], []), NOW);
   const upTile = quiet.match(/<a class="rt tap[^"]*"[^>]*room-hallway_upstairs"[\s\S]*?<\/a>/)[0];
   assert.doesNotMatch(upTile, /–/, 'no bare dash for a room without climate');
@@ -1824,7 +1824,7 @@ ok('heating holds read as heating, not occupancy: banner, heating row and occupi
   const hass = withRooms([bed], []);
   const head = P.render('room-head', { room: 'bedroom' }, hass, NOW);
   assert.match(head, /Heating suspended/);
-  assert.match(head, /Window open · valve is set to 5\.0° until all clear</);
+  assert.match(head, /Window open · set to 5\.0° until all clear</);
   const why = P.render('why', { room: 'bedroom' }, hass, NOW);
   assert.match(why, /Held at minimum 5\.0° · window open/);
   assert.doesNotMatch(why, /from safety/);
@@ -1900,6 +1900,15 @@ ok('why card says what ends a heating hold and an occupancy hold', () => {
   assert.match(motion, /No holds · empty a few minutes after the last movement/);
   const empty = P.render('why', { room: 'bedroom' }, withRooms([{ ...bed, occupied: false, pres_labels: [], heat_labels: [] }], []), NOW);
   assert.match(empty, /<div class="s">No holds<\/div>/);
+});
+
+ok('no "valve" wording in anything the user reads', () => {
+  const bed = quietRoom('bedroom', { occupied: true, target: 5, target_reason: 'window open', mode_name: 'baseline day', mode_target: 18, heat_labels: ['Window open'], labels: ['Window open'] });
+  const hass = withRooms([bed], [], { 'input_boolean.bedroom_automation_heating_enabled': { state: 'on', attributes: {} } });
+  const out = ['room-head', 'why', 'automations'].map((m) => P.render(m, { room: 'bedroom' }, hass, NOW)).join('');
+  assert.doesNotMatch(out, /valve/i);
+  assert.match(out, /Sets the target from mode, windows and schedule/);
+  assert.match(out, /Window open · set to 5\.0° and returns to baseline day \(18\.0°\) once it closes</);
 });
 
 console.log(`\n${n} test groups passed`);

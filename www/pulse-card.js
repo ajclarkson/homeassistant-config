@@ -563,9 +563,9 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       if (m.heat_labels.length && m.target_reason !== 'window open' && m.heating_source !== 'safety') {
         return { warn: true, title: why, body: 'Heating drops to minimum if it stays open' };
       }
-      const set = m.target === null ? 'The valve is held' : `The valve is set to ${fmt1(m.target)}°`;
+      const set = m.target === null ? 'held at minimum' : `set to ${fmt1(m.target)}°`;
       const ends = m.target_reason === 'window open' && m.mode_name && m.mode_target !== null ? ` and returns to ${m.mode_name} (${fmt1(m.mode_target)}°) once it closes` : ' until all clear';
-      return { warn: true, title: 'Heating suspended', body: `${why} · ${set.replace(/^The valve/, 'valve')}${ends}` };
+      return { warn: true, title: 'Heating suspended', body: `${why} · ${set}${ends}` };
     }
     if (mine.length) {
       return { warn: true, title: mine.length === 1 ? itemLabel(mine[0], m) : `${mine.length} things need attention`, body: mine.length === 1 ? itemDetail(mine[0], m) : mine.map((i) => itemDetail(i, m)).join(' · ') };
@@ -1352,7 +1352,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       const hs = heatingStatus(m);
       const status = hs ? `<div style="display:flex;align-items:center;gap:5px;font-size:12.5px;font-weight:600;margin-top:2px;color:${hs.on ? TOKENS.heat : TOKENS.text2}">${hs.on ? svg(ICON.flame, 14) : ''}${hs.text}</div>` : '';
       numbers = `<div class="two"><div class="card pad"><div class="lbl">Room</div><div class="big">${m.temp === null ? '–' : fmt1(m.temp) + '°'}</div><div style="font-size:12px;color:${TOKENS.text2};margin-top:2px">${m.humidity === null ? 'no humidity' : Math.round(m.humidity) + '% humidity'}</div></div>
-<div class="card pad"><div class="lbl">${differs ? 'Valve target' : 'Target'}</div><div class="big" style="${differs ? 'color:' + TOKENS.amber : ''}">${m.target === null ? '–' : fmt1(m.target) + '°'}</div>${status}<div style="font-size:12px;color:${TOKENS.text2};margin-top:2px">${esc(sub2)}</div></div></div>`;
+<div class="card pad"><div class="lbl">Target</div><div class="big" style="${differs ? 'color:' + TOKENS.amber : ''}">${m.target === null ? '–' : fmt1(m.target) + '°'}</div>${status}<div style="font-size:12px;color:${TOKENS.text2};margin-top:2px">${esc(sub2)}</div></div></div>`;
     }
     return `<div style="display:flex;align-items:center;gap:4px"><a class="tap" data-act="nav" data-path="${DASH}/now" aria-label="Back to Now" style="min-height:44px;min-width:44px;display:flex;align-items:center;color:${TOKENS.text2}">${svg(ICON.back, 22)}</a><div style="font-size:28px;font-weight:700;letter-spacing:-.4px">${esc(m.cfg.name)}</div></div>${banner}${numbers}`;
   }
@@ -1487,7 +1487,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       rows.push(`<button class="tog tap" data-act="toggle" data-entity="${id}" aria-pressed="${on}"><div><div class="h">${title}</div><div class="s">${sub}</div></div><span class="sw${on ? '' : ' off'}" role="img" aria-label="${on ? 'On' : 'Off'}"></span></button>`);
     };
     toggle(`input_boolean.${key}_automation_lights_enabled`, 'Lights automation', 'Decides lights from presence and time of day');
-    toggle(`input_boolean.${key}_automation_heating_enabled`, 'Heating automation', 'Sets the valve from mode, windows and schedule');
+    toggle(`input_boolean.${key}_automation_heating_enabled`, 'Heating automation', 'Sets the target from mode, windows and schedule');
     if (rows.length === 0) return '';
     return `<div class="lbl" style="margin:4px 4px -10px">Automations</div><div class="card">${rows.join('')}</div>`;
   }
