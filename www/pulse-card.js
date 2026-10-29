@@ -146,6 +146,16 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 .segs{display:flex;gap:8px;background:${TOKENS.surface};border-radius:14px;padding:4px}
 .seg{border:0;font:inherit;font-size:14px;font-weight:600;min-height:44px;border-radius:12px;cursor:pointer;flex:1;background:transparent;color:#cfd5dd}
 .seg.on{background:${TOKENS.sceneActive};color:${TOKENS.sceneActiveText}}
+.stream{background:#0c0e12;aspect-ratio:16/9;display:flex;align-items:center;justify-content:center}
+.stream ha-camera-stream{display:block;width:100%}
+.ptz{display:grid;grid-template-columns:repeat(3,48px);grid-template-rows:repeat(3,48px);gap:6px;justify-content:center;padding:12px 14px;border-top:1px solid ${TOKENS.divider}}
+.ptz button{border:0;border-radius:12px;background:${TOKENS.divider};color:${TOKENS.text};cursor:pointer;display:flex;align-items:center;justify-content:center;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.ptz button:active{transform:scale(.96)}
+.ptz button:disabled{opacity:.35;cursor:default}
+.clip{display:flex;align-items:center;gap:12px;padding:8px 14px;border-top:1px solid ${TOKENS.divider};width:100%;background:none;border-left:0;border-right:0;border-bottom:0;color:inherit;font:inherit;text-align:left;cursor:pointer;min-height:62px}
+.clip img{width:72px;height:48px;object-fit:cover;border-radius:8px;background:${TOKENS.divider};flex:none}
+.clip .t{font-size:14px;font-weight:600}
+.clip .w{font-size:12px;color:${TOKENS.text2};margin-top:2px}
 .stat{flex:1;padding:12px;min-width:0}
 .stat .k{font-size:11px;color:${TOKENS.text3};font-weight:600;letter-spacing:.4px;text-transform:uppercase}
 .stat .v{font-size:19px;font-weight:700;letter-spacing:-.3px;margin-top:4px}
@@ -290,6 +300,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     light: ['turn_on', 'turn_off'],
     switch: ['turn_on', 'turn_off'],
     media_player: ['media_play_pause', 'volume_set', 'turn_on', 'turn_off'],
+    button: ['press'],
     input_boolean: ['turn_on', 'turn_off'],
     input_select: ['select_option'],
     input_number: ['set_value'],
@@ -1635,6 +1646,54 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return { key: 'live', tag: person ? 'Live · person' : 'Live', live: true, offline: false, person };
   }
 
+  // A tap is a request, not a result: the switch can take seconds to report back, and a second tap in that
+  // gap flips the camera straight back. So a tap marks the camera pending until its state reaches what was
+  // asked for, and further taps are ignored until then or until PENDING_MS passes.
+  const PENDING_MS = 10000;
+  const camUi = (ui) => (ui && ui.cam ? ui.cam : { pending: {}, rec: {} });
+  function cameraPending(ui, k, status, now) {
+    const p = camUi(ui).pending[k];
+    if (!p || status.key === p.want) return null;
+    return { want: p.want, timedOut: now - p.at >= PENDING_MS };
+  }
+  function cameraToggle(hass, ui, k, now) {
+    const c = CAMERAS.find((x) => x.k === k);
+    if (!c) throw new Error(`pulse-card: unknown camera "${k}"`);
+    const status = cameraStatus(hass, c, now);
+    if (status.offline) return undefined;
+    const pend = cameraPending(ui, k, status, now);
+    if (pend && !pend.timedOut) return undefined;
+    ui.cam.pending[k] = { want: status.live ? 'private' : 'live', at: now };
+    return callService(hass, 'switch', status.live ? 'turn_on' : 'turn_off', { entity_id: cameraSwitch(k) });
+  }
+
+  // Frigate clips from a media_source browse result; anything without a clip or an id is dropped.
+  const CLIP_LIMIT = 20;
+  function parseClips(result, limit = CLIP_LIMIT) {
+    const kids = result && Array.isArray(result.children) ? result.children : [];
+    const out = [];
+    for (const item of kids) {
+      const e = item && item.frigate && item.frigate.event;
+      if (!e || !e.has_clip || !e.id || typeof item.media_content_id !== 'string') continue;
+      const start = num(e.start_time);
+      out.push({ id: String(e.id), mediaId: item.media_content_id, start: start === null ? null : start * 1000, label: str(e.label) || 'movement', zones: Array.isArray(e.zones) ? e.zones.map(str).filter(Boolean) : [] });
+      if (out.length >= limit) break;
+    }
+    return out;
+  }
+  const frigateClipsId = (k) => `media-source://frigate/frigate/event-search/clips////${k}/`;
+  const PTZ_DIRS = { up: '↑', left: '←', right: '→', down: '↓' };
+  // "12 min ago" for the last day, then the weekday and time.
+  const clipWhen = (ms, now) => {
+    if (ms === null) return 'Unknown time';
+    if (now - ms < 86400000) {
+      const a = ago(new Date(ms).toISOString(), now);
+      return a.replace(/^./, (x) => x.toUpperCase());
+    }
+    const d = new Date(ms);
+    return `${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getDay()]} ${hhmm(d.toISOString())}`;
+  };
+
   // What camera-mode-sync does for the current house mode; `want` is null when it leaves cameras alone.
   function cameraRule(hass) {
     const mode = state(hass, 'sensor.house_active_mode');
@@ -1666,14 +1725,53 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return `<div style="display:flex;align-items:center;gap:4px"><a class="tap" data-act="nav" data-path="${DASH}/now" aria-label="Back to Now" style="min-height:44px;min-width:44px;display:flex;align-items:center;color:${TOKENS.text2}">${svg(ICON.back, 22)}</a><div style="font-size:28px;font-weight:700;letter-spacing:-.4px">Cameras</div></div>${banner}${master}`;
   }
 
-  function sectionCamera(hass, camera, now) {
+  // `live` says whether a stream belongs above `rest`. The element draws the stream in a slot of its own that
+  // repaints never touch; render() (tests, and any caller without an element) puts a placeholder in instead.
+  function cameraParts(hass, camera, now, ui) {
     const c = CAMERAS.find((x) => x.k === camera);
-    const s = cameraStatus(hass, c, now);
-    const cls = s.key === 'live' ? 'tag ok' : s.key === 'private' ? 'tag off' : 'tag';
-    const sub = s.offline ? `Offline${s.since ? ' · ' + s.since : ''}` : s.live ? (s.person ? 'Person in view' : 'No one in view') : 'Camera is off';
-    const head = `<div class="tog"><div style="display:flex;align-items:center;gap:10px">${svg(ICON.camera, 20)}<div><div class="h">${c.name}</div><div class="s">${esc(sub)}</div></div></div><span class="${cls}">${esc(s.tag)}</span></div>`;
-    const toggle = s.offline ? '' : `<button class="tog tap" data-act="toggle" data-entity="${cameraSwitch(c.k)}" aria-pressed="${s.live}"><div><div class="h">Camera on</div><div class="s">${s.live ? 'Tap to turn off' : 'Tap to turn on'}</div></div><span class="sw${s.live ? '' : ' off'}" role="img" aria-label="${s.live ? 'On' : 'Off'}"></span></button>`;
-    return `<div class="card">${head}${toggle}</div>`;
+    const st = cameraStatus(hass, c, now);
+    const pend = cameraPending(ui, c.k, st, now);
+    const waiting = !!pend && !pend.timedOut;
+    let tag = st.tag;
+    let cls = st.key === 'live' ? 'tag ok' : st.key === 'private' ? 'tag off' : 'tag';
+    if (waiting) { tag = pend.want === 'live' ? 'Turning on…' : 'Turning off…'; cls = 'tag off'; }
+    else if (pend) { tag = 'No response'; cls = 'tag'; }
+    const sub = st.offline ? `Offline${st.since ? ' · ' + st.since : ''}` : waiting ? 'Waiting for the camera' : pend ? 'It did not change · tap to try again' : st.live ? (st.person ? 'Person in view' : 'No one in view') : 'Camera is off';
+    const head = `<div class="tog"><div style="display:flex;align-items:center;gap:10px">${svg(ICON.camera, 20)}<div><div class="h">${c.name}</div><div class="s">${esc(sub)}</div></div></div><span class="${cls}">${esc(tag)}</span></div>`;
+    const toggle = st.offline ? '' : `<button class="tog tap" data-act="camera-toggle" data-camera="${c.k}" aria-pressed="${st.live}"${waiting ? ' aria-busy="true"' : ''}><div><div class="h">Camera on</div><div class="s">${waiting ? 'Waiting for the camera' : st.live ? 'Tap to turn off' : 'Tap to turn on'}</div></div><span class="sw${st.live ? '' : ' off'}" style="${waiting ? 'opacity:.5' : ''}" role="img" aria-label="${st.live ? 'On' : 'Off'}"></span></button>`;
+    const pad = st.live ? ptzPad(hass, c) : '';
+    return { live: st.live, rest: `${head}${toggle}${pad}${recordingsBlock(hass, c, now, ui)}` };
+  }
+
+  function sectionCamera(hass, camera, now, ui) {
+    const parts = cameraParts(hass, camera, now, ui);
+    return `<div class="card">${parts.live ? `<div class="stream" data-stream="${camera}"></div>` : ''}${parts.rest}</div>`;
+  }
+
+  // Pan/tilt: hidden altogether while the camera has none of its four buttons (they are unavailable when the
+  // camera is unreachable); individual buttons disable on their own.
+  function ptzPad(hass, c) {
+    // A button reads `unknown` until its first press, which is a working button; only these two are not.
+    const avail = (d) => { const st = state(hass, `button.${c.k}_move_${d}`); return st !== '' && st !== 'unavailable'; };
+    if (!Object.keys(PTZ_DIRS).some(avail)) return '';
+    const b = (d) => `<button data-act="camera-ptz" data-camera="${c.k}" data-dir="${d}" aria-label="Move ${d}"${avail(d) ? '' : ' disabled'}>${PTZ_DIRS[d]}</button>`;
+    return `<div class="ptz"><div></div>${b('up')}<div></div>${b('left')}<div></div>${b('right')}<div></div>${b('down')}<div></div></div>`;
+  }
+
+  function recordingsBlock(hass, c, now, ui) {
+    const r = camUi(ui).rec[c.k] || { open: false };
+    const toggle = `<button class="tog tap" data-act="camera-rec" data-camera="${c.k}" aria-expanded="${!!r.open}"><div><div class="h">Recordings</div><div class="s">${r.open && r.status === 'ok' ? `${r.items.length} recent` : 'Clips of people and movement'}</div></div><span style="color:${TOKENS.text2};display:flex;transform:rotate(${r.open ? 180 : 0}deg)">${svg(ICON.chev, 20)}</span></button>`;
+    if (!r.open) return toggle;
+    const msg = (t) => `<div class="feed"><span class="a"></span><span style="color:${TOKENS.text2}">${t}</span></div>`;
+    let body;
+    if (r.status === 'loading' || !r.status) body = msg('Loading recordings…');
+    else if (r.status === 'error') body = msg("Couldn't load recordings") + `<button class="tog tap" data-act="camera-rec-refresh" data-camera="${c.k}"><div><div class="h">Try again</div></div></button>`;
+    else if (!r.items.length) body = msg('No recordings yet');
+    else body = r.items.map((it) => {
+      const what = [it.label.replace(/^./, (x) => x.toUpperCase()), it.zones.join(', ')].filter(Boolean).join(' · ');
+      return `<button class="clip" data-act="camera-clip" data-camera="${c.k}" data-clip="${esc(it.id)}"><img src="/api/frigate/notifications/${encodeURIComponent(it.id)}/snapshot.jpg" alt="" loading="lazy"><div style="flex:1;min-width:0"><div class="t">${esc(clipWhen(it.start, now))}</div><div class="w">${esc(what)}</div></div><span style="color:${TOKENS.text2};display:flex">${svg(ICON.play, 18)}</span></button>`;
+    }).join('');
+    return toggle + body;
   }
 
   // Now: one row, quiet when all is as expected, amber when a camera is offline.
@@ -1717,7 +1815,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     'house-heating': (h) => sectionHouseHeating(h),
     'cameras-card': (h, c, n) => sectionCamerasCard(h, n),
     'cameras-head': (h, c, n) => sectionCamerasHead(h, n),
-    camera: (h, c, n) => sectionCamera(h, c.camera, n),
+    camera: (h, c, n, ui) => sectionCamera(h, c.camera, n, ui),
   };
   const ROOM_MODES = ['room-head', 'why', 'scenes', 'media', 'automations', 'room-feed'];
 
@@ -1752,6 +1850,12 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         const pct = Math.max(0, Math.min(100, Math.round(Number(value))));
         return pct === 0 ? callService(hass, 'light', 'turn_off', { entity_id: id }) : callService(hass, 'light', 'turn_on', { entity_id: id, brightness_pct: pct });
       }
+      case 'camera-ptz': {
+        const k = el.dataset.camera;
+        const dir = el.dataset.dir;
+        if (!CAMERAS.some((c) => c.k === k) || !Object.prototype.hasOwnProperty.call(PTZ_DIRS, dir)) throw new Error(`pulse-card: unknown pan/tilt "${k}/${dir}"`);
+        return callService(hass, 'button', 'press', { entity_id: `button.${k}_move_${dir}` });
+      }
       case 'cameras-all': {
         const known = CAMERAS.filter((c) => usable(state(hass, cameraSwitch(c.k))));
         const anyLive = known.some((c) => state(hass, cameraSwitch(c.k)) === 'off');
@@ -1785,7 +1889,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     }
   }
 
-  const api = { TILE, TILE_H, TILE_WIDE_H, tileNeededHeight, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, entrySentence, tidyVerdict, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, CAMERAS_PATH, roomGroups, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, MOBILE, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, ALL_ROOM_KEYS, ALLOWED, render, priceColour, PRICE_STOPS, PRICE_EXTREME_P, roomModel, attentionItems, handleAction, callService, num, parseList };
+  const api = { TILE, TILE_H, TILE_WIDE_H, tileNeededHeight, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, entrySentence, tidyVerdict, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, CAMERAS_PATH, PENDING_MS, cameraParts, cameraToggle, cameraPending, parseClips, frigateClipsId, roomGroups, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, MOBILE, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, ALL_ROOM_KEYS, ALLOWED, render, priceColour, PRICE_STOPS, PRICE_EXTREME_P, roomModel, attentionItems, handleAction, callService, num, parseList };
   root.PulseLib = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 
@@ -1797,7 +1901,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         this._root = this.attachShadow({ mode: 'open' });
         this._html = null;
         this._busy = false;
-        this._ui = { tb: 'inflow', open: false, day: 'today', fuel: 'electricity', hist: { electricity: { status: 'loading', days: [] }, gas: { status: 'loading', days: [] } } };
+        this._ui = { tb: 'inflow', open: false, day: 'today', fuel: 'electricity', cam: { pending: {}, rec: {} }, hist: { electricity: { status: 'loading', days: [] }, gas: { status: 'loading', days: [] } } };
         this._histBusy = false;
         this._histSeq = 0;
         this._histAt = 0;
@@ -1826,6 +1930,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         this._hass = hass;
         this._histEnsure();
         this._paint();
+        this._syncStream();
       }
       connectedCallback() {
         this._histEnsure();
@@ -1875,6 +1980,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       _paint() {
         // Never re-render under a finger: a slider drag or a chart scrub owns the DOM until release.
         if (!this._config || !this._hass || this._busy || this._scrub.active) return;
+        if (this._config.mode === 'camera') { this._paintCamera(); return; }
         let html;
         try {
           html = render(this._config.mode, this._config, this._hass, Date.now(), this._ui);
@@ -1889,6 +1995,113 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         if (this._config.mode === 'tabbar' && !this._tbProbed) this._tabbarProbeLater();
         // The repaint replaced the chart nodes: put a live readout back instead of flickering it away.
         if (this._scrub.idx !== null) this._chartShow(this._scrub.idx, false);
+      }
+      // ── cameras ──
+      // The live stream is a real element, and moving or re-creating it restarts the video. So a camera card is
+      // built once as a shell with a stream slot, and only the part below the slot is repainted. The slot shows
+      // only while the camera is on, and the stream element exists only while the slot shows.
+      _paintCamera() {
+        let parts;
+        try {
+          parts = cameraParts(this._hass, this._config.camera, Date.now(), this._ui);
+        } catch (err) {
+          parts = { live: false, rest: `<div class="pad warn"><b>pulse-card error</b><div class="s">${esc(err && err.message)}</div></div>` };
+        }
+        if (!this._camShell) {
+          this._root.innerHTML = `<style>${STYLE}</style><div class="p"><div class="card"><div class="stream" id="cam-stream" hidden></div><div id="cam-rest"></div></div></div>`;
+          this._camShell = true;
+          this._html = null;
+        }
+        this.style.display = '';
+        if (parts.rest !== this._html) {
+          this._html = parts.rest;
+          this._root.getElementById('cam-rest').innerHTML = parts.rest;
+        }
+        this._root.getElementById('cam-stream').hidden = !parts.live;
+        this._syncStream();
+      }
+      _syncStream() {
+        if (!this._config || this._config.mode !== 'camera' || !this._hass || typeof document === 'undefined') return;
+        const slot = this._root.getElementById ? this._root.getElementById('cam-stream') : null;
+        if (!slot) return;
+        if (slot.hidden) {
+          if (this._streamEl) { this._streamEl.remove(); this._streamEl = null; }
+          return;
+        }
+        if (!this._streamEl) {
+          const el = document.createElement('ha-camera-stream');
+          el.setAttribute('muted', '');
+          el.setAttribute('controls', '');
+          el.setAttribute('playsinline', '');
+          slot.appendChild(el);
+          this._streamEl = el;
+        }
+        this._streamEl.hass = this._hass;
+        this._streamEl.stateObj = this._hass.states[`camera.${this._config.camera}`];
+      }
+      _cameraToggle(k) {
+        const res = cameraToggle(this._hass, this._ui, k, Date.now());
+        this._paint();
+        // Repaint once the wait is over so a camera that never answered says so.
+        setTimeout(() => this._paint(), PENDING_MS + 100);
+        return res;
+      }
+      async _recOpen(k, refresh) {
+        const cur = this._ui.cam.rec[k] || { open: false, status: '', items: [] };
+        if (!refresh) {
+          cur.open = !cur.open;
+          this._ui.cam.rec[k] = cur;
+          if (!cur.open) { this._paint(); return; }
+        }
+        cur.open = true;
+        cur.status = 'loading';
+        this._ui.cam.rec[k] = cur;
+        const seq = (cur.seq = (cur.seq || 0) + 1);
+        this._paint();
+        let next;
+        try {
+          if (typeof this._hass.callWS !== 'function') throw new Error('no websocket');
+          next = { status: 'ok', items: parseClips(await this._hass.callWS({ type: 'media_source/browse_media', media_content_id: frigateClipsId(k) })) };
+        } catch (e) {
+          next = { status: 'error', items: [] };
+        }
+        if (cur.seq !== seq) return;
+        Object.assign(cur, next);
+        this._paint();
+      }
+      // The player is attached to the document, outside the shadow root: a repaint of the card must not
+      // recreate the <video> and restart the clip.
+      async _playClip(k, id) {
+        const item = (this._ui.cam.rec[k] || { items: [] }).items.find((x) => x.id === id);
+        if (!item || typeof document === 'undefined') return;
+        const overlay = document.createElement('div');
+        overlay.setAttribute('role', 'dialog');
+        overlay.setAttribute('aria-label', 'Recording');
+        overlay.style.cssText = 'position:fixed;inset:0;z-index:2147483000;background:rgba(0,0,0,.94);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;gap:12px;font-family:system-ui,sans-serif';
+        const video = document.createElement('video');
+        video.controls = true;
+        video.playsInline = true;
+        video.autoplay = true;
+        video.style.cssText = 'max-width:100%;max-height:75vh;border-radius:12px;background:#000';
+        const status = document.createElement('div');
+        status.style.cssText = 'color:#a3adba;font-size:13px;min-height:18px';
+        status.textContent = 'Loading…';
+        const close = document.createElement('button');
+        close.textContent = 'Close';
+        close.style.cssText = 'min-height:44px;padding:0 28px;border:0;border-radius:22px;background:#e8ebef;color:#12151a;font:inherit;font-size:15px;font-weight:600;cursor:pointer';
+        overlay.append(video, status, close);
+        const done = () => { video.pause(); video.removeAttribute('src'); overlay.remove(); };
+        close.addEventListener('click', done);
+        overlay.addEventListener('click', (ev) => { if (ev.target === overlay) done(); });
+        document.documentElement.appendChild(overlay);
+        try {
+          const resolved = await this._hass.callWS({ type: 'media_source/resolve_media', media_content_id: item.mediaId });
+          if (!resolved || typeof resolved.url !== 'string') throw new Error('no url');
+          status.textContent = '';
+          video.src = resolved.url;
+        } catch (e) {
+          status.textContent = "Couldn't play this recording";
+        }
       }
       // ── tab bar placement ──
       _tabbarProbeLater() {
@@ -2059,6 +2272,10 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
           this._paint();
           return;
         }
+        if (el.dataset.act === 'camera-toggle') { this._cameraToggle(el.dataset.camera); return; }
+        if (el.dataset.act === 'camera-rec') { this._recOpen(el.dataset.camera, false); return; }
+        if (el.dataset.act === 'camera-rec-refresh') { this._recOpen(el.dataset.camera, true); return; }
+        if (el.dataset.act === 'camera-clip') { this._playClip(el.dataset.camera, el.dataset.clip); return; }
         if (el.dataset.act === 'lights-toggle') {
           this._ui.open = !this._ui.open;
           this._paint();

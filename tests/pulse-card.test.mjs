@@ -1011,7 +1011,7 @@ ok('energy view is registered and adds no write paths', () => {
   assert.equal(v.back_path, '/pulse-dashboard/now');
   assert.deepEqual(v.sections[0].cards.map((c) => c.mode), ['energy-head', 'energy-day', 'energy-cost', 'energy-history', 'energy-usage', 'tabbar']);
   assert.match(readFileSync(root + 'info-dashboard.yaml', 'utf8'), /views\/info-energy\.yaml/);
-  assert.deepEqual(Object.keys(P.ALLOWED).sort(), ['input_boolean', 'input_number', 'input_select', 'light', 'media_player', 'scene', 'switch']);
+  assert.deepEqual(Object.keys(P.ALLOWED).sort(), ['button', 'input_boolean', 'input_number', 'input_select', 'light', 'media_player', 'scene', 'switch']);
   assert.match(readFileSync(root + 'packages/frontend.yaml', 'utf8'), /pulse-card-loader\.js/);
 });
 
@@ -1099,7 +1099,7 @@ ok('history request is a read-only recorder statistics call for the two cost sen
   assert.ok(r.statistic_ids.every((id) => id.startsWith('sensor.') && !id.startsWith('octopus_energy:')));
   assert.equal(r.start_time, '2026-10-04T12:00:00.000Z');
   assert.deepEqual(r.types, ['state', 'last_reset', 'sum', 'change']);
-  assert.deepEqual(Object.keys(P.ALLOWED).sort(), ['input_boolean', 'input_number', 'input_select', 'light', 'media_player', 'scene', 'switch']);
+  assert.deepEqual(Object.keys(P.ALLOWED).sort(), ['button', 'input_boolean', 'input_number', 'input_select', 'light', 'media_player', 'scene', 'switch']);
   assert.ok(!('recorder' in P.ALLOWED) && !('mqtt' in P.ALLOWED));
 });
 
@@ -1609,7 +1609,7 @@ ok('every non-classic Pulse view has exactly one tabbar card, last in its sectio
 });
 
 ok('tab bar adds no write path and the module URL is untouched', () => {
-  assert.deepEqual(Object.keys(P.ALLOWED).sort(), ['input_boolean', 'input_number', 'input_select', 'light', 'media_player', 'scene', 'switch']);
+  assert.deepEqual(Object.keys(P.ALLOWED).sort(), ['button', 'input_boolean', 'input_number', 'input_select', 'light', 'media_player', 'scene', 'switch']);
   assert.match(readFileSync(root + 'packages/frontend.yaml', 'utf8'), /pulse-card-loader\.js/);
   const src = readFileSync(root + 'www/pulse-card.js', 'utf8');
   assert.doesNotMatch(src.slice(src.indexOf('function sectionTabbar'), src.indexOf('function sectionTabbar') + 900), /callService|callWS/);
@@ -1714,7 +1714,7 @@ ok('every fixed height or clipping rule is accounted for (a new one needs its ar
   const fixed = cssRules().filter((r) => px(decl(r.body, 'height'))).map((r) => r.sel).sort();
   // content boxes with a fixed height (need the arithmetic above): .rt and .rt.wide only. The rest are fixed SHAPES
   // (dots, icons, switch track and knob, slider track and thumb, the 1px visually-hidden helper) that hold no text.
-  const shapes = ['.dot', '.item svg,.ic', '.sw', '.sw::after', '.sr', '.lt input[type=range]', '.lt input[type=range]::-webkit-slider-runnable-track', '.lt input[type=range]::-webkit-slider-thumb', '.lt input[type=range]::-moz-range-track', '.lt input[type=range]::-moz-range-progress', '.lt input[type=range]::-moz-range-thumb'];
+  const shapes = ['.clip img', '.dot', '.item svg,.ic', '.sw', '.sw::after', '.sr', '.lt input[type=range]', '.lt input[type=range]::-webkit-slider-runnable-track', '.lt input[type=range]::-webkit-slider-thumb', '.lt input[type=range]::-moz-range-track', '.lt input[type=range]::-moz-range-progress', '.lt input[type=range]::-moz-range-thumb'];
   assert.deepEqual(fixed, [...shapes, '.rt', '.rt.wide'].sort());
   // .sw: a 28px track holds a 22px knob with 3px above and below
   const sw = px(decl(rule('.sw').body, 'height'));
@@ -2044,7 +2044,9 @@ ok('cameras: per-camera status from the privacy switch, master state ignores the
   assert.doesNotMatch(P.render('cameras-head', {}, sleep, NOW), /set by hand/);
   const kitchen = P.render('camera', { camera: 'kitchen' }, sleep, NOW);
   assert.match(kitchen, /Live · person/);
-  assert.match(kitchen, /data-entity="switch\.kitchen_privacy"[^>]*aria-pressed="true"/);
+  assert.match(kitchen, /data-act="camera-toggle" data-camera="kitchen" aria-pressed="true"/);
+  assert.match(kitchen, /data-stream="kitchen"/, 'a live camera has a stream slot');
+  assert.doesNotMatch(P.render('camera', { camera: 'parlour' }, sleep, NOW), /data-stream/, 'no stream slot while privacy is on');
 
   const hand = mk({ ...base, 'switch.parlour_privacy': b('off'), 'sensor.house_active_mode': b('normal') });
   assert.match(P.render('cameras-head', {}, hand, NOW), /set by hand/);
@@ -2059,7 +2061,7 @@ ok('cameras: per-camera status from the privacy switch, master state ignores the
   assert.match(oh, /card pad warn/);
   const oc = P.render('camera', { camera: 'home_office' }, offline, NOW);
   assert.match(oc, /Offline/);
-  assert.doesNotMatch(oc, /data-act="toggle"/, 'no switch for an offline camera');
+  assert.doesNotMatch(oc, /data-act="camera-toggle"/, 'no switch for an offline camera');
   const now = P.render('cameras-card', {}, offline, NOW);
   assert.match(now, new RegExp(`data-path="${P.CAMERAS_PATH}"`));
   assert.match(now, /Home office offline/);
@@ -2084,14 +2086,76 @@ ok('cameras page is registered, linked from Now, and keeps its tab bar last', ()
   const cards = v.sections[0].cards;
   assert.equal(cards[0].mode, 'cameras-head');
   assert.equal(cards[cards.length - 1].mode, 'tabbar');
-  const stacks = cards.filter((c) => c.type === 'vertical-stack');
-  assert.deepEqual(stacks.map((s) => s.cards[0].camera), ['parlour', 'kitchen', 'home_office']);
-  for (const s of stacks) {
-    assert.equal(s.cards[0].mode, 'camera');
-    assert.equal(s.cards[1].type, 'custom:camera-events-card');
-    assert.equal(s.cards[1].variant, 'pulse');
-    assert.equal(s.cards[1].privacy, `switch.${s.cards[0].camera}_privacy`);
-  }
+  assert.deepEqual(cards.filter((c) => c.mode === 'camera').map((c) => c.camera), ['parlour', 'kitchen', 'home_office']);
+  assert.ok(!JSON.stringify(v).includes('camera-events-card'), 'the page is native; the old card is not embedded');
+});
+
+ok('camera toggle is a request: pending until the state arrives, repeat taps ignored, a silent camera says so', () => {
+  const b = (st) => ({ state: st, attributes: {} });
+  const calls = [];
+  const mkh = (priv) => ({ states: { 'switch.kitchen_privacy': b(priv), 'binary_sensor.kitchen_person_occupancy': b('off') }, callService: (d, sv, data) => calls.push(`${d}.${sv}:${data.entity_id}`) });
+  const ui = { cam: { pending: {}, rec: {} } };
+  const T0 = NOW;
+  // live (privacy off): a tap asks for privacy on
+  P.cameraToggle(mkh('off'), ui, 'kitchen', T0);
+  assert.deepEqual(calls, ['switch.turn_on:switch.kitchen_privacy']);
+  // second tap 2 s later, state has not moved: ignored, and the card says it is waiting
+  P.cameraToggle(mkh('off'), ui, 'kitchen', T0 + 2000);
+  assert.equal(calls.length, 1);
+  const waiting = P.render('camera', { camera: 'kitchen' }, mkh('off'), T0 + 2000, ui);
+  assert.match(waiting, /Turning off…/);
+  assert.match(waiting, /aria-busy="true"/);
+  // state arrives: pending clears itself
+  assert.match(P.render('camera', { camera: 'kitchen' }, mkh('on'), T0 + 3000, ui), /Privacy on/);
+  assert.equal(P.cameraPending(ui, 'kitchen', { key: 'private' }, T0 + 3000), null);
+  // never arrives: after PENDING_MS it says so and a tap tries again
+  const late = P.render('camera', { camera: 'kitchen' }, mkh('off'), T0 + P.PENDING_MS + 1, ui);
+  assert.match(late, /No response/);
+  assert.match(late, /It did not change · tap to try again/);
+  P.cameraToggle(mkh('off'), ui, 'kitchen', T0 + P.PENDING_MS + 1);
+  assert.equal(calls.length, 2);
+  // an offline camera cannot be toggled; unknown cameras throw
+  assert.equal(P.cameraToggle({ states: { 'switch.kitchen_privacy': b('unavailable') }, callService: () => assert.fail('called') }, { cam: { pending: {}, rec: {} } }, 'kitchen', T0), undefined);
+  assert.throws(() => P.cameraToggle(mkh('off'), ui, 'garage', T0), /unknown camera/);
+});
+
+ok('camera pan/tilt writes only that camera\'s move buttons; the pad hides when none are available', () => {
+  const b = (st) => ({ state: st, attributes: {} });
+  const live = (extra) => ({ states: { 'switch.parlour_privacy': b('off'), ...extra } });
+  assert.doesNotMatch(P.render('camera', { camera: 'parlour' }, mk({ ...live({}).states, 'button.parlour_move_up': b('unavailable') }), NOW), /class="ptz"/);
+  const some = mk({ ...live({}).states, 'button.parlour_move_up': b('unknown'), 'button.parlour_move_left': b('unknown'), 'button.parlour_move_right': b('unknown'), 'button.parlour_move_down': b('unknown') });
+  assert.match(P.render('camera', { camera: 'parlour' }, some, NOW), /class="ptz"/);
+  const calls = [];
+  const h = { states: {}, callService: (d, s, data) => calls.push(`${d}.${s}:${data.entity_id}`) };
+  P.handleAction(h, { dataset: { act: 'camera-ptz', camera: 'home_office', dir: 'left' } });
+  assert.deepEqual(calls, ['button.press:button.home_office_move_left']);
+  assert.throws(() => P.handleAction(h, { dataset: { act: 'camera-ptz', camera: 'garage', dir: 'up' } }), /unknown pan\/tilt/);
+  assert.throws(() => P.handleAction(h, { dataset: { act: 'camera-ptz', camera: 'parlour', dir: 'reboot' } }), /unknown pan\/tilt/);
+});
+
+ok('camera recordings: Frigate clips are parsed defensively and rendered as loading, empty, error and list states', () => {
+  const ev = (id, over = {}) => ({ media_content_id: `media-source://frigate/x/${id}`, frigate: { event: { id, has_clip: true, start_time: (NOW - 600000) / 1000, label: 'person', zones: ['patio'], ...over } } });
+  const clips = P.parseClips({ children: [ev('a'), ev('b', { has_clip: false }), { media_content_id: 'x' }, null, ev('c', { zones: undefined, label: '' }), ev('', {})] });
+  assert.deepEqual(clips.map((c) => c.id), ['a', 'c']);
+  assert.equal(clips[0].mediaId, 'media-source://frigate/x/a');
+  assert.equal(clips[1].label, 'movement');
+  assert.equal(P.parseClips(null).length, 0);
+  assert.equal(P.parseClips({ children: Array.from({ length: 50 }, (_, i) => ev(String(i + 1))) }).length, 20);
+  assert.equal(P.frigateClipsId('home_office'), 'media-source://frigate/frigate/event-search/clips////home_office/');
+  const b = (st) => ({ state: st, attributes: {} });
+  const hass = mk({ 'switch.parlour_privacy': b('on') });
+  const at = (rec) => P.render('camera', { camera: 'parlour' }, hass, NOW, { cam: { pending: {}, rec: { parlour: rec } } });
+  assert.match(P.render('camera', { camera: 'parlour' }, hass, NOW), /aria-expanded="false"/);
+  assert.match(at({ open: true, status: 'loading', items: [] }), /Loading recordings…/);
+  assert.match(at({ open: true, status: 'ok', items: [] }), /No recordings yet/);
+  assert.match(at({ open: true, status: 'error', items: [] }), /Couldn't load recordings[\s\S]*data-act="camera-rec-refresh"/);
+  const list = at({ open: true, status: 'ok', items: clips });
+  assert.match(list, /2 recent/);
+  assert.match(list, /data-act="camera-clip" data-camera="parlour" data-clip="a"/);
+  assert.match(list, /10 min ago/);
+  assert.match(list, /Person · patio/);
+  assert.match(list, /snapshot\.jpg/);
+  assert.doesNotMatch(list, /<script/i);
 });
 
 console.log(`\n${n} test groups passed`);
