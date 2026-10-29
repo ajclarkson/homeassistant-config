@@ -2090,14 +2090,14 @@ ok('cameras page is registered, linked from Now, and keeps its tab bar last', ()
   assert.ok(!JSON.stringify(v).includes('camera-events-card'), 'the page is native; the old card is not embedded');
 });
 
-ok('camera toggle is a request: pending until the state arrives, repeat taps ignored, a silent camera says so', () => {
+await okAsync('camera toggle is a request: pending until the state arrives, repeat taps ignored, a silent camera says so', async () => {
   const b = (st) => ({ state: st, attributes: {} });
   const calls = [];
   const mkh = (priv) => ({ states: { 'switch.kitchen_privacy': b(priv), 'binary_sensor.kitchen_person_occupancy': b('off') }, callService: (d, sv, data) => calls.push(`${d}.${sv}:${data.entity_id}`) });
   const ui = { cam: { pending: {}, rec: {} } };
   const T0 = NOW;
   // live (privacy off): a tap asks for privacy on
-  P.cameraToggle(mkh('off'), ui, 'kitchen', T0);
+  await P.cameraToggle(mkh('off'), ui, 'kitchen', T0);
   assert.deepEqual(calls, ['switch.turn_on:switch.kitchen_privacy']);
   // second tap 2 s later, state has not moved: ignored, and the card says it is waiting
   P.cameraToggle(mkh('off'), ui, 'kitchen', T0 + 2000);
@@ -2112,7 +2112,7 @@ ok('camera toggle is a request: pending until the state arrives, repeat taps ign
   const late = P.render('camera', { camera: 'kitchen' }, mkh('off'), T0 + P.PENDING_MS + 1, ui);
   assert.match(late, /No response/);
   assert.match(late, /It did not change · tap to try again/);
-  P.cameraToggle(mkh('off'), ui, 'kitchen', T0 + P.PENDING_MS + 1);
+  await P.cameraToggle(mkh('off'), ui, 'kitchen', T0 + P.PENDING_MS + 1);
   assert.equal(calls.length, 2);
   // an offline camera cannot be toggled; unknown cameras throw
   assert.equal(P.cameraToggle({ states: { 'switch.kitchen_privacy': b('unavailable') }, callService: () => assert.fail('called') }, { cam: { pending: {}, rec: {} } }, 'kitchen', T0), undefined);
@@ -2122,7 +2122,10 @@ ok('camera toggle is a request: pending until the state arrives, repeat taps ign
 ok('camera pan/tilt writes only that camera\'s move buttons; the pad hides when none are available', () => {
   const b = (st) => ({ state: st, attributes: {} });
   const live = (extra) => ({ states: { 'switch.parlour_privacy': b('off'), ...extra } });
-  assert.doesNotMatch(P.render('camera', { camera: 'parlour' }, mk({ ...live({}).states, 'button.parlour_move_up': b('unavailable') }), NOW), /class="ptz"/);
+  const noPad = P.render('camera', { camera: 'parlour' }, mk({ ...live({}).states, 'button.parlour_move_up': b('unavailable') }), NOW);
+  assert.doesNotMatch(noPad, /class="ptz"/);
+  assert.match(noPad, /Pan\/tilt is not available right now/);
+  assert.doesNotMatch(P.render('camera', { camera: 'parlour' }, mk({ 'switch.parlour_privacy': b('on') }), NOW), /Pan\/tilt/, 'nothing about pan/tilt while the camera is off');
   const some = mk({ ...live({}).states, 'button.parlour_move_up': b('unknown'), 'button.parlour_move_left': b('unknown'), 'button.parlour_move_right': b('unknown'), 'button.parlour_move_down': b('unknown') });
   assert.match(P.render('camera', { camera: 'parlour' }, some, NOW), /class="ptz"/);
   const calls = [];
@@ -2156,6 +2159,37 @@ ok('camera recordings: Frigate clips are parsed defensively and rendered as load
   assert.match(list, /Person · patio/);
   assert.match(list, /snapshot\.jpg/);
   assert.doesNotMatch(list, /<script/i);
+});
+
+await okAsync('camera toggle retries a rejected command once, then reports it was not accepted; the command names a state so a retry is safe', async () => {
+  const b = (st) => ({ state: st, attributes: {} });
+  const run = async (failures) => {
+    const calls = [];
+    let left = failures;
+    const hass = { states: { 'switch.kitchen_privacy': b('off') }, callService: (d, s, data) => { calls.push(`${d}.${s}`); if (left-- > 0) return Promise.reject(new Error('timeout')); return Promise.resolve(); } };
+    const ui = { cam: { pending: {}, rec: {} } };
+    const seen = [];
+    const done = P.cameraToggle(hass, ui, 'kitchen', NOW, () => seen.push(P.cameraPending(ui, 'kitchen', { key: 'live' }, NOW + 1000)));
+    await done;
+    return { calls, ui, seen, hass };
+  };
+  const once = await run(1);
+  assert.deepEqual(once.calls, ['switch.turn_on', 'switch.turn_on'], 'one retry, same direction');
+  assert.equal(once.seen[0].retrying, true);
+  assert.equal(once.ui.cam.pending.kitchen.failed, false);
+  const twice = await run(2);
+  assert.equal(twice.calls.length, 2, 'never more than one retry');
+  assert.equal(twice.ui.cam.pending.kitchen.failed, true);
+  const page = P.render('camera', { camera: 'kitchen' }, twice.hass, NOW + 1000, twice.ui);
+  assert.match(page, /Not accepted/);
+  assert.match(page, /did not accept the command · tap to try again/);
+  const retrying = P.render('camera', { camera: 'kitchen' }, once.hass, NOW + 1000, { cam: { pending: { kitchen: { want: 'private', at: NOW, inflight: true, retried: true, failed: false } }, rec: {} } });
+  assert.match(retrying, /Retrying…/);
+  assert.match(retrying, /missed the first try/);
+  // a request still in flight is not reported as a timeout, but nothing waits forever
+  const flight = { cam: { pending: { kitchen: { want: 'private', at: NOW, inflight: true, retried: false, failed: false } }, rec: {} } };
+  assert.equal(P.cameraPending(flight, 'kitchen', { key: 'live' }, NOW + P.PENDING_MS + 1).timedOut, false);
+  assert.equal(P.cameraPending(flight, 'kitchen', { key: 'live' }, NOW + 3 * P.PENDING_MS).timedOut, true);
 });
 
 console.log(`\n${n} test groups passed`);

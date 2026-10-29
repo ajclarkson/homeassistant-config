@@ -1651,20 +1651,30 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   // asked for, and further taps are ignored until then or until PENDING_MS passes.
   const PENDING_MS = 10000;
   const camUi = (ui) => (ui && ui.cam ? ui.cam : { pending: {}, rec: {} });
+  // failed: both attempts were rejected. A request still in flight is not a timeout, and nothing waits forever.
   function cameraPending(ui, k, status, now) {
     const p = camUi(ui).pending[k];
     if (!p || status.key === p.want) return null;
-    return { want: p.want, timedOut: now - p.at >= PENDING_MS };
+    const age = now - p.at;
+    return { want: p.want, retrying: !!p.retried && !p.failed, failed: !!p.failed, timedOut: !!p.failed || (!p.inflight && age >= PENDING_MS) || age >= 3 * PENDING_MS };
   }
-  function cameraToggle(hass, ui, k, now) {
+  // The Tapo cameras sometimes drop the first command (10 s read timeout) and take the next. The command is
+  // idempotent (it names a state, not a flip), so one automatic retry is safe. `repaint` runs on each change.
+  function cameraToggle(hass, ui, k, now, repaint) {
     const c = CAMERAS.find((x) => x.k === k);
     if (!c) throw new Error(`pulse-card: unknown camera "${k}"`);
     const status = cameraStatus(hass, c, now);
     if (status.offline) return undefined;
     const pend = cameraPending(ui, k, status, now);
     if (pend && !pend.timedOut) return undefined;
-    ui.cam.pending[k] = { want: status.live ? 'private' : 'live', at: now };
-    return callService(hass, 'switch', status.live ? 'turn_on' : 'turn_off', { entity_id: cameraSwitch(k) });
+    const p = { want: status.live ? 'private' : 'live', at: now, inflight: true, retried: false, failed: false };
+    ui.cam.pending[k] = p;
+    const send = () => callService(hass, 'switch', status.live ? 'turn_on' : 'turn_off', { entity_id: cameraSwitch(k) });
+    const changed = () => { if (typeof repaint === 'function') repaint(); };
+    return Promise.resolve(send())
+      .catch(() => { p.retried = true; changed(); return send(); })
+      .catch(() => { p.failed = true; })
+      .then(() => { p.inflight = false; changed(); });
   }
 
   // Frigate clips from a media_source browse result; anything without a clip or an id is dropped.
@@ -1734,9 +1744,9 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const waiting = !!pend && !pend.timedOut;
     let tag = st.tag;
     let cls = st.key === 'live' ? 'tag ok' : st.key === 'private' ? 'tag off' : 'tag';
-    if (waiting) { tag = pend.want === 'live' ? 'Turning on…' : 'Turning off…'; cls = 'tag off'; }
-    else if (pend) { tag = 'No response'; cls = 'tag'; }
-    const sub = st.offline ? `Offline${st.since ? ' · ' + st.since : ''}` : waiting ? 'Waiting for the camera' : pend ? 'It did not change · tap to try again' : st.live ? (st.person ? 'Person in view' : 'No one in view') : 'Camera is off';
+    if (waiting) { tag = pend.retrying ? 'Retrying…' : pend.want === 'live' ? 'Turning on…' : 'Turning off…'; cls = 'tag off'; }
+    else if (pend) { tag = pend.failed ? 'Not accepted' : 'No response'; cls = 'tag'; }
+    const sub = st.offline ? `Offline${st.since ? ' · ' + st.since : ''}` : waiting ? (pend.retrying ? 'The camera missed the first try' : 'Waiting for the camera') : pend ? (pend.failed ? 'The camera did not accept the command · tap to try again' : 'It did not change · tap to try again') : st.live ? (st.person ? 'Person in view' : 'No one in view') : 'Camera is off';
     const head = `<div class="tog"><div style="display:flex;align-items:center;gap:10px">${svg(ICON.camera, 20)}<div><div class="h">${c.name}</div><div class="s">${esc(sub)}</div></div></div><span class="${cls}">${esc(tag)}</span></div>`;
     const toggle = st.offline ? '' : `<button class="tog tap" data-act="camera-toggle" data-camera="${c.k}" aria-pressed="${st.live}"${waiting ? ' aria-busy="true"' : ''}><div><div class="h">Camera on</div><div class="s">${waiting ? 'Waiting for the camera' : st.live ? 'Tap to turn off' : 'Tap to turn on'}</div></div><span class="sw${st.live ? '' : ' off'}" style="${waiting ? 'opacity:.5' : ''}" role="img" aria-label="${st.live ? 'On' : 'Off'}"></span></button>`;
     const pad = st.live ? ptzPad(hass, c) : '';
@@ -1748,12 +1758,12 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return `<div class="card">${parts.live ? `<div class="stream" data-stream="${camera}"></div>` : ''}${parts.rest}</div>`;
   }
 
-  // Pan/tilt: hidden altogether while the camera has none of its four buttons (they are unavailable when the
-  // camera is unreachable); individual buttons disable on their own.
+  // Pan/tilt: while none of the four buttons is reachable (the Tapo integration marks them unavailable with
+  // privacy on and is slow to bring them back) the pad gives way to a line saying so; single buttons disable.
   function ptzPad(hass, c) {
     // A button reads `unknown` until its first press, which is a working button; only these two are not.
     const avail = (d) => { const st = state(hass, `button.${c.k}_move_${d}`); return st !== '' && st !== 'unavailable'; };
-    if (!Object.keys(PTZ_DIRS).some(avail)) return '';
+    if (!Object.keys(PTZ_DIRS).some(avail)) return `<div class="feed"><span class="a"></span><span style="color:${TOKENS.text2}">Pan/tilt is not available right now</span></div>`;
     const b = (d) => `<button data-act="camera-ptz" data-camera="${c.k}" data-dir="${d}" aria-label="Move ${d}"${avail(d) ? '' : ' disabled'}>${PTZ_DIRS[d]}</button>`;
     return `<div class="ptz"><div></div>${b('up')}<div></div>${b('left')}<div></div>${b('right')}<div></div>${b('down')}<div></div></div>`;
   }
@@ -2040,7 +2050,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         this._streamEl.stateObj = this._hass.states[`camera.${this._config.camera}`];
       }
       _cameraToggle(k) {
-        const res = cameraToggle(this._hass, this._ui, k, Date.now());
+        const res = cameraToggle(this._hass, this._ui, k, Date.now(), () => this._paint());
         this._paint();
         // Repaint once the wait is over so a camera that never answered says so.
         setTimeout(() => this._paint(), PENDING_MS + 100);
