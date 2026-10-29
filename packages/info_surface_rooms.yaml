@@ -215,6 +215,12 @@ template:
                 {% set out.items = out.items + [{'room': r['n'], 'key': k, 'kind': 'automation_disabled',
                   'text': (off | join(' and ') | capitalize) ~ ' automation off', 'nav': r['nav']}] %}
               {% endif %}
+              {# The PIR gate off means motion is ignored entirely; easy to forget, and the room then looks permanently vacant. #}
+              {% set mg = 'input_boolean.' ~ k ~ '_sensor_motion_enabled' %}
+              {% if is_state(mg, 'off') and (age(mg) | trim | float(-1)) > disabled_s %}
+                {% set out.items = out.items + [{'room': r['n'], 'key': k, 'kind': 'motion_disabled',
+                  'text': 'Motion ignored, the room relies on holds', 'nav': r['nav']}] %}
+              {% endif %}
               {# A presence reason makes an override expected for longer; with none it is probably forgotten. #}
               {% set hold_s = hold_presence_s if r['pres_labels'] else hold_bare_s %}
               {% if r['override'] and (age('input_boolean.' ~ k ~ '_automation_presence_override') | trim | float(-1)) > hold_s %}

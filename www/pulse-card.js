@@ -430,6 +430,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       case 'window_open_heating_on': return 'Window open, heating on';
       case 'automation_disabled': return 'Automation off';
       case 'hold_active': return 'Override on';
+      case 'motion_disabled': return 'Motion sensor off';
       case 'sensor_unavailable': return 'Sensor unavailable';
       case 'sensor_stale': return 'Sensor not updating';
       case 'cold_not_heating': return 'Too cold, heating off';
