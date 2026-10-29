@@ -1512,6 +1512,14 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     guest: { label: 'Guest', sub: 'Home office held occupied, its lights stay on through sleep, cameras left alone when away' },
     sitter: { label: 'Sitter', sub: 'The house stays in normal mode while empty, so it never goes to away or vacation' },
   };
+  // Heating numbers: the page names a key from this table, never an entity id, so set_value can only reach these.
+  const HOUSE_NUMBERS = {
+    baseline_day: { id: 'input_number.global_temperature_baseline_day', title: 'Day baseline', min: 0, max: 25, step: 0.5, unit: '°' },
+    baseline_night: { id: 'input_number.global_temperature_baseline_night', title: 'Night baseline', min: 0, max: 25, step: 0.5, unit: '°' },
+    comfort: { id: 'input_number.global_temperature_comfort', title: 'Comfort', min: 0, max: 25, step: 0.5, unit: '°' },
+    minimum: { id: 'input_number.global_temperature_minimum', title: 'Minimum', min: 0, max: 25, step: 0.5, unit: '°' },
+    window_grace: { id: 'input_number.global_heating_window_open_grace_minutes', title: 'Window open grace', min: 0, max: 30, step: 1, unit: ' min' },
+  };
   const VACATION_MIN_H = 1;
   const VACATION_MAX_H = 168;
   const vacationStep = (h) => (h < 24 ? 1 : 6);
@@ -1560,6 +1568,40 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return out;
   }
 
+  // Same stepper as the vacation threshold, driven by a HOUSE_NUMBERS key.
+  function numberRow(hass, key, sub) {
+    const d = HOUSE_NUMBERS[key];
+    const v = num(state(hass, d.id));
+    if (v === null) return '';
+    const shown = d.step < 1 ? v.toFixed(1) : String(Math.round(v));
+    return `<div class="tog"><div><div class="h">${d.title}</div><div class="s">${esc(sub)}</div></div><div style="display:flex;align-items:center;gap:6px"><button class="round" data-act="house-number" data-key="${key}" data-delta="-1" aria-label="${d.title} lower">${svg('M5 12h14', 20)}</button><span style="min-width:58px;text-align:center;font-weight:600">${shown}${d.unit}</span><button class="round" data-act="house-number" data-key="${key}" data-delta="1" aria-label="${d.title} higher">${svg('M12 5v14M5 12h14', 20)}</button></div></div>`;
+  }
+
+  function sectionHouseHeating(hass) {
+    const master = state(hass, 'input_boolean.house_heating_enabled');
+    const rows = [];
+    if (usable(master)) {
+      const on = master === 'on';
+      const firing = state(hass, 'binary_sensor.house_heating_boiler_firing') === 'on';
+      const sub = on ? (firing ? 'On · boiler firing' : 'On · boiler idle') : 'Off · every room drops to its minimum';
+      rows.push(`<button class="tog tap" data-act="toggle" data-entity="input_boolean.house_heating_enabled" aria-pressed="${on}"><div><div class="h">Central heating</div><div class="s">${sub}</div></div><span class="sw${on ? '' : ' off'}" role="img" aria-label="${on ? 'On' : 'Off'}"></span></button>`);
+    }
+    const subs = {
+      baseline_day: 'Daytime target for rooms on the global setpoints',
+      baseline_night: 'Night target, also used while away',
+      comfort: 'Warmest target, used when a room calls for comfort',
+      minimum: 'Lowest target, also used on holiday and for open windows',
+      window_grace: 'How long a window or door can stay open before heating drops to minimum',
+    };
+    const temps = ['baseline_day', 'baseline_night', 'comfort', 'minimum'].map((k) => numberRow(hass, k, subs[k])).join('');
+    const grace = numberRow(hass, 'window_grace', subs.window_grace);
+    const out = [];
+    if (rows.length) out.push(`<div class="lbl" style="margin:4px 4px -10px">Heating</div><div class="card">${rows.join('')}</div>`);
+    if (temps) out.push(`<div class="lbl" style="margin:4px 4px -10px">Temperature modes</div><div class="card">${temps}</div><div style="font-size:12px;color:${TOKENS.text2};margin:-6px 4px 0">Applies to every room that uses the global setpoints</div>`);
+    if (grace) out.push(`<div class="lbl" style="margin:4px 4px -10px">Safety</div><div class="card">${grace}</div>`);
+    return out.join('');
+  }
+
   function sectionHousePeople(hass) {
     const rows = [['input_boolean.wfh_adam', 'Adam', 'person.adam'], ['input_boolean.wfh_sarah', 'Sarah', 'person.sarah']].map(([id, name, person]) => {
       const s = state(hass, id);
@@ -1600,6 +1642,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     'house-head': (h, c, n) => sectionHouseHead(h, n),
     'house-mode': (h, c, n) => sectionHouseMode(h, n),
     'house-people': (h) => sectionHousePeople(h),
+    'house-heating': (h) => sectionHouseHeating(h),
   };
   const ROOM_MODES = ['room-head', 'why', 'scenes', 'media', 'automations', 'room-feed'];
 
@@ -1644,6 +1687,15 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         if (cur === null) return undefined;
         const next = Math.max(VACATION_MIN_H, Math.min(VACATION_MAX_H, Math.round(cur + dir * vacationStep(dir < 0 ? cur - 1 : cur))));
         return callService(hass, 'input_number', 'set_value', { entity_id: HOUSE_VACATION_HOURS, value: next });
+      }
+      case 'house-number': {
+        const d = Object.prototype.hasOwnProperty.call(HOUSE_NUMBERS, el.dataset.key) ? HOUSE_NUMBERS[el.dataset.key] : null;
+        if (!d) throw new Error(`pulse-card: unknown house setting "${el.dataset.key}"`);
+        const cur = num(state(hass, d.id));
+        if (cur === null) return undefined;
+        const dir = Number(el.dataset.delta) < 0 ? -1 : 1;
+        const stepped = Math.round((cur + dir * d.step) / d.step) * d.step;
+        return callService(hass, 'input_number', 'set_value', { entity_id: d.id, value: Math.max(d.min, Math.min(d.max, stepped)) });
       }
       case 'media-play': return callService(hass, 'media_player', 'media_play_pause', { entity_id: id });
       case 'media-power': return callService(hass, 'media_player', ['off', 'standby'].includes(state(hass, id)) ? 'turn_on' : 'turn_off', { entity_id: id });
