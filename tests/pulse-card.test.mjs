@@ -1988,8 +1988,39 @@ ok('house page is reachable from the Now header pill and the Heating card, and r
   assert.match(P.render('bins-heating', {}, mk(), NOW), new RegExp(`data-path="${P.HOUSE_PATH}"`));
   assert.match(readFileSync(root + 'info-dashboard.yaml', 'utf8'), /views\/info-house\.yaml/);
   const v = yaml.load(readFileSync(root + 'views/info-house.yaml', 'utf8'));
-  assert.deepEqual(v.sections[0].cards.map((c) => c.mode), ['house-head', 'house-mode', 'house-people', 'tabbar']);
+  assert.deepEqual(v.sections[0].cards.map((c) => c.mode), ['house-head', 'house-mode', 'house-people', 'house-heating', 'tabbar']);
   assert.equal(v.path, 'house');
+});
+
+ok('house heating section: central heating toggle, temperature steppers and window grace write to fixed helpers within range', () => {
+  const b = (st) => ({ state: st, attributes: {} });
+  const hass = mk({
+    'input_boolean.house_heating_enabled': b('off'),
+    'input_number.global_temperature_baseline_day': b('19.5'),
+    'input_number.global_temperature_baseline_night': b('17'),
+    'input_number.global_temperature_comfort': b('24.5'),
+    'input_number.global_temperature_minimum': b('0'),
+    'input_number.global_heating_window_open_grace_minutes': b('5'),
+  });
+  const out = P.render('house-heating', {}, hass, NOW);
+  assert.match(out, /data-entity="input_boolean\.house_heating_enabled"[^>]*aria-pressed="false"/);
+  assert.match(out, /Off · every room drops to its minimum/);
+  assert.match(out, /Day baseline[\s\S]*19\.5°/);
+  assert.match(out, /Window open grace[\s\S]*5 min/);
+  assert.match(out, /Applies to every room that uses the global setpoints/);
+  assert.doesNotMatch(P.render('house-heating', {}, mk(), NOW), /Temperature modes/, 'hides what it cannot read');
+  const calls = [];
+  const h2 = { ...hass, callService: (d, s, data) => calls.push([d, s, data]) };
+  const step = (key, delta) => P.handleAction(h2, { dataset: { act: 'house-number', key, delta } });
+  step('baseline_day', '1');
+  step('baseline_night', '-1');
+  step('comfort', '1');
+  step('minimum', '-1');
+  step('window_grace', '1');
+  assert.deepEqual(calls.map((c) => c[2].value), [20, 16.5, 25, 0, 6]);
+  assert.ok(calls.every((c) => c[0] === 'input_number' && c[1] === 'set_value' && /^input_number\.global_/.test(c[2].entity_id)));
+  assert.throws(() => step('house_heating_enabled', '1'), /unknown house setting/);
+  assert.throws(() => step('__proto__', '1'), /unknown house setting/);
 });
 
 console.log(`\n${n} test groups passed`);

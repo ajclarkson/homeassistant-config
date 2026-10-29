@@ -11,5 +11,6 @@ sections:
       - {type: custom:pulse-card, mode: house-head}
       - {type: custom:pulse-card, mode: house-mode}
       - {type: custom:pulse-card, mode: house-people}
+      - {type: custom:pulse-card, mode: house-heating}
       # Bottom tab bar: fixed when HA's ancestors allow it, otherwise an in-flow bar (see pulse-card.js).
       - {type: custom:pulse-card, mode: tabbar, active: now}
