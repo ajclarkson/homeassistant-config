@@ -7,6 +7,9 @@
  *   title: string         Optional display title (defaults to camera name)
  *   ptz: boolean          Enable PTZ d-pad (derives button.{camera}_move_{dir})
  *   limit: number         Max recordings to show (default 40)
+ *   variant: 'pulse'      Pulse dashboard look: no header or privacy button (the Pulse card above owns
+ *                         status and the on/off switch), stream and pan/tilt only while the camera is on,
+ *                         recordings open inline instead of in a pop-up.
  *
  * Config (mode: recordings):
  *   camera: string        Frigate camera name
@@ -34,7 +37,8 @@ class CameraEventsCard extends HTMLElement {
     if (first && this.isConnected) this._init();
     if (this._config.mode === 'full') {
       if (this._streamEl) this._streamEl.hass = hass;
-      this._updateStatus();
+      if (this._config.variant === 'pulse') this._syncPulse();
+      else this._updateStatus();
     }
   }
 
@@ -43,6 +47,8 @@ class CameraEventsCard extends HTMLElement {
     this._initialized = true;
     if (this._config.mode === 'recordings') {
       this._buildRecordingsShell();
+    } else if (this._config.variant === 'pulse') {
+      this._buildPulseShell();
     } else {
       this._buildFullShell();
     }
@@ -161,10 +167,106 @@ class CameraEventsCard extends HTMLElement {
     }
   }
 
+  // ── Pulse variant ────────────────────────────────────────────────────────
+
+  _buildPulseShell() {
+    const { ptz } = this._config;
+    this.innerHTML = `
+<style>
+  .pc { font-family: var(--primary-font-family, sans-serif); background:#1a1f26; border-radius:16px; overflow:hidden; color:#e8ebef; }
+  .pc[hidden] { display:none; }
+  .pc-stream { background:#0c0e12; aspect-ratio:16/9; display:flex; align-items:center; justify-content:center; }
+  .pc-stream[hidden], .pc-ptz[hidden], .pc-rec[hidden] { display:none; }
+  ha-camera-stream { display:block; width:100%; }
+  .pc-bar { display:flex; align-items:center; gap:12px; padding:10px 14px; }
+  .pc-btn { flex:1; min-height:44px; border:0; border-radius:12px; background:#232a33; color:#e8ebef; font:inherit; font-size:14px; font-weight:600; cursor:pointer; touch-action:manipulation; -webkit-tap-highlight-color:transparent; display:flex; align-items:center; justify-content:center; gap:8px; }
+  .pc-btn:active { transform:scale(0.99); }
+  .pc-btn.on { background:#f2c46b; color:#1d1708; }
+  .pc-ptz { display:grid; grid-template-columns:repeat(3,44px); grid-template-rows:repeat(3,44px); gap:4px; flex-shrink:0; }
+  .pc-ptz button { border:0; border-radius:10px; background:#232a33; color:#e8ebef; font-size:18px; cursor:pointer; touch-action:manipulation; -webkit-tap-highlight-color:transparent; }
+  .pc-ptz button:active { transform:scale(0.96); }
+  .pc-ptz button:disabled { opacity:0.35; cursor:default; }
+  .pc-rec { border-top:1px solid #232a33; padding:6px 0 4px; }
+  .pc-rec .cer-bar { padding:6px 14px; }
+  .pc-rec .cer-count, .pc-rec .cer-state, .pc-rec .cer-sub, .pc-rec .cer-play { color:#a3adba; }
+  .pc-rec .cer-main { color:#e8ebef; }
+  .pc-rec .cer-refresh { background:#232a33; color:#e8ebef; }
+</style>
+<div class="pc">
+  <div class="pc-stream" id="stream-wrap" hidden></div>
+  <div class="pc-bar">
+    <button class="pc-btn" id="recordings-btn" aria-expanded="false">Recordings</button>
+    ${ptz ? `<div class="pc-ptz" id="ptz" hidden>
+      <div></div><button data-ptz="up" aria-label="Pan up">↑</button><div></div>
+      <button data-ptz="left" aria-label="Pan left">←</button><div></div><button data-ptz="right" aria-label="Pan right">→</button>
+      <div></div><button data-ptz="down" aria-label="Pan down">↓</button><div></div>
+    </div>` : ''}
+  </div>
+  <div class="pc-rec" id="rec" hidden></div>
+</div>`;
+
+    this._pulseOpen = false;
+    this.querySelector('#recordings-btn').addEventListener('click', () => this._togglePulseRecordings());
+    this.querySelectorAll('[data-ptz]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        this._hass.callService('button', 'press', { entity_id: `button.${this._config.camera}_move_${btn.dataset.ptz}` });
+      });
+    });
+    this._syncPulse();
+  }
+
+  // The stream only exists while the camera is on: with privacy on there is nothing to show, and an idle
+  // stream element would keep asking for one. Pan/tilt follows the same rule and each button is disabled
+  // while its entity is unavailable.
+  _syncPulse() {
+    const { entity, privacy, ptz, camera } = this._config;
+    const sw = privacy && this._hass && this._hass.states[privacy];
+    const live = !!sw && sw.state === 'off';
+    const wrap = this.querySelector('#stream-wrap');
+    if (wrap) {
+      wrap.hidden = !live;
+      if (live && entity && !this._streamEl) {
+        const el = document.createElement('ha-camera-stream');
+        el.hass = this._hass;
+        el.stateObj = this._hass.states[entity];
+        el.setAttribute('muted', '');
+        el.setAttribute('controls', '');
+        wrap.appendChild(el);
+        this._streamEl = el;
+      } else if (!live && this._streamEl) {
+        this._streamEl.remove();
+        this._streamEl = null;
+      } else if (live && this._streamEl) {
+        this._streamEl.stateObj = this._hass.states[entity];
+      }
+    }
+    const pad = this.querySelector('#ptz');
+    if (pad && ptz) {
+      pad.hidden = !live;
+      pad.querySelectorAll('[data-ptz]').forEach(btn => {
+        const b = this._hass.states[`button.${camera}_move_${btn.dataset.ptz}`];
+        btn.disabled = !b || b.state === 'unavailable';
+      });
+    }
+  }
+
+  _togglePulseRecordings() {
+    this._pulseOpen = !this._pulseOpen;
+    const rec = this.querySelector('#rec');
+    const btn = this.querySelector('#recordings-btn');
+    rec.hidden = !this._pulseOpen;
+    btn.classList.toggle('on', this._pulseOpen);
+    btn.setAttribute('aria-expanded', String(this._pulseOpen));
+    if (!this._pulseOpen) return;
+    rec.innerHTML = this._recordingsMarkup();
+    this.querySelector('#cer-refresh').addEventListener('click', () => this._loadList());
+    this._loadList();
+  }
+
   // ── Recordings mode ──────────────────────────────────────────────────────
 
-  _buildRecordingsShell() {
-    this.innerHTML = `
+  _recordingsMarkup() {
+    return `
 <style>
   .cer { font-family: var(--primary-font-family, sans-serif); padding-bottom: 8px; }
   .cer-bar { display:flex; align-items:center; justify-content:space-between;
@@ -192,6 +294,10 @@ class CameraEventsCard extends HTMLElement {
   </div>
   <div id="cer-list"><div class="cer-state">Loading…</div></div>
 </div>`;
+  }
+
+  _buildRecordingsShell() {
+    this.innerHTML = this._recordingsMarkup();
 
     this.querySelector('#cer-refresh').addEventListener('click', () => this._loadList());
 

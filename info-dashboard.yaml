@@ -4,7 +4,9 @@
 # switch.turn_on/turn_off, media_player.media_play_pause/volume_set/turn_on/turn_off, and
 # input_boolean.turn_on/turn_off on existing automation-enabled helpers, and on the House page
 # input_select.select_option (mode modifier) and input_number.set_value (vacation threshold, global temperatures, window grace), each to a fixed helper. The list is enforced in
-# www/pulse-card.js (ALLOWED); anything else throws.
+# www/pulse-card.js (ALLOWED); anything else throws. The Cameras page also embeds the existing
+# custom:camera-events-card (variant: pulse), which makes its own button.press (pan/tilt) and Frigate
+# media_source calls; those are not Pulse write paths.
 # Mobile (/mobile-dashboard) and the wallboard are untouched and linked from Now.
 streamline_templates: !include info_templates.yaml
 
@@ -12,6 +14,7 @@ views:
   - !include views/info-now.yaml
   - !include views/info-energy.yaml
   - !include views/info-house.yaml
+  - !include views/info-cameras.yaml
   - !include views/info-room-parlour.yaml
   - !include views/info-room-kitchen.yaml
   - !include views/info-room-hallway_downstairs.yaml

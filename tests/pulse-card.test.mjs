@@ -741,7 +741,7 @@ ok('Now v2 feed limited to 3 rows, collapse kept', () => {
 ok('Now v2 view layout: one status card first, groups, prices, bins/heating, feed, footer; no old modes', () => {
   const v = yaml.load(readFileSync(root + 'views/info-now.yaml', 'utf8'));
   const modes = v.sections[0].cards.map((c) => c.mode);
-  assert.deepEqual(modes, ['now-header', 'status', 'rooms', 'bins-heating', 'feed', 'footer', 'tabbar']);
+  assert.deepEqual(modes, ['now-header', 'status', 'rooms', 'bins-heating', 'cameras-card', 'feed', 'footer', 'tabbar']);
   for (const m of modes) assert.ok(P.render(m, {}, mk(), NOW) !== undefined);
   for (const old of ['attention', 'bins', 'heating', 'energy-foot', 'energy']) assert.throws(() => P.render(old, {}, mk(), NOW), /unknown mode/, old);
 });
@@ -1337,7 +1337,7 @@ ok('rooms without a climate sensor show no temperature at all; rooms with one bu
 });
 
 // ── Now v3 ─────────────────────────────────────────────────────────────────────────────────────
-const NOW_MODES = ['now-header', 'status', 'rooms', 'bins-heating', 'feed', 'footer'];
+const NOW_MODES = ['now-header', 'status', 'rooms', 'bins-heating', 'cameras-card', 'feed', 'footer'];
 const nowPage = (hass) => NOW_MODES.map((m) => P.render(m, {}, hass, NOW)).join('\n');
 
 ok('Now v3 header is the title and mode pill only; no "Updated" text anywhere on Now; Mobile link stays at the bottom', () => {
@@ -1351,7 +1351,7 @@ ok('Now v3 header is the title and mode pill only; no "Updated" text anywhere on
   assert.equal(count(nowPage(mk()), /data-path="\/mobile-dashboard"/g), 0);
   assert.match(P.render('tabbar', { active: 'now' }, mk(), NOW, {}), /data-path="\/mobile-dashboard"[^>]*>[\s\S]*Controls/);
   const view = yaml.load(readFileSync(root + 'views/info-now.yaml', 'utf8'));
-  assert.deepEqual(view.sections[0].cards.map((c) => c.mode), ['now-header', 'status', 'rooms', 'bins-heating', 'feed', 'footer', 'tabbar']);
+  assert.deepEqual(view.sections[0].cards.map((c) => c.mode), ['now-header', 'status', 'rooms', 'bins-heating', 'cameras-card', 'feed', 'footer', 'tabbar']);
 });
 
 ok('Now v3 status card: verdict row with the sentence right-aligned, ONE chip row (nowrap, 30px), price strip link, cheapest line', () => {
@@ -1605,7 +1605,7 @@ ok('every non-classic Pulse view has exactly one tabbar card, last in its sectio
     assert.equal(bars[0].active, f === 'info-energy.yaml' ? 'energy' : 'now', f);
     assert.equal(bars[0].type, 'custom:pulse-card');
   }
-  assert.equal(files.filter((f) => !f.startsWith('info-classic')).length, 13); // now, energy, house, 10 rooms
+  assert.equal(files.filter((f) => !f.startsWith('info-classic')).length, 14); // now, energy, house, cameras, 10 rooms
 });
 
 ok('tab bar adds no write path and the module URL is untouched', () => {
@@ -2021,6 +2021,77 @@ ok('house heating section: central heating toggle, temperature steppers and wind
   assert.ok(calls.every((c) => c[0] === 'input_number' && c[1] === 'set_value' && /^input_number\.global_/.test(c[2].entity_id)));
   assert.throws(() => step('house_heating_enabled', '1'), /unknown house setting/);
   assert.throws(() => step('__proto__', '1'), /unknown house setting/);
+});
+
+ok('cameras: per-camera status from the privacy switch, master state ignores the group, house-mode rule and offline camera shown', () => {
+  const b = (st, extra = {}) => ({ state: st, attributes: {}, ...extra });
+  const base = {
+    'switch.parlour_privacy': b('on'), 'switch.kitchen_privacy': b('on'), 'switch.home_office_privacy': b('on'),
+    'group.cameras_privacy': b('off'),
+  };
+  const allOff = mk({ ...base, 'sensor.house_active_mode': b('normal') });
+  const head = P.render('cameras-head', {}, allOff, NOW);
+  assert.match(head, />Cameras</);
+  assert.match(head, /All cameras off/, 'a lying group state does not make cameras look on');
+  assert.match(head, /House is at home · cameras off/);
+  assert.doesNotMatch(head, /set by hand/);
+  assert.match(head, /data-act="cameras-all"[^>]*aria-pressed="false"/);
+  assert.match(P.render('camera', { camera: 'kitchen' }, allOff, NOW), /Privacy on/);
+
+  const sleep = mk({ ...base, 'switch.kitchen_privacy': b('off'), 'binary_sensor.kitchen_person_occupancy': b('on'), 'sensor.house_active_mode': b('sleep') });
+  assert.match(P.render('cameras-head', {}, sleep, NOW), /Kitchen on/);
+  assert.match(P.render('cameras-head', {}, sleep, NOW), /only the kitchen camera is on, for Mo/);
+  assert.doesNotMatch(P.render('cameras-head', {}, sleep, NOW), /set by hand/);
+  const kitchen = P.render('camera', { camera: 'kitchen' }, sleep, NOW);
+  assert.match(kitchen, /Live · person/);
+  assert.match(kitchen, /data-entity="switch\.kitchen_privacy"[^>]*aria-pressed="true"/);
+
+  const hand = mk({ ...base, 'switch.parlour_privacy': b('off'), 'sensor.house_active_mode': b('normal') });
+  assert.match(P.render('cameras-head', {}, hand, NOW), /set by hand/);
+
+  const guestAway = mk({ ...base, 'sensor.house_active_mode': b('away'), 'input_select.house_active_mode_modifier': b('guest') });
+  assert.match(P.render('cameras-head', {}, guestAway, NOW), /guest is staying/);
+  assert.doesNotMatch(P.render('cameras-head', {}, guestAway, NOW), /set by hand/);
+
+  const offline = mk({ ...base, 'switch.home_office_privacy': b('unavailable', { last_changed: '2026-10-26T12:00:00+00:00' }), 'sensor.house_active_mode': b('normal') });
+  const oh = P.render('cameras-head', {}, offline, NOW);
+  assert.match(oh, /Home office offline/);
+  assert.match(oh, /card pad warn/);
+  const oc = P.render('camera', { camera: 'home_office' }, offline, NOW);
+  assert.match(oc, /Offline/);
+  assert.doesNotMatch(oc, /data-act="toggle"/, 'no switch for an offline camera');
+  const now = P.render('cameras-card', {}, offline, NOW);
+  assert.match(now, new RegExp(`data-path="${P.CAMERAS_PATH}"`));
+  assert.match(now, /Home office offline/);
+  assert.equal(P.render('cameras-card', {}, { states: {} }, NOW), '', 'no camera entities, no card');
+  assert.throws(() => P.render('camera', { camera: 'garage' }, allOff, NOW), /known camera/);
+});
+
+ok('cameras-all turns every readable camera off when any is live, otherwise on; writes only switch services', () => {
+  const b = (st) => ({ state: st, attributes: {} });
+  const calls = [];
+  const run = (states) => { calls.length = 0; P.handleAction({ states, callService: (d, s, data) => calls.push(`${d}.${s}:${data.entity_id}`) }, { dataset: { act: 'cameras-all' } }); return calls.slice(); };
+  assert.deepEqual(run({ 'switch.parlour_privacy': b('off'), 'switch.kitchen_privacy': b('on'), 'switch.home_office_privacy': b('unavailable') }),
+    ['switch.turn_on:switch.parlour_privacy', 'switch.turn_on:switch.kitchen_privacy']);
+  assert.deepEqual(run({ 'switch.parlour_privacy': b('on'), 'switch.kitchen_privacy': b('on'), 'switch.home_office_privacy': b('on') }),
+    ['switch.turn_off:switch.parlour_privacy', 'switch.turn_off:switch.kitchen_privacy', 'switch.turn_off:switch.home_office_privacy']);
+});
+
+ok('cameras page is registered, linked from Now, and keeps its tab bar last', () => {
+  assert.match(readFileSync(root + 'info-dashboard.yaml', 'utf8'), /views\/info-cameras\.yaml/);
+  const v = yaml.load(readFileSync(root + 'views/info-cameras.yaml', 'utf8'));
+  assert.equal(v.path, 'cameras');
+  const cards = v.sections[0].cards;
+  assert.equal(cards[0].mode, 'cameras-head');
+  assert.equal(cards[cards.length - 1].mode, 'tabbar');
+  const stacks = cards.filter((c) => c.type === 'vertical-stack');
+  assert.deepEqual(stacks.map((s) => s.cards[0].camera), ['parlour', 'kitchen', 'home_office']);
+  for (const s of stacks) {
+    assert.equal(s.cards[0].mode, 'camera');
+    assert.equal(s.cards[1].type, 'custom:camera-events-card');
+    assert.equal(s.cards[1].variant, 'pulse');
+    assert.equal(s.cards[1].privacy, `switch.${s.cards[0].camera}_privacy`);
+  }
 });
 
 console.log(`\n${n} test groups passed`);
