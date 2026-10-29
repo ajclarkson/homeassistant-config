@@ -1295,7 +1295,7 @@ ok('held-occupied wording has no redundancy', () => {
   const m = quietRoom('parlour', { occupied: true, pres_labels: ['Sofa occupied'], labels: ['Sofa occupied'], verdict: 'Occupied · lights on · held occupied by Sofa occupied' });
   const hass = withRooms([m], []);
   const why = P.render('why', { room: 'parlour' }, hass, NOW);
-  assert.match(why, /<div class="s">Sofa occupied\./);
+  assert.match(why, /<div class="s">Sofa occupied<\/div>/);
   assert.doesNotMatch(why, /Held occupied|Held by|occupied by Sofa occupied|1 reason/);
   const head = P.render('room-head', { room: 'parlour' }, hass, NOW);
   assert.match(head, /Occupied · lights on/);
@@ -1810,18 +1810,18 @@ ok('heating holds read as heating, not occupancy: banner, heating row and occupi
   const hass = withRooms([bed], []);
   const head = P.render('room-head', { room: 'bedroom' }, hass, NOW);
   assert.match(head, /Heating suspended/);
-  assert.match(head, /Window open\. The valve is set to 5\.0° until all clear\./);
+  assert.match(head, /Window open · valve is set to 5\.0° until all clear</);
   const why = P.render('why', { room: 'bedroom' }, hass, NOW);
   assert.match(why, /Held at minimum 5\.0° · window open/);
   assert.doesNotMatch(why, /from safety/);
   assert.match(why, /<span class="tag">Suspended<\/span>/);
-  assert.match(why, /<div class="s">Bed occupied\.<\/div>/);
+  assert.match(why, /<div class="s">Bed occupied<\/div>/);
   assert.doesNotMatch(why, /Bed occupied · Window open|All are true/);
   // Window just opened: the hold is true but the controller has not forced the minimum yet.
   const grace = { ...bed, heating_source: 'schedule', heating_active: 'baseline_day', mode_name: 'baseline day', mode_target: 18, target: 18 };
   const gh = P.render('room-head', { room: 'bedroom' }, withRooms([grace], []), NOW);
   assert.doesNotMatch(gh, /Heating suspended/);
-  assert.match(gh, /Window open<\/div>[^]*Heating drops to minimum if it stays open\./);
+  assert.match(gh, /Window open<\/div>[^]*Heating drops to minimum if it stays open</);
   const gw = P.render('why', { room: 'bedroom' }, withRooms([grace], []), NOW);
   assert.match(gw, /<span class="tag">Pending<\/span>/);
   // House heating off forces the minimum with no window: name that cause.
@@ -1851,6 +1851,21 @@ ok('recent_auto_off is worded as a return after switch-off, not as the lights be
   const feed = readFileSync(root + 'packages/info_surface_feed.yaml', 'utf8');
   assert.match(feed, /'recent_auto_off': 'back soon after lights went off'/);
   assert.doesNotMatch(feed, /just switched off/);
+});
+
+ok('room page copy: subtitle lines have no trailing full stops; heading reads "Why it\'s like this"; Individual lights label sits above its card', () => {
+  const m = quietRoom('kitchen', { occupied: true, pres_labels: ['Monitor on'], labels: ['Monitor on'], heat_labels: ['Window open'], hvac_action: 'idle', target: 18, mode_target: 18, mode_name: 'baseline day', heating_active: 'baseline_day', heating_source: 'schedule' });
+  const hass = withRooms([m], []);
+  const why = P.render('why', { room: 'kitchen' }, hass, NOW);
+  assert.match(why, /Why it's like this/);
+  assert.doesNotMatch(why, /Why it is like this/);
+  assert.equal((why.match(/<div class="s">[^<]*\.<\/div>/g) || []).length, 0, 'no subtitle ends in a full stop');
+  assert.match(why, /Window open · Baseline day 18\.0° from schedule/);
+  const lights = P.render('lights', { room: 'kitchen' }, hass, NOW);
+  assert.match(lights, /^<div class="p"><div class="lbl"[^>]*>Individual lights<\/div><div class="card"><button class="lh/);
+  assert.doesNotMatch(lights, /<span class="lbl">Individual lights/);
+  const scenes = P.render('scenes', { room: 'kitchen' }, hass, NOW);
+  assert.doesNotMatch(scenes, /\.<\/div><\/div>$/);
 });
 
 console.log(`\n${n} test groups passed`);
