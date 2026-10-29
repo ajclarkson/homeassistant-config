@@ -1402,7 +1402,8 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const occ = m.occupancy_unavailable ? 'Occupancy unavailable' : m.occupied ? 'Occupied' : 'Empty';
     const pres = holds.length ? `${esc(holds.join(' · '))} · empty a few minutes after ${holds.length > 1 ? 'the last one clears' : 'it clears'}` : m.occupied ? 'No holds · empty a few minutes after the last movement' : 'No holds';
     const ovr = m.override_text ? ` · ${esc(m.override_text)}` : '';
-    rows.push(`<div class="item">${svg(ICON.person, 18)}<div><div class="h">${occ}</div><div class="s">${pres}${ovr}</div></div><span class="tag${m.override && !holds.length ? '' : ' off'}">${holds.length ? 'Held' : m.override ? 'Override' : 'Clear'}</span></div>`);
+    const noMotion = state(hass, `input_boolean.${key}_sensor_motion_enabled`) === 'off' ? ' · Motion sensor off, so movement is ignored' : '';
+    rows.push(`<div class="item">${svg(ICON.person, 18)}<div><div class="h">${occ}</div><div class="s">${pres}${ovr}${noMotion}</div></div><span class="tag${m.override && !holds.length ? '' : ' off'}">${holds.length ? 'Held' : m.override ? 'Override' : 'Clear'}</span></div>`);
     return `<div class="lbl" style="margin:4px 4px -10px">Why it's like this</div><div class="card">${rows.join('')}</div>`;
   }
 
@@ -1488,6 +1489,11 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     };
     toggle(`input_boolean.${key}_automation_lights_enabled`, 'Lights automation', 'Decides lights from presence and time of day');
     toggle(`input_boolean.${key}_automation_heating_enabled`, 'Heating automation', 'Sets the target from mode, windows and schedule');
+    const motionOn = state(hass, `input_boolean.${key}_sensor_motion_enabled`) === 'on';
+    toggle(`input_boolean.${key}_sensor_motion_enabled`, 'Motion sensor', motionOn ? 'Detecting presence' : 'Motion ignored · the room relies on holds');
+    const guest = key === 'home_office' && state(hass, 'input_select.house_active_mode_modifier') === 'guest';
+    const heldOn = state(hass, `input_boolean.${key}_automation_presence_override`) === 'on';
+    toggle(`input_boolean.${key}_automation_presence_override`, 'Keep room occupied', heldOn ? (guest ? 'Set by guest mode · lights and heating treat the room as in use' : 'Room held occupied · lights and heating treat it as in use') : 'Holds the room occupied until switched off');
     if (rows.length === 0) return '';
     return `<div class="lbl" style="margin:4px 4px -10px">Automations</div><div class="card">${rows.join('')}</div>`;
   }
