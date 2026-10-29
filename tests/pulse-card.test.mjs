@@ -1936,4 +1936,10 @@ ok('automations card toggles motion sensor and keep-room-occupied, and the why c
   assert.doesNotMatch(P.render('why', { room: 'bedroom' }, on, NOW), /Motion sensor off/);
 });
 
+ok('attention feed labels a motion sensor left off', () => {
+  const hass = withRooms([quietRoom('bedroom')], [attn('Bedroom', 'bedroom', 'motion_disabled', 'Motion ignored, the room relies on holds')]);
+  assert.match(P.render('rooms', {}, hass, NOW), /Motion sensor off/);
+  assert.doesNotMatch(P.render('rooms', {}, hass, NOW), /Motion disabled/);
+});
+
 console.log(`\n${n} test groups passed`);
