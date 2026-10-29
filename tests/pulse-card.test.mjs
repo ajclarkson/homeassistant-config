@@ -1914,4 +1914,26 @@ ok('no "valve" wording in anything the user reads', () => {
   assert.match(out, /Window open · set to 5\.0° and returns to baseline day \(18\.0°\) once it closes</);
 });
 
+ok('automations card toggles motion sensor and keep-room-occupied, and the why card says when motion is ignored', () => {
+  const b = (st) => ({ state: st, attributes: {} });
+  const hass = withRooms([quietRoom('bedroom')], [], {
+    'input_boolean.bedroom_sensor_motion_enabled': b('off'),
+    'input_boolean.bedroom_automation_presence_override': b('on'),
+  });
+  const auto = P.render('automations', { room: 'bedroom' }, hass, NOW);
+  assert.match(auto, /data-entity="input_boolean\.bedroom_sensor_motion_enabled"[^>]*aria-pressed="false"/);
+  assert.match(auto, /Motion ignored · the room relies on holds/);
+  assert.match(auto, /data-entity="input_boolean\.bedroom_automation_presence_override"[^>]*aria-pressed="true"/);
+  assert.match(auto, /Keep room occupied/);
+  assert.match(auto, /Room held occupied · lights and heating treat it as in use/);
+  assert.match(P.render('why', { room: 'bedroom' }, hass, NOW), /Motion sensor off, so movement is ignored/);
+  const guestHass = withRooms([quietRoom('home_office')], [], {
+    'input_boolean.home_office_automation_presence_override': b('on'),
+    'input_select.house_active_mode_modifier': b('guest'),
+  });
+  assert.match(P.render('automations', { room: 'home_office' }, guestHass, NOW), /Set by guest mode/);
+  const on = withRooms([quietRoom('bedroom')], [], { 'input_boolean.bedroom_sensor_motion_enabled': b('on') });
+  assert.doesNotMatch(P.render('why', { room: 'bedroom' }, on, NOW), /Motion sensor off/);
+});
+
 console.log(`\n${n} test groups passed`);
