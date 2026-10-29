@@ -64,7 +64,7 @@ const withRooms = (rooms, attention, extra = {}) => mk({
 });
 const NOISE = /undefined|NaN|\[object|null/;
 const ALL_MODES = ['now-header', 'status', 'rooms', 'bins-heating', 'feed', 'footer', 'tabbar', 'energy-head', 'energy-day', 'energy-cost', 'energy-history', 'energy-usage'];
-const ROOM_MODES = ['room-head', 'why', 'scenes', 'lights', 'media', 'automations', 'room-feed'];
+const ROOM_MODES = ['room-head', 'why', 'scenes', 'media', 'automations', 'room-feed'];
 const renderAll = (hass) => {
   const out = {};
   for (const m of ALL_MODES) out[m] = P.render(m, {}, hass, NOW);
@@ -130,7 +130,7 @@ ok('no-climate rooms: no numbers card, "no climate" in row', () => {
   assert.doesNotMatch(out['why:hallway_upstairs'], /Heating target/);
   for (const g of ['back_garden', 'front_garden']) {
     assert.match(out[`room-head:${g}`], /Lights only/);
-    assert.equal(out[`lights:${g}`], '');
+    assert.doesNotMatch(out[`scenes:${g}`], /lights-toggle/);
     assert.equal(out[`why:${g}`], '');
   }
 });
@@ -160,24 +160,25 @@ ok('scene tiles use the spike scene map and highlight the active scene', () => {
   for (const [k, ids] of Object.entries(want)) assert.deepEqual([...P.ROOMS[k].scenes].sort(), [...ids].sort(), k);
 });
 
-ok('individual lights: collapsed by default with one chevron, expanded shows sliders/toggles/missing honestly', () => {
-  const closed = P.render('lights', { room: 'parlour' }, mk(), NOW);
+ok('individual lights: collapsed by default inside the Lighting card with one chevron, expanded shows sliders/toggles/missing honestly', () => {
+  const closed = P.render('scenes', { room: 'parlour' }, mk(), NOW);
   assert.match(closed, /aria-expanded="false"/);
-  assert.match(closed, /2 of 5 on/);
+  assert.match(closed, /Individual lights<span[^>]*> · 2 of 5 on/);
+  assert.equal((closed.match(/Lighting<\/div>/g) || []).length, 1, 'no second section header');
   assert.doesNotMatch(closed, /type="range"|class="tog/);
-  assert.equal((closed.match(/<svg/g) || []).length, 1, 'a single chevron, no second dropdown arrow');
-  const open = P.render('lights', { room: 'parlour' }, mk(), NOW, { open: true });
+  assert.equal((closed.match(/M6 9l6 6 6-6/g) || []).length, 1, 'a single chevron, no second dropdown arrow');
+  const open = P.render('scenes', { room: 'parlour' }, mk(), NOW, { open: true });
   assert.match(open, /aria-expanded="true"/);
   assert.equal((open.match(/data-act="lights-toggle"/g) || []).length, 1);
   assert.match(open, /type="range"[^>]*data-entity="light.parlour_light_floor_lamp"/);
   assert.match(open, /style="--p:40%"/);
   assert.match(open, /data-act="toggle" data-entity="switch.parlour_plug_table_lamp"/);
   assert.match(open, /Not found/);
-  assert.match(P.render('lights', { room: 'parlour' }, withRooms([{ ...FULL('parlour'), lights_on: 3, lights_total: 5 }], []), NOW), /3 of 5 on/);
+  assert.match(P.render('scenes', { room: 'parlour' }, withRooms([{ ...FULL('parlour'), lights_on: 3, lights_total: 5 }], []), NOW), /3 of 5 on/);
   for (const k of P.ALL_ROOM_KEYS) {
     const want = P.ROOMS[k].lights.length === 0;
-    assert.equal(P.render('lights', { room: k }, mk(), NOW) === '', want, `${k} collapsed`);
-    assert.equal(P.render('lights', { room: k }, mk(), NOW, { open: true }) === '', want, `${k} open`);
+    assert.equal(P.render('scenes', { room: k }, mk(), NOW).includes('lights-toggle'), !want, `${k} collapsed`);
+    assert.equal(P.render('scenes', { room: k }, mk(), NOW, { open: true }).includes('lights-toggle'), !want, `${k} open`);
   }
   noNoise({ open }, 'lights open');
   assert.throws(() => P.render('lights-title', { room: 'parlour' }, mk(), NOW), /unknown mode/);
@@ -1295,7 +1296,7 @@ ok('held-occupied wording has no redundancy', () => {
   const m = quietRoom('parlour', { occupied: true, pres_labels: ['Sofa occupied'], labels: ['Sofa occupied'], verdict: 'Occupied · lights on · held occupied by Sofa occupied' });
   const hass = withRooms([m], []);
   const why = P.render('why', { room: 'parlour' }, hass, NOW);
-  assert.match(why, /<div class="s">Sofa occupied\./);
+  assert.match(why, /<div class="s">Sofa occupied<\/div>/);
   assert.doesNotMatch(why, /Held occupied|Held by|occupied by Sofa occupied|1 reason/);
   const head = P.render('room-head', { room: 'parlour' }, hass, NOW);
   assert.match(head, /Occupied · lights on/);
@@ -1810,18 +1811,18 @@ ok('heating holds read as heating, not occupancy: banner, heating row and occupi
   const hass = withRooms([bed], []);
   const head = P.render('room-head', { room: 'bedroom' }, hass, NOW);
   assert.match(head, /Heating suspended/);
-  assert.match(head, /Window open\. The valve is set to 5\.0° until all clear\./);
+  assert.match(head, /Window open · valve is set to 5\.0° until all clear</);
   const why = P.render('why', { room: 'bedroom' }, hass, NOW);
   assert.match(why, /Held at minimum 5\.0° · window open/);
   assert.doesNotMatch(why, /from safety/);
   assert.match(why, /<span class="tag">Suspended<\/span>/);
-  assert.match(why, /<div class="s">Bed occupied\.<\/div>/);
+  assert.match(why, /<div class="s">Bed occupied<\/div>/);
   assert.doesNotMatch(why, /Bed occupied · Window open|All are true/);
   // Window just opened: the hold is true but the controller has not forced the minimum yet.
   const grace = { ...bed, heating_source: 'schedule', heating_active: 'baseline_day', mode_name: 'baseline day', mode_target: 18, target: 18 };
   const gh = P.render('room-head', { room: 'bedroom' }, withRooms([grace], []), NOW);
   assert.doesNotMatch(gh, /Heating suspended/);
-  assert.match(gh, /Window open<\/div>[^]*Heating drops to minimum if it stays open\./);
+  assert.match(gh, /Window open<\/div>[^]*Heating drops to minimum if it stays open</);
   const gw = P.render('why', { room: 'bedroom' }, withRooms([grace], []), NOW);
   assert.match(gw, /<span class="tag">Pending<\/span>/);
   // House heating off forces the minimum with no window: name that cause.
@@ -1837,7 +1838,7 @@ ok('heating holds read as heating, not occupancy: banner, heating row and occupi
 ok('room page puts lighting straight under the head, before the chart and the why card', () => {
   const cards = loadYaml('info_templates.yaml').pulse_room.card.cards;
   const order = cards.map((c) => (c.type === 'conditional' ? 'chart' : c.mode));
-  assert.deepEqual(order, ['room-head', 'scenes', 'lights', 'chart', 'why', 'media', 'automations', 'room-feed']);
+  assert.deepEqual(order, ['room-head', 'scenes', 'chart', 'why', 'media', 'automations', 'room-feed']);
 });
 
 ok('speaker play button is quiet unless playing; the amber pause button marks active playback', () => {
@@ -1851,6 +1852,25 @@ ok('recent_auto_off is worded as a return after switch-off, not as the lights be
   const feed = readFileSync(root + 'packages/info_surface_feed.yaml', 'utf8');
   assert.match(feed, /'recent_auto_off': 'back soon after lights went off'/);
   assert.doesNotMatch(feed, /just switched off/);
+});
+
+ok('room page copy: subtitle lines have no trailing full stops; heading reads "Why it\'s like this"; Individual lights label sits above its card', () => {
+  const m = quietRoom('kitchen', { occupied: true, pres_labels: ['Monitor on'], labels: ['Monitor on'], heat_labels: ['Window open'], hvac_action: 'idle', target: 18, mode_target: 18, mode_name: 'baseline day', heating_active: 'baseline_day', heating_source: 'schedule' });
+  const hass = withRooms([m], []);
+  const why = P.render('why', { room: 'kitchen' }, hass, NOW);
+  assert.match(why, /Why it's like this/);
+  assert.doesNotMatch(why, /Why it is like this/);
+  assert.equal((why.match(/<div class="s">[^<]*\.<\/div>/g) || []).length, 0, 'no subtitle ends in a full stop');
+  assert.match(why, /Window open · Baseline day 18\.0° from schedule/);
+  const lights = P.render('scenes', { room: 'kitchen' }, hass, NOW);
+  assert.doesNotMatch(lights, /<div class="lbl"[^>]*>Individual lights/);
+  assert.doesNotMatch(lights, /<span class="lbl">Individual lights/);
+  const scenes = P.render('scenes', { room: 'kitchen' }, hass, NOW);
+  assert.doesNotMatch(scenes, /\.<\/div><\/div>$/);
+  const att = P.render('rooms', {}, withRooms(calmRooms({ bedroom: { occupied: true, target: 5, target_reason: 'window open', mode_name: 'baseline day', mode_target: 18, heat_labels: ['Window open'], labels: ['Window open'] } }), [attn('Bedroom', 'bedroom', 'window_open_heating_on', 'Open window')]), NOW);
+  assert.match(att, /target 5\.0° \(window open\) · normally baseline day 18\.0°<\/span>/);
+  const energy = P.render('energy-day', {}, mk(), NOW, { day: 'today' });
+  assert.doesNotMatch(energy, /\.<\/div>/, 'energy notes end without a full stop');
 });
 
 console.log(`\n${n} test groups passed`);
