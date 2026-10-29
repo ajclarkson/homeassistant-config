@@ -135,24 +135,37 @@ ok('no-climate rooms: no numbers card, "no climate" in row', () => {
   }
 });
 
-ok('manual marker set vs null', () => {
+ok('manual marker: the Lighting card shows state only; the Why card explains who set it and what ends it', () => {
   const manual = { source: 'wall_button', ts: '2026-10-25T18:40:00+00:00', what: 'Wall button: scene cycled' };
-  const set = P.render('scenes', { room: 'parlour' }, withRooms([{ ...FULL('parlour'), manual }], []), NOW);
-  assert.match(set, /<span class="tag">Manual · wall button · 2 min ago<\/span>/);
-  assert.match(set, /Stays until the room is empty/);
-  assert.doesNotMatch(set, /Last automation event|sleep hold/);
-  assert.doesNotMatch(set, /Automation last acted|may change them again|Wall button: scene cycled/);
-  assert.equal((set.match(/Manual/g) || []).length, 1, 'one clear line');
-  const dash = P.render('scenes', { room: 'parlour' }, withRooms([{ ...FULL('parlour'), manual: { source: 'dashboard', ts: '2026-10-25T18:40:00+00:00', what: 'lamps scene' }, lights_why: '' }], []), NOW);
-  assert.match(dash, /Manual · dashboard · 2 min ago/);
-  assert.match(dash, /<div class="note"[^>]*>lamps scene · Stays until the room is empty<\/div>/);
-  const none = P.render('scenes', { room: 'parlour' }, withRooms([FULL('parlour')], []), NOW);
-  assert.doesNotMatch(none, /Manual ·/);
-  assert.match(none, /Set by automation at/);
-  const noWhy = P.render('scenes', { room: 'parlour' }, withRooms([{ ...FULL('parlour'), lights_why: '', manual: null }], []), NOW);
-  assert.match(noWhy, /No automation action seen/);
+  const room = (over) => withRooms([{ ...FULL('parlour'), pres_labels: [], labels: [], ...over }], []);
+  const set = P.render('scenes', { room: 'parlour' }, room({ manual }), NOW);
+  assert.match(set, /<span class="tag">Manual<\/span>/);
+  assert.equal((set.match(/Manual/g) || []).length, 1, 'a bare chip, no explanation');
+  assert.doesNotMatch(set, /class="note"|wall button|ago|Stays until|Set by automation|Tap a scene/);
   assert.match(set, /aria-pressed="true"/); // lamps is active
   assert.match(set, /data-entity="scene.parlour_lamps"/);
+  const none = P.render('scenes', { room: 'parlour' }, room({ manual: null }), NOW);
+  assert.doesNotMatch(none, /Manual|class="note"/);
+  const why = (over) => P.render('why', { room: 'parlour' }, room(over), NOW);
+  const wall = why({ manual });
+  assert.match(wall, /<span class="tag">Manual<\/span>/);
+  assert.match(wall, /Wall button at 18:40 · stays until the room is empty/);
+  assert.doesNotMatch(wall, /scene cycled/, 'what the wall button did is not repeated');
+  const dash = why({ manual: { source: 'dashboard', ts: '2026-10-25T18:40:00+00:00', what: 'lamps scene' } });
+  assert.match(dash, /Dashboard at 18:40: lamps scene · stays until the room is empty/);
+  const auto = why({ manual: null, lights_on: 2, lights_why: 'sleep hold', lights_ts: '2026-10-25T18:30:00+00:00' });
+  assert.match(auto, /<span class="tag ok">Auto<\/span>/);
+  assert.match(auto, /Sleep hold at 18:30 · off when the room empties/);
+  const hold = why({ manual: null, lights_on: 2, pres_labels: ['Monitor on'], labels: ['Monitor on'] });
+  assert.match(hold, /<span class="tag off">Hold<\/span>/);
+  assert.match(hold, /stays on while Monitor on/);
+  const off = why({ manual: null, lights_on: 0, pres_labels: ['Monitor on'], labels: ['Monitor on'] });
+  assert.doesNotMatch(off, /stays on while/, 'a held room with the lights off does not claim they stay on');
+  const disabled = why({ manual, lights_enabled: false });
+  assert.match(disabled, /<span class="tag">Automation off<\/span>/);
+  assert.match(disabled, /Lights automation is off · they change only by hand/);
+  assert.doesNotMatch(disabled, /<span class="tag ok">Auto<\/span>/);
+  assert.match(why({ manual: null, lights_why: '' }), /No lighting decision seen since Home Assistant started/);
 });
 
 ok('scene tiles use the spike scene map and highlight the active scene', () => {
@@ -1296,7 +1309,7 @@ ok('held-occupied wording has no redundancy', () => {
   const m = quietRoom('parlour', { occupied: true, pres_labels: ['Sofa occupied'], labels: ['Sofa occupied'], verdict: 'Occupied · lights on · held occupied by Sofa occupied' });
   const hass = withRooms([m], []);
   const why = P.render('why', { room: 'parlour' }, hass, NOW);
-  assert.match(why, /<div class="s">Sofa occupied<\/div>/);
+  assert.match(why, /<div class="s">Sofa occupied · empty a few minutes after it clears<\/div>/);
   assert.doesNotMatch(why, /Held occupied|Held by|occupied by Sofa occupied|1 reason/);
   const head = P.render('room-head', { room: 'parlour' }, hass, NOW);
   assert.match(head, /Occupied · lights on/);
@@ -1816,7 +1829,7 @@ ok('heating holds read as heating, not occupancy: banner, heating row and occupi
   assert.match(why, /Held at minimum 5\.0° · window open/);
   assert.doesNotMatch(why, /from safety/);
   assert.match(why, /<span class="tag">Suspended<\/span>/);
-  assert.match(why, /<div class="s">Bed occupied<\/div>/);
+  assert.match(why, /<div class="s">Bed occupied · empty a few minutes after it clears<\/div>/);
   assert.doesNotMatch(why, /Bed occupied · Window open|All are true/);
   // Window just opened: the hold is true but the controller has not forced the minimum yet.
   const grace = { ...bed, heating_source: 'schedule', heating_active: 'baseline_day', mode_name: 'baseline day', mode_target: 18, target: 18 };
@@ -1871,6 +1884,22 @@ ok('room page copy: subtitle lines have no trailing full stops; heading reads "W
   assert.match(att, /target 5\.0° \(window open\) · normally baseline day 18\.0°<\/span>/);
   const energy = P.render('energy-day', {}, mk(), NOW, { day: 'today' });
   assert.doesNotMatch(energy, /\.<\/div>/, 'energy notes end without a full stop');
+});
+
+ok('why card says what ends a heating hold and an occupancy hold', () => {
+  const bed = quietRoom('bedroom', { occupied: true, target: 5, mode_target: 5, mode_name: 'minimum', heating_active: 'minimum', heating_source: 'safety', hvac_action: 'idle', pres_labels: ['Bed occupied'], heat_labels: ['Window open'], labels: ['Bed occupied', 'Window open'] });
+  const why = P.render('why', { room: 'bedroom' }, withRooms([bed], []), NOW);
+  assert.match(why, /Held at minimum 5\.0° · window open · normal heating resumes when it closes/);
+  assert.match(why, /Bed occupied · empty a few minutes after it clears/);
+  const off = P.render('why', { room: 'bedroom' }, withRooms([bed], [], { 'input_boolean.house_heating_enabled': { state: 'off', attributes: {} } }), NOW);
+  assert.match(off, /stays at minimum while house heating is off/);
+  assert.doesNotMatch(off, /resumes when it closes/);
+  const two = P.render('why', { room: 'bedroom' }, withRooms([{ ...bed, pres_labels: ['Bed occupied', 'Monitor on'] }], []), NOW);
+  assert.match(two, /Bed occupied · Monitor on · empty a few minutes after the last one clears/);
+  const motion = P.render('why', { room: 'bedroom' }, withRooms([{ ...bed, pres_labels: [], heat_labels: [] }], []), NOW);
+  assert.match(motion, /No holds · empty a few minutes after the last movement/);
+  const empty = P.render('why', { room: 'bedroom' }, withRooms([{ ...bed, occupied: false, pres_labels: [], heat_labels: [] }], []), NOW);
+  assert.match(empty, /<div class="s">No holds<\/div>/);
 });
 
 console.log(`\n${n} test groups passed`);

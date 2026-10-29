@@ -1357,13 +1357,32 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return `<div style="display:flex;align-items:center;gap:4px"><a class="tap" data-act="nav" data-path="${DASH}/now" aria-label="Back to Now" style="min-height:44px;min-width:44px;display:flex;align-items:center;color:${TOKENS.text2}">${svg(ICON.back, 22)}</a><div style="font-size:28px;font-weight:700;letter-spacing:-.4px">${esc(m.cfg.name)}</div></div>${banner}${numbers}`;
   }
 
+  // The lights row of the Why card: who set the lights and what would change them. Presence holds keep a
+  // room occupied, so no "room emptied" event fires and the lights stay as they are until the last hold
+  // clears; a manual change persists the same way, because the controller only acts on triggers.
+  function lightsExplain(m) {
+    const cap = (t) => t.replace(/^./, (c) => c.toUpperCase());
+    const at = (ts) => (ts ? ' at ' + hhmm(ts) : '');
+    const holds = m.pres_labels.join(' · ');
+    const auto = m.lights_why ? `${cap(m.lights_why)}${at(m.lights_ts)}` : 'No lighting decision seen since Home Assistant started';
+    if (!m.lights_enabled) return { tag: '<span class="tag">Automation off</span>', sub: 'Lights automation is off · they change only by hand' };
+    if (m.manual) {
+      const how = cap(SOURCE_WORDS[m.manual.source] || m.manual.source);
+      const what = m.manual.source !== 'wall_button' && m.manual.what ? `: ${m.manual.what}` : '';
+      return { tag: '<span class="tag">Manual</span>', sub: `${how}${at(m.manual.ts)}${what} · stays until the room is empty` };
+    }
+    if (holds) return { tag: '<span class="tag off">Hold</span>', sub: m.lights_on > 0 ? `${auto} · stays on while ${holds}` : auto };
+    return { tag: '<span class="tag ok">Auto</span>', sub: m.lights_on > 0 ? `${auto} · off when the room empties` : auto };
+  }
+
   function sectionWhy(hass, key, now) {
     const m = roomModel(hass, key);
     if (!m.hasReport) return '';
     const scene = activeScene(hass, key);
     const rows = [];
-    const lightsTag = m.manual ? '<span class="tag">Manual</span>' : m.pres_labels.length ? '<span class="tag off">Hold</span>' : '<span class="tag ok">Auto</span>';
-    const lightsSub = m.lights_why ? `${esc(m.lights_why.replace(/^./, (c) => c.toUpperCase()))}${m.lights_ts ? ' at ' + esc(hhmm(m.lights_ts)) : ''}` : 'No lighting decision seen since Home Assistant started';
+    const lx = lightsExplain(m);
+    const lightsTag = lx.tag;
+    const lightsSub = esc(lx.sub);
     rows.push(`<div class="item">${svg(ICON.bulb, 18)}<div><div class="h">${esc(m.lights_on > 0 ? lightsPhrase(m, scene) : 'Lights off')}</div><div class="s">${lightsSub}</div></div>${lightsTag}</div>`);
     if (m.cfg.climate) {
       const differs = !!m.target_reason;
@@ -1373,14 +1392,15 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       const held = !differs && m.heat_labels.length > 0;
       const minT = m.mode_target !== null ? m.mode_target : m.target;
       const cause = safetyCause(m);
-      const sub = safety ? `Held at ${esc(m.mode_name || 'minimum')}${minT !== null ? ' ' + fmt1(minT) + '°' : ''}${cause ? ' · ' + esc(cause) : ''}` : held ? `${esc(m.heat_labels.join(' · '))} · ${s}` : s;
+      const resumes = m.house_heating_off ? 'stays at minimum while house heating is off' : m.heat_labels.length ? 'normal heating resumes when it closes' : '';
+      const sub = safety ? `Held at ${esc(m.mode_name || 'minimum')}${minT !== null ? ' ' + fmt1(minT) + '°' : ''}${cause ? ' · ' + esc(cause) : ''}${resumes ? ' · ' + resumes : ''}` : held ? `${esc(m.heat_labels.join(' · '))} · ${s}` : s;
       const tag = differs ? `<span class="tag">${esc(m.target_reason.replace(/^./, (c) => c.toUpperCase()))}</span>` : safety ? '<span class="tag">Suspended</span>' : held ? '<span class="tag">Pending</span>' : m.heating_enabled === false ? '<span class="tag">Automation off</span>' : m.hvac_action === 'heating' ? '<span class="tag heat">Heating</span>' : m.hvac_action === 'idle' ? '<span class="tag off">Idle</span>' : '';
       rows.push(`<div class="item">${svg(ICON.flame, 18)}<div><div class="h">${esc(h)}</div><div class="s">${sub}</div></div>${tag}</div>`);
     }
     // Presence holds belong to the occupancy row; heating holds (window, door) to the heating row.
     const holds = m.pres_labels;
     const occ = m.occupancy_unavailable ? 'Occupancy unavailable' : m.occupied ? 'Occupied' : 'Empty';
-    const pres = holds.length ? `${esc(holds.join(' · '))}${holds.length > 1 ? ' · stays occupied until all clear' : ''}` : 'No holds';
+    const pres = holds.length ? `${esc(holds.join(' · '))} · empty a few minutes after ${holds.length > 1 ? 'the last one clears' : 'it clears'}` : m.occupied ? 'No holds · empty a few minutes after the last movement' : 'No holds';
     const ovr = m.override_text ? ` · ${esc(m.override_text)}` : '';
     rows.push(`<div class="item">${svg(ICON.person, 18)}<div><div class="h">${occ}</div><div class="s">${pres}${ovr}</div></div><span class="tag${m.override && !holds.length ? '' : ' off'}">${holds.length ? 'Held' : m.override ? 'Override' : 'Clear'}</span></div>`);
     return `<div class="lbl" style="margin:4px 4px -10px">Why it's like this</div><div class="card">${rows.join('')}</div>`;
@@ -1395,20 +1415,8 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       const ic = ICON[SCENE_ICON[id] || 'bulb'];
       return `<button class="tile${on ? ' on' : ''}" data-act="scene" data-entity="scene.${key}_${id}" aria-pressed="${on}">${svg(ic, 20)}<span>${esc(sceneLabel(id))}</span></button>`;
     }).join('');
-    let foot;
-    if (m.manual) {
-      const how = SOURCE_WORDS[m.manual.source] || m.manual.source;
-      const when = ago(m.manual.ts, now);
-      const pill = `Manual · ${how}${when ? ' · ' + when : ''}`;
-      // One quiet second line: what was done (dashboard/switch changes) and when the automation takes over
-      // again. The lighting controller only acts on triggers, so a manual scene holds until the room clears.
-      const second = [m.manual.source !== 'wall_button' && m.manual.what ? m.manual.what : '', 'Stays until the room is empty'].filter(Boolean).join(' · ');
-      foot = `<div class="mrow"><span class="tag">${esc(pill)}</span></div>${second ? `<div class="note" style="margin-top:6px">${esc(second)}</div>` : ''}`;
-    } else if (m.lights_why) {
-      foot = `<div class="note">Set by automation${m.lights_ts ? ' at ' + esc(hhmm(m.lights_ts)) : ''}: ${esc(m.lights_why)} · Tap a scene to take over</div>`;
-    } else {
-      foot = '<div class="note">No automation action seen since Home Assistant started · Tap a scene to set one</div>';
-    }
+    // State only: the Why card explains who set the lights and what ends it.
+    const foot = m.manual ? '<div class="mrow"><span class="tag">Manual</span></div>' : '';
     // Individual lights expand inside this card, under a hairline, rather than as a section of their own.
     const exp = lightsExpander(hass, key, ui);
     const more = exp ? `<div style="margin:10px -12px -10px;border-top:1px solid ${TOKENS.divider}">${exp}</div>` : '';
