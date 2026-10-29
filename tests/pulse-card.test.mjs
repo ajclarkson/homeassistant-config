@@ -1817,6 +1817,9 @@ ok('room chart overlays heat demand from hvac_action on a hidden 0..1 axis, with
   assert.equal(chart.apex_config.yaxis, undefined, 'apexcharts-card forbids yaxis in apex_config beside the yaxis list');
   assert.ok(chart.series.every((x) => ids.includes(x.yaxis_id)), 'every series names a declared axis');
   assert.equal(chart.apex_config.legend.show, true);
+  const fmt = chart.yaxis.find((x) => x.id === 'temp').apex_config.labels.formatter;
+  assert.match(fmt, /^EVAL:function/);
+  assert.equal(new Function(`return (${fmt.replace(/^EVAL:/, '')})`)()(18.6), '19°', 'temperature axis labels carry the degree sign');
 });
 
 ok('heating holds read as heating, not occupancy: banner, heating row and occupied row', () => {
