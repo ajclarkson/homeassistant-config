@@ -73,6 +73,10 @@ pulse_room:
               apex_config:
                 labels:
                   style: {colors: '#8f9aa8', fontSize: 10px}
+                  formatter: |
+                    EVAL:function(value) {
+                      return Math.round(value) + '°';
+                    }
             - id: demand
               show: false
               min: 0
