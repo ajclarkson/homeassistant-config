@@ -3162,3 +3162,25 @@
       - 0
       brightness: 230
   metadata: {}
+- id: '1792000000005'
+  name: Front Garden Bonfire
+  entities:
+    light.front_garden_light_birch:
+      friendly_name: front_garden_light_birch
+      state: 'on'
+      color_mode: rgb
+      rgb_color:
+      - 255
+      - 70
+      - 0
+      brightness: 220
+    light.front_garden_light_maple:
+      friendly_name: front_garden_light_maple
+      state: 'on'
+      color_mode: rgb
+      rgb_color:
+      - 255
+      - 70
+      - 0
+      brightness: 230
+  metadata: {}
