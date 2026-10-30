@@ -38,6 +38,12 @@ sections:
           - type: custom:streamline-card
             template: scene_card
             variables:
+              entity: scene.front_garden_bonfire
+              name: Bonfire
+              room: front_garden
+          - type: custom:streamline-card
+            template: scene_card
+            variables:
               entity: scene.front_garden_off
               name: 'Off'
               room: front_garden
@@ -53,6 +59,13 @@ sections:
         template: behaviour_section_header
         variables:
           title: Theme
+      - type: custom:streamline-card
+        template: behaviour_toggle_row
+        variables:
+          toggle_entity: input_boolean.front_garden_light_theme_calendar_enabled
+          name: Follow calendar
+          icon_on: m3of:calendar-month
+          icon_off: m3of:event-busy
       - type: grid
         columns: 2
         square: false
@@ -78,6 +91,13 @@ sections:
               option: halloween
               name: Halloween
               icon: m3of:skull
+          - type: custom:streamline-card
+            template: light_theme_option
+            variables:
+              select_entity: input_select.front_garden_light_theme
+              option: bonfire
+              name: Bonfire
+              icon: m3of:local-fire-department
           - type: custom:streamline-card
             template: light_theme_option
             variables:

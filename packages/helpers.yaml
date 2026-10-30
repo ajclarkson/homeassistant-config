@@ -56,6 +56,8 @@ input_boolean:
         name: Back Garden Lights Automation Enabled
     front_garden_automation_lights_enabled:
         name: Front Garden Lights Automation Enabled
+    front_garden_light_theme_calendar_enabled:
+        name: Front Garden Light Theme Follows Calendar
 
     # Heating Automation Helpers
     parlour_automation_heating_enabled:
@@ -329,6 +331,7 @@ input_select:
             - normal
             - autumn
             - halloween
+            - bonfire
             - christmas
 
 input_text:
