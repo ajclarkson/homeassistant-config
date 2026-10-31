@@ -3103,6 +3103,9 @@
     light.front_garden_light_maple:
       friendly_name: front_garden_light_maple
       state: 'off'
+    light.front_garden_light_accent:
+      friendly_name: front_garden_light_accent
+      state: 'off'
   metadata: {}
 - id: '1792000000002'
   name: Front Garden All
@@ -3115,6 +3118,12 @@
       brightness: 90
     light.front_garden_light_maple:
       friendly_name: front_garden_light_maple
+      state: 'on'
+      color_mode: color_temp
+      color_temp_kelvin: 2200
+      brightness: 255
+    light.front_garden_light_accent:
+      friendly_name: front_garden_light_accent
       state: 'on'
       color_mode: color_temp
       color_temp_kelvin: 2200
@@ -3139,6 +3148,14 @@
       - 0.525
       - 0.397
       brightness: 184
+    light.front_garden_light_accent:
+      friendly_name: front_garden_light_accent
+      state: 'on'
+      color_mode: xy
+      xy_color:
+      - 0.525
+      - 0.397
+      brightness: 184
   metadata: {}
 - id: '1792000000004'
   name: Front Garden Halloween
@@ -3154,6 +3171,15 @@
       brightness: 220
     light.front_garden_light_maple:
       friendly_name: front_garden_light_maple
+      state: 'on'
+      color_mode: rgb
+      rgb_color:
+      - 255
+      - 100
+      - 0
+      brightness: 230
+    light.front_garden_light_accent:
+      friendly_name: front_garden_light_accent
       state: 'on'
       color_mode: rgb
       rgb_color:
