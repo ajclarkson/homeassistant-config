@@ -3209,4 +3209,13 @@
       - 70
       - 0
       brightness: 230
+    light.front_garden_light_accent:
+      friendly_name: front_garden_light_accent
+      state: 'on'
+      color_mode: rgb
+      rgb_color:
+      - 255
+      - 70
+      - 0
+      brightness: 230
   metadata: {}
