@@ -3106,6 +3106,9 @@
     light.front_garden_light_accent:
       friendly_name: front_garden_light_accent
       state: 'off'
+    light.front_garden_light_porch:
+      friendly_name: front_garden_light_porch
+      state: 'off'
   metadata: {}
 - id: '1792000000002'
   name: Front Garden All
@@ -3128,6 +3131,12 @@
       color_mode: color_temp
       color_temp_kelvin: 2200
       brightness: 255
+    light.front_garden_light_porch:
+      friendly_name: front_garden_light_porch
+      state: 'on'
+      color_mode: color_temp
+      color_temp_kelvin: 2700
+      brightness: 90
   metadata: {}
 - id: '1792000000003'
   name: Front Garden Autumn
@@ -3156,6 +3165,12 @@
       - 0.525
       - 0.397
       brightness: 184
+    light.front_garden_light_porch:
+      friendly_name: front_garden_light_porch
+      state: 'on'
+      color_mode: color_temp
+      color_temp_kelvin: 2700
+      brightness: 90
   metadata: {}
 - id: '1792000000004'
   name: Front Garden Halloween
@@ -3187,6 +3202,14 @@
       - 100
       - 0
       brightness: 230
+    light.front_garden_light_porch:
+      friendly_name: front_garden_light_porch
+      state: 'on'
+      color_mode: xy
+      xy_color:
+      - 0.208
+      - 0.079
+      brightness: 90
   metadata: {}
 - id: '1792000000005'
   name: Front Garden Bonfire
@@ -3218,4 +3241,13 @@
       - 70
       - 0
       brightness: 230
+    light.front_garden_light_porch:
+      friendly_name: front_garden_light_porch
+      state: 'on'
+      color_mode: rgb
+      rgb_color:
+      - 255
+      - 70
+      - 0
+      brightness: 90
   metadata: {}
