@@ -391,6 +391,11 @@ input_select:
             - christmas
 
 input_text:
+    # Front garden porch: the look the porch returns to after the motion hold, written by the
+    # porch automation (JSON: state, brightness, and kelvin or xy). No initial: it must survive restarts.
+    front_garden_automation_porch_restore:
+        name: Front Garden Porch Restore Look (written by automation)
+        max: 255
     outdoor_temp_7day_history:
         name: Outdoor Temp 7-Day History
         max: 255
