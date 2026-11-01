@@ -1473,6 +1473,40 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return `${head}${rows}`;
   }
 
+  // A single switchable device with the reason homerun last gave for its state (the fan row on the
+  // bathroom page). `entity` is the switch, `decision` the decision sensor whose `reason` attribute
+  // says why. Each reason is only shown while it still agrees with the switch: the decision sensor
+  // keeps its last value, so "Shower started" must not outlive a fan that has since been switched off.
+  const DEVICE_REASONS = {
+    fan_on_shower_started: ['Shower started', 'on'],
+    fan_off_humidity_normal: ['Humidity back to normal', 'off'],
+    fan_off_max_run: ['Ran its maximum time', 'off'],
+    fan_run_extended: ['Another shower started', 'on'],
+    fan_holding_min_run: ['Minimum run', 'on'],
+    fan_holding_humidity_high: ['Clearing steam', 'on'],
+    fan_not_auto_started: ['Turned on by hand', 'on'],
+    automation_disabled: ['Automation off', 'any'],
+  };
+  function deviceReason(reason, isOn) {
+    const r = str(reason);
+    const hit = DEVICE_REASONS[r];
+    if (!hit) return '';
+    return hit[1] === 'any' || hit[1] === (isOn ? 'on' : 'off') ? hit[0] : '';
+  }
+
+  function sectionDevice(hass, config) {
+    if (config.entity === '') return '';
+    const id = config.entity;
+    const label = str(config.label) || 'Fan';
+    const s = stateObj(hass, id);
+    if (!s) return `<div class="card"><div class="tog"><div><div class="h">${esc(label)}</div><div class="s">Not found</div></div></div></div>`;
+    if (!usable(s.state)) return `<div class="card"><div class="tog"><div><div class="h">${esc(label)}</div><div class="s">Unavailable</div></div></div></div>`;
+    const on = s.state === 'on';
+    const why = deviceReason(attr(hass, config.decision, 'reason'), on);
+    const text = [on ? 'On' : 'Off', why].filter(Boolean).join(' · ');
+    return `<div class="card"><button class="tog tap" data-act="toggle" data-entity="${esc(id)}" aria-pressed="${on}"><div><div class="h">${esc(label)}</div><div class="s">${esc(text)}</div></div><span class="sw${on ? '' : ' off'}" role="img" aria-label="${on ? 'On' : 'Off'}"></span></button></div>`;
+  }
+
   function sectionMedia(hass, key) {
     const m = roomModel(hass, key);
     if (m.cfg.media.length === 0) return '';
@@ -1807,6 +1841,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     why: (h, c, n) => sectionWhy(h, c.room, n),
     scenes: (h, c, n, ui) => sectionScenes(h, c.room, n, ui),
     media: (h, c) => sectionMedia(h, c.room),
+    device: (h, c) => sectionDevice(h, c),
     automations: (h, c) => sectionAutomations(h, c.room),
     'room-feed': (h, c, n) => sectionRoomFeed(h, c.room, n),
     'house-head': (h, c, n) => sectionHouseHead(h, n),
@@ -1822,6 +1857,13 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   function validate(config) {
     if (!isObj(config) || !MODES[config.mode]) throw new Error(`pulse-card: unknown mode "${config && config.mode}"`);
     if (config.mode === 'camera' && !CAMERAS.some((c) => c.k === config.camera)) throw new Error(`pulse-card: mode "camera" needs a known camera, got "${config.camera}"`);
+    // Both blank is the shared room template's "this room has no device": render nothing. One blank is a mistake.
+    if (config.mode === 'device' && !(config.entity === '' && config.decision === '')) {
+      const ok = (v) => typeof v === 'string' && /^[a-z_]+\.[a-z0-9_]+$/.test(v);
+      if (!ok(config.entity) || !ok(config.decision)) throw new Error(`pulse-card: mode "device" needs an entity and a decision sensor, got "${config.entity}" and "${config.decision}"`);
+      const allowed = ALLOWED[config.entity.split('.')[0]];
+      if (!allowed || !allowed.includes('turn_on') || !allowed.includes('turn_off')) throw new Error(`pulse-card: mode "device" cannot switch "${config.entity}"`);
+    }
     if (ROOM_MODES.includes(config.mode) && !ROOMS[config.room]) throw new Error(`pulse-card: mode "${config.mode}" needs a known room, got "${config.room}"`);
   }
 
@@ -1889,7 +1931,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     }
   }
 
-  const api = { TILE, TILE_H, TILE_WIDE_H, tileNeededHeight, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, entrySentence, tidyVerdict, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, CAMERAS_PATH, PENDING_MS, cameraParts, cameraToggle, cameraPending, parseClips, frigateClipsId, roomGroups, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, MOBILE, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, ALL_ROOM_KEYS, ALLOWED, render, priceColour, PRICE_STOPS, PRICE_EXTREME_P, roomModel, attentionItems, handleAction, callService, num, parseList };
+  const api = { TILE, TILE_H, TILE_WIDE_H, tileNeededHeight, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, entrySentence, tidyVerdict, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, CAMERAS_PATH, PENDING_MS, cameraParts, cameraToggle, cameraPending, parseClips, frigateClipsId, roomGroups, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, MOBILE, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, ALL_ROOM_KEYS, ALLOWED, DEVICE_REASONS, render, priceColour, PRICE_STOPS, PRICE_EXTREME_P, roomModel, attentionItems, handleAction, callService, num, parseList };
   root.PulseLib = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 

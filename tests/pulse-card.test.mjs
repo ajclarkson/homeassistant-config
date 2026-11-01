@@ -204,6 +204,48 @@ ok('expander-card is gone; Now no longer uses apexcharts', () => {
   assert.doesNotMatch(readFileSync(root + 'views/info-now.yaml', 'utf8'), /apexcharts-card/, 'Now has no apexcharts: energy block is drawn by pulse-card');
 });
 
+ok('device mode: fan row shows state and reason, taps toggle, hides when blank, fails loudly when misconfigured', () => {
+  const cfg = { entity: 'switch.bathroom_fan_extractor', decision: 'sensor.bathroom_fan_decision', label: 'Extractor fan' };
+  const hass = (sw, reason) => mk({
+    'switch.bathroom_fan_extractor': sw === null ? null : { state: sw, attributes: {} },
+    'sensor.bathroom_fan_decision': { state: 'x', attributes: { reason } },
+  });
+  const on = P.render('device', cfg, hass('on', 'fan_on_shower_started'), NOW);
+  assert.match(on, /Extractor fan/);
+  assert.match(on, /On · Shower started/);
+  assert.match(on, /data-act="toggle" data-entity="switch.bathroom_fan_extractor" aria-pressed="true"/);
+  assert.match(P.render('device', cfg, hass('off', 'fan_off_humidity_normal'), NOW), /Off · Humidity back to normal/);
+  const words = { fan_off_max_run: ['off', 'Ran its maximum time'], fan_run_extended: ['on', 'Another shower started'], fan_holding_min_run: ['on', 'Minimum run'], fan_holding_humidity_high: ['on', 'Clearing steam'], fan_not_auto_started: ['on', 'Turned on by hand'], automation_disabled: ['off', 'Automation off'] };
+  for (const [r, [st, text]] of Object.entries(words)) assert.match(P.render('device', cfg, hass(st, r), NOW), new RegExp(`${st === 'on' ? 'On' : 'Off'} · ${text}`), r);
+  assert.deepEqual(Object.keys(P.DEVICE_REASONS).sort(), ['automation_disabled', 'fan_holding_humidity_high', 'fan_holding_min_run', 'fan_not_auto_started', 'fan_off_humidity_normal', 'fan_off_max_run', 'fan_on_shower_started', 'fan_run_extended']);
+  // A stale reason that contradicts the switch, an ignored reason and a missing reason all show state only.
+  assert.match(P.render('device', cfg, hass('off', 'fan_on_shower_started'), NOW), /<div class="s">Off<\/div>/);
+  assert.match(P.render('device', cfg, hass('on', 'fan_idle'), NOW), /<div class="s">On<\/div>/);
+  assert.match(P.render('device', cfg, hass('on', undefined), NOW), /<div class="s">On<\/div>/);
+  assert.match(P.render('device', cfg, hass(null, 'fan_idle'), NOW), /Not found/);
+  assert.match(P.render('device', cfg, hass('unavailable', 'fan_idle'), NOW), /Unavailable/);
+  assert.doesNotMatch(P.render('device', cfg, hass('unavailable', 'fan_idle'), NOW), /data-act/);
+  assert.equal(P.render('device', { entity: '', decision: '', label: '' }, mk(), NOW), '');
+  assert.throws(() => P.render('device', { entity: 'switch.x', decision: '' }, mk(), NOW), /needs an entity and a decision/);
+  assert.throws(() => P.render('device', {}, mk(), NOW), /needs an entity and a decision/);
+  assert.throws(() => P.render('device', { entity: 'lock.front', decision: 'sensor.d' }, mk(), NOW), /cannot switch/);
+  const calls = [];
+  P.handleAction({ states: hass('on', 'x').states, callService: (...a) => calls.push(a) }, { dataset: { act: 'toggle', entity: 'switch.bathroom_fan_extractor' } });
+  assert.deepEqual(calls, [['switch', 'turn_off', { entity_id: 'switch.bathroom_fan_extractor' }]]);
+});
+
+ok('device row sits under the scenes and only the bathroom page fills it', () => {
+  const tpl = yaml.load(readFileSync(root + 'info_templates.yaml', 'utf8')).pulse_room;
+  const modes = tpl.card.cards.map((c) => c.mode).filter(Boolean);
+  assert.ok(modes.indexOf('device') === modes.indexOf('scenes') + 1, 'device directly after scenes');
+  assert.equal(tpl.variables.fan, '');
+  for (const f of readdirSync(root + 'views').filter((x) => /^info-room-/.test(x))) {
+    const v = yaml.load(readFileSync(root + 'views/' + f, 'utf8')).sections[0].cards.find((c) => c.template === 'pulse_room').variables;
+    assert.equal(!!v.fan, f === 'info-room-bathroom.yaml', f);
+    if (v.fan) assert.deepEqual([v.fan, v.fan_decision], ['switch.bathroom_fan_extractor', 'sensor.bathroom_fan_decision']);
+  }
+});
+
 ok('media only for rooms with players', () => {
   for (const k of P.ALL_ROOM_KEYS) {
     const html = P.render('media', { room: k }, mk(), NOW);
@@ -1855,7 +1897,7 @@ ok('heating holds read as heating, not occupancy: banner, heating row and occupi
 ok('room page puts lighting straight under the head, before the chart and the why card', () => {
   const cards = loadYaml('info_templates.yaml').pulse_room.card.cards;
   const order = cards.map((c) => (c.type === 'conditional' ? 'chart' : c.mode));
-  assert.deepEqual(order, ['room-head', 'scenes', 'chart', 'why', 'media', 'automations', 'room-feed']);
+  assert.deepEqual(order, ['room-head', 'scenes', 'device', 'chart', 'why', 'media', 'automations', 'room-feed']);
 });
 
 ok('speaker play button is quiet unless playing; the amber pause button marks active playback', () => {

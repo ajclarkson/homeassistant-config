@@ -59,6 +59,10 @@ input_boolean:
     front_garden_light_theme_calendar_enabled:
         name: Front Garden Light Theme Follows Calendar
 
+    # Fan Automation Helpers
+    bathroom_automation_fan_enabled:
+        name: Bathroom Fan Automation Enabled
+
     # Heating Automation Helpers
     parlour_automation_heating_enabled:
         name: Parlour Heating Automation Enabled
@@ -177,6 +181,50 @@ input_number:
         max: 500
         step: 1
         mode: box
+
+    # Bathroom Shower and Fan
+    bathroom_automation_shower_rise:
+        name: Bathroom Shower Rise (points between two humidity reports)
+        min: 3
+        max: 8
+        step: 0.5
+        unit_of_measurement: "%"
+    bathroom_automation_shower_above_baseline:
+        name: Bathroom Shower Above Baseline (points)
+        min: 4
+        max: 15
+        step: 0.5
+        unit_of_measurement: "%"
+    bathroom_automation_shower_end_drop:
+        name: Bathroom Shower End Drop (points below 10 min max)
+        min: 1
+        max: 10
+        step: 0.5
+        unit_of_measurement: "%"
+    bathroom_automation_shower_end_confirm:
+        name: Bathroom Shower End Confirm
+        min: 2
+        max: 10
+        step: 1
+        unit_of_measurement: min
+    bathroom_automation_fan_humidity_margin:
+        name: Bathroom Fan Humidity Margin (points above baseline)
+        min: 1
+        max: 30
+        step: 1
+        unit_of_measurement: "%"
+    bathroom_automation_fan_min_run:
+        name: Bathroom Fan Minimum Run
+        min: 5
+        max: 30
+        step: 1
+        unit_of_measurement: min
+    bathroom_automation_fan_max_run:
+        name: Bathroom Fan Maximum Run
+        min: 15
+        max: 120
+        step: 5
+        unit_of_measurement: min
 
     # Window Thermal Management
     bedroom_automation_window_frame_threshold:
