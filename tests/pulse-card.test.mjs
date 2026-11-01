@@ -234,6 +234,49 @@ ok('device mode: fan row shows state and reason, taps toggle, hides when blank, 
   assert.deepEqual(calls, [['switch', 'turn_off', { entity_id: 'switch.bathroom_fan_extractor' }]]);
 });
 
+ok('fan card offers its run settings as steppers that can only write the fan helpers, clamped to the controller ranges', () => {
+  const cfg = { entity: 'switch.bathroom_fan_extractor', decision: 'sensor.bathroom_fan_decision', label: 'Extractor fan' };
+  const b = (st) => ({ state: st, attributes: {} });
+  const hass = mk({
+    'switch.bathroom_fan_extractor': b('off'),
+    'sensor.bathroom_fan_decision': { state: 'no_action', attributes: { reason: 'fan_idle' } },
+    'input_number.bathroom_automation_fan_min_run': b('15'),
+    'input_number.bathroom_automation_fan_max_run': b('60'),
+    'input_number.bathroom_automation_fan_humidity_margin': b('10'),
+  });
+  const out = P.render('device', cfg, hass, NOW);
+  assert.match(out, /Minimum run[\s\S]*15 min/);
+  assert.match(out, /Maximum run[\s\S]*60 min/);
+  assert.match(out, /Stops within[\s\S]*10%/);
+  assert.match(out, /data-act="fan-number" data-entity="switch\.bathroom_fan_extractor" data-key="min_run" data-delta="1"/);
+  assert.doesNotMatch(out, /shower_rise|above_baseline|end_drop|end_confirm/, 'shower calibration stays in HA settings');
+  // A setting HA cannot read is left out rather than shown as a guess; an unavailable fan shows no controls.
+  const partial = mk({ 'switch.bathroom_fan_extractor': b('on'), 'sensor.bathroom_fan_decision': b('x'), 'input_number.bathroom_automation_fan_min_run': b('unknown') });
+  assert.doesNotMatch(P.render('device', cfg, partial, NOW), /fan-number/);
+  assert.doesNotMatch(P.render('device', cfg, mk({ ...hass.states, 'switch.bathroom_fan_extractor': b('unavailable') }), NOW), /fan-number/);
+  const calls = [];
+  const h2 = { ...hass, callService: (d, s, data) => calls.push([d, s, data]) };
+  const step = (entity, key, delta) => P.handleAction(h2, { dataset: { act: 'fan-number', entity, key, delta } });
+  step('switch.bathroom_fan_extractor', 'min_run', '1');
+  step('switch.bathroom_fan_extractor', 'max_run', '-1');
+  step('switch.bathroom_fan_extractor', 'margin', '1');
+  assert.deepEqual(calls.map((c) => [c[2].entity_id, c[2].value]), [
+    ['input_number.bathroom_automation_fan_min_run', 20],
+    ['input_number.bathroom_automation_fan_max_run', 45],
+    ['input_number.bathroom_automation_fan_humidity_margin', 11],
+  ]);
+  const edge = { ...mk({ 'input_number.bathroom_automation_fan_min_run': b('30'), 'input_number.bathroom_automation_fan_max_run': b('15') }), callService: (d, s, data) => calls.push([d, s, data]) };
+  calls.length = 0;
+  P.handleAction(edge, { dataset: { act: 'fan-number', entity: 'switch.bathroom_fan_extractor', key: 'min_run', delta: '1' } });
+  P.handleAction(edge, { dataset: { act: 'fan-number', entity: 'switch.bathroom_fan_extractor', key: 'max_run', delta: '-1' } });
+  assert.deepEqual(calls.map((c) => c[2].value), [30, 15], 'clamped to the controller ranges');
+  assert.throws(() => step('switch.parlour_privacy', 'min_run', '1'), /unknown fan setting/);
+  assert.throws(() => step('switch.bathroom_fan_extractor', 'shower_rise', '1'), /unknown fan setting/);
+  assert.throws(() => step('switch.bathroom_fan_extractor', '__proto__', '1'), /unknown fan setting/);
+  const lo = P.FAN_NUMBERS['switch.bathroom_fan_extractor'];
+  assert.deepEqual([lo.min_run.min, lo.min_run.max, lo.max_run.min, lo.max_run.max, lo.margin.min, lo.margin.max], [5, 30, 15, 120, 2, 30], 'matches the fan controller clamps');
+});
+
 ok('device row sits under the scenes and only the bathroom page fills it', () => {
   const tpl = yaml.load(readFileSync(root + 'info_templates.yaml', 'utf8')).pulse_room;
   const modes = tpl.card.cards.map((c) => c.mode).filter(Boolean);
@@ -1955,6 +1998,16 @@ ok('no "valve" wording in anything the user reads', () => {
   assert.doesNotMatch(out, /valve/i);
   assert.match(out, /Sets the target from mode, windows and schedule/);
   assert.match(out, /Window open · set to 5\.0° and returns to baseline day \(18\.0°\) once it closes</);
+});
+
+ok('automations card shows the fan automation toggle only in rooms that have one', () => {
+  const b = (st) => ({ state: st, attributes: {} });
+  const bath = withRooms([quietRoom('bathroom')], [], { 'input_boolean.bathroom_automation_fan_enabled': b('on') });
+  const auto = P.render('automations', { room: 'bathroom' }, bath, NOW);
+  assert.match(auto, /data-entity="input_boolean\.bathroom_automation_fan_enabled"[^>]*aria-pressed="true"/);
+  assert.match(auto, /Fan automation/);
+  const bed = withRooms([quietRoom('bedroom')], [], {});
+  assert.doesNotMatch(P.render('automations', { room: 'bedroom' }, bed, NOW), /Fan automation/);
 });
 
 ok('automations card toggles motion sensor and keep-room-occupied, and the why card says when motion is ignored', () => {
