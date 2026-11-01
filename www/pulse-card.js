@@ -1494,6 +1494,27 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return hit[1] === 'any' || hit[1] === (isOn ? 'on' : 'off') ? hit[0] : '';
   }
 
+  // Fan run settings, keyed by the fan entity the device card shows. As with HOUSE_NUMBERS, the page
+  // names a key from this table and set_value can only reach these ids. The ranges match the fan
+  // controller's clamps (homerun-automations lib/bathroom/steam.ts), so the card never offers a value
+  // the controller would silently override. Shower detection thresholds are left out on purpose: they
+  // are calibration from recorded data, and a wrong value silently stops showers being detected.
+  const FAN_NUMBERS = {
+    'switch.bathroom_fan_extractor': {
+      min_run: { id: 'input_number.bathroom_automation_fan_min_run', title: 'Minimum run', sub: 'After the last shower ends', min: 5, max: 30, step: 5, unit: ' min' },
+      max_run: { id: 'input_number.bathroom_automation_fan_max_run', title: 'Maximum run', sub: 'Off by then, whatever the humidity', min: 15, max: 120, step: 15, unit: ' min' },
+      margin: { id: 'input_number.bathroom_automation_fan_humidity_margin', title: 'Stops within', sub: 'Humidity points above the room\'s normal level', min: 2, max: 30, step: 1, unit: '%' },
+    },
+  };
+  function fanSettingRows(hass, fanId) {
+    const table = Object.prototype.hasOwnProperty.call(FAN_NUMBERS, fanId) ? FAN_NUMBERS[fanId] : null;
+    if (!table) return '';
+    return Object.entries(table).map(([key, d]) => {
+      const v = num(state(hass, d.id));
+      return v === null ? '' : stepperRow(d, v, d.sub, 'fan-number', { entity: fanId, key });
+    }).join('');
+  }
+
   function sectionDevice(hass, config) {
     if (config.entity === '') return '';
     const id = config.entity;
@@ -1504,7 +1525,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const on = s.state === 'on';
     const why = deviceReason(attr(hass, config.decision, 'reason'), on);
     const text = [on ? 'On' : 'Off', why].filter(Boolean).join(' · ');
-    return `<div class="card"><button class="tog tap" data-act="toggle" data-entity="${esc(id)}" aria-pressed="${on}"><div><div class="h">${esc(label)}</div><div class="s">${esc(text)}</div></div><span class="sw${on ? '' : ' off'}" role="img" aria-label="${on ? 'On' : 'Off'}"></span></button></div>`;
+    return `<div class="card"><button class="tog tap" data-act="toggle" data-entity="${esc(id)}" aria-pressed="${on}"><div><div class="h">${esc(label)}</div><div class="s">${esc(text)}</div></div><span class="sw${on ? '' : ' off'}" role="img" aria-label="${on ? 'On' : 'Off'}"></span></button>${fanSettingRows(hass, id)}</div>`;
   }
 
   function sectionMedia(hass, key) {
@@ -1540,6 +1561,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     };
     toggle(`input_boolean.${key}_automation_lights_enabled`, 'Lights automation', 'Decides lights from presence and time of day');
     toggle(`input_boolean.${key}_automation_heating_enabled`, 'Heating automation', 'Sets the target from mode, windows and schedule');
+    toggle(`input_boolean.${key}_automation_fan_enabled`, 'Fan automation', 'Runs the extractor fan after a shower until the steam clears');
     const motionOn = state(hass, `input_boolean.${key}_sensor_motion_enabled`) === 'on';
     toggle(`input_boolean.${key}_sensor_motion_enabled`, 'Motion sensor', motionOn ? 'Detecting presence' : 'Motion ignored · the room relies on holds');
     const guest = key === 'home_office' && state(hass, 'input_select.house_active_mode_modifier') === 'guest';
@@ -1615,13 +1637,30 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return out;
   }
 
+  // One stepper row. `data` becomes the buttons' dataset, which is how handleAction finds the fixed
+  // table entry to write; it never carries the target helper id itself.
+  function stepperRow(d, v, sub, act, data) {
+    const shown = d.step < 1 ? v.toFixed(1) : String(Math.round(v));
+    const attrs = Object.entries(data).map(([k, x]) => `data-${k}="${esc(x)}"`).join(' ');
+    const btn = (delta, label, path) => `<button class="round" data-act="${act}" ${attrs} data-delta="${delta}" aria-label="${d.title} ${label}">${svg(path, 20)}</button>`;
+    return `<div class="tog"><div><div class="h">${d.title}</div><div class="s">${esc(sub)}</div></div><div style="display:flex;align-items:center;gap:6px">${btn(-1, 'lower', 'M5 12h14')}<span style="min-width:58px;text-align:center;font-weight:600">${shown}${d.unit}</span>${btn(1, 'higher', 'M12 5v14M5 12h14')}</div></div>`;
+  }
+
   // Same stepper as the vacation threshold, driven by a HOUSE_NUMBERS key.
   function numberRow(hass, key, sub) {
     const d = HOUSE_NUMBERS[key];
     const v = num(state(hass, d.id));
     if (v === null) return '';
-    const shown = d.step < 1 ? v.toFixed(1) : String(Math.round(v));
-    return `<div class="tog"><div><div class="h">${d.title}</div><div class="s">${esc(sub)}</div></div><div style="display:flex;align-items:center;gap:6px"><button class="round" data-act="house-number" data-key="${key}" data-delta="-1" aria-label="${d.title} lower">${svg('M5 12h14', 20)}</button><span style="min-width:58px;text-align:center;font-weight:600">${shown}${d.unit}</span><button class="round" data-act="house-number" data-key="${key}" data-delta="1" aria-label="${d.title} higher">${svg('M12 5v14M5 12h14', 20)}</button></div></div>`;
+    return stepperRow(d, v, sub, 'house-number', { key });
+  }
+
+  // One step of a table-defined number, snapped to the step and clamped to the table's range.
+  function stepNumber(hass, d, delta) {
+    const cur = num(state(hass, d.id));
+    if (cur === null) return undefined;
+    const dir = Number(delta) < 0 ? -1 : 1;
+    const stepped = Math.round((cur + dir * d.step) / d.step) * d.step;
+    return callService(hass, 'input_number', 'set_value', { entity_id: d.id, value: Math.max(d.min, Math.min(d.max, stepped)) });
   }
 
   function sectionHouseHeating(hass) {
@@ -1918,11 +1957,13 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       case 'house-number': {
         const d = Object.prototype.hasOwnProperty.call(HOUSE_NUMBERS, el.dataset.key) ? HOUSE_NUMBERS[el.dataset.key] : null;
         if (!d) throw new Error(`pulse-card: unknown house setting "${el.dataset.key}"`);
-        const cur = num(state(hass, d.id));
-        if (cur === null) return undefined;
-        const dir = Number(el.dataset.delta) < 0 ? -1 : 1;
-        const stepped = Math.round((cur + dir * d.step) / d.step) * d.step;
-        return callService(hass, 'input_number', 'set_value', { entity_id: d.id, value: Math.max(d.min, Math.min(d.max, stepped)) });
+        return stepNumber(hass, d, el.dataset.delta);
+      }
+      case 'fan-number': {
+        const table = Object.prototype.hasOwnProperty.call(FAN_NUMBERS, id) ? FAN_NUMBERS[id] : null;
+        const d = table && Object.prototype.hasOwnProperty.call(table, el.dataset.key) ? table[el.dataset.key] : null;
+        if (!d) throw new Error(`pulse-card: unknown fan setting "${id}/${el.dataset.key}"`);
+        return stepNumber(hass, d, el.dataset.delta);
       }
       case 'media-play': return callService(hass, 'media_player', 'media_play_pause', { entity_id: id });
       case 'media-power': return callService(hass, 'media_player', ['off', 'standby'].includes(state(hass, id)) ? 'turn_on' : 'turn_off', { entity_id: id });
@@ -1931,7 +1972,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     }
   }
 
-  const api = { TILE, TILE_H, TILE_WIDE_H, tileNeededHeight, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, entrySentence, tidyVerdict, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, CAMERAS_PATH, PENDING_MS, cameraParts, cameraToggle, cameraPending, parseClips, frigateClipsId, roomGroups, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, MOBILE, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, ALL_ROOM_KEYS, ALLOWED, DEVICE_REASONS, render, priceColour, PRICE_STOPS, PRICE_EXTREME_P, roomModel, attentionItems, handleAction, callService, num, parseList };
+  const api = { TILE, TILE_H, TILE_WIDE_H, tileNeededHeight, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, entrySentence, tidyVerdict, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, CAMERAS_PATH, PENDING_MS, cameraParts, cameraToggle, cameraPending, parseClips, frigateClipsId, roomGroups, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, MOBILE, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, ALL_ROOM_KEYS, ALLOWED, DEVICE_REASONS, FAN_NUMBERS, render, priceColour, PRICE_STOPS, PRICE_EXTREME_P, roomModel, attentionItems, handleAction, callService, num, parseList };
   root.PulseLib = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 
