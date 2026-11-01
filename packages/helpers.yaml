@@ -188,7 +188,6 @@ input_number:
         min: 15
         max: 600
         step: 5
-        initial: 60
         unit_of_measurement: s
 
     # Bathroom Shower and Fan
