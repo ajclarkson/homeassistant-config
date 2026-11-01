@@ -4,23 +4,15 @@
 # up to 67 min when the room is quiet. A time window alone would empty during those gaps
 # and the sensors would go `unknown`, which the shower detector must not have to guess at.
 # So each sensor sets keep_last_sample: true, which preserves the newest reading past
-# max_age. In a quiet room the buffer then holds one sample: `change` is 0 (no recent
-# change), `max` is the last reading, and the baseline stays defined.
+# max_age. In a quiet room the buffer then holds one sample: `max` is the last reading and
+# the baseline stays defined.
+#
+# Shower start is not a statistic: a windowed `change` purges the pre-shower reading of an
+# on-change sensor, so homerun compares consecutive reports (old_state -> new_state) instead.
 #
 # sampling_size is a ceiling above the densest reporting (one reading every 30 s during a
 # rise), so max_age, not the count, decides what is kept.
 sensor:
-  - platform: statistics
-    name: "Bathroom Humidity Change 5m"
-    unique_id: bathroom_humidity_change_5m
-    entity_id: sensor.bathroom_sensor_climate_humidity
-    state_characteristic: change
-    max_age:
-      minutes: 5
-    sampling_size: 30
-    keep_last_sample: true
-    precision: 1
-
   - platform: statistics
     name: "Bathroom Humidity Max 10m"
     unique_id: bathroom_humidity_max_10m

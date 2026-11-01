@@ -184,8 +184,14 @@ input_number:
 
     # Bathroom Shower and Fan
     bathroom_automation_shower_rise:
-        name: Bathroom Shower Rise (humidity points per 5 min)
-        min: 1
+        name: Bathroom Shower Rise (points between two humidity reports)
+        min: 3
+        max: 8
+        step: 0.5
+        unit_of_measurement: "%"
+    bathroom_automation_shower_above_baseline:
+        name: Bathroom Shower Above Baseline (points)
+        min: 4
         max: 15
         step: 0.5
         unit_of_measurement: "%"

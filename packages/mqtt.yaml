@@ -227,6 +227,10 @@ mqtt:
     - name: "Bathroom Shower"
       unique_id: bathroom_shower
       state_topic: "bathroom/shower/state"
+    # ON while the fan controller owns the fan run; it only turns off a fan it turned on.
+    - name: "Bathroom Fan Auto"
+      unique_id: bathroom_fan_auto
+      state_topic: "bathroom/fan/auto"
     - name: "Home Office Occupied"
       unique_id: home_office_occupied
       state_topic: "home_office/occupied/state"
