@@ -1,0 +1,47 @@
+# Bathroom shower and fan detection inputs (see homeOS features/2026-11-bathroom-fan).
+#
+# sensor.bathroom_sensor_climate_humidity reports on change only: median gap 8.5 min,
+# up to 67 min when the room is quiet. A time window alone would empty during those gaps
+# and the sensors would go `unknown`, which the shower detector must not have to guess at.
+# So each sensor sets keep_last_sample: true, which preserves the newest reading past
+# max_age. In a quiet room the buffer then holds one sample: `change` is 0 (no recent
+# change), `max` is the last reading, and the baseline stays defined.
+#
+# sampling_size is a ceiling above the densest reporting (one reading every 30 s during a
+# rise), so max_age, not the count, decides what is kept.
+sensor:
+  - platform: statistics
+    name: "Bathroom Humidity Change 5m"
+    unique_id: bathroom_humidity_change_5m
+    entity_id: sensor.bathroom_sensor_climate_humidity
+    state_characteristic: change
+    max_age:
+      minutes: 5
+    sampling_size: 30
+    keep_last_sample: true
+    precision: 1
+
+  - platform: statistics
+    name: "Bathroom Humidity Max 10m"
+    unique_id: bathroom_humidity_max_10m
+    entity_id: sensor.bathroom_sensor_climate_humidity
+    state_characteristic: value_max
+    max_age:
+      minutes: 10
+    sampling_size: 60
+    keep_last_sample: true
+    precision: 1
+
+  # The room's normal level: 10th percentile of the last 3 h, so a shower (high readings,
+  # reported densely) barely moves it. sampling_size covers 3 h at the densest rate.
+  - platform: statistics
+    name: "Bathroom Humidity Baseline"
+    unique_id: bathroom_humidity_baseline
+    entity_id: sensor.bathroom_sensor_climate_humidity
+    state_characteristic: percentile
+    percentile: 10
+    max_age:
+      hours: 3
+    sampling_size: 400
+    keep_last_sample: true
+    precision: 1

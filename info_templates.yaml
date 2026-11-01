@@ -7,12 +7,17 @@
 #   room     key used by custom:pulse-card (see ROOMS in www/pulse-card.js) and by helper ids
 #   climate  climate entity for the 24h chart target line
 #   temp     room temperature sensor for the 24h chart
+#   fan, fan_decision, fan_label  optional fan row under the scenes: its switch, the decision sensor
+#            whose reason explains it, and its title. Leave blank and the row hides itself.
 pulse_room:
   default: []
   variables:
     room: ''
     climate: ''
     temp: ''
+    fan: ''
+    fan_decision: ''
+    fan_label: ''
   card:
     type: vertical-stack
     cards:
@@ -25,6 +30,11 @@ pulse_room:
       - type: custom:pulse-card
         mode: scenes
         room: '[[room]]'
+      - type: custom:pulse-card
+        mode: device
+        entity: '[[fan]]'
+        decision: '[[fan_decision]]'
+        label: '[[fan_label]]'
       # Only rooms with a temperature sensor chart: the numeric condition is false for a missing
       # entity, so gardens and the upstairs hallway show nothing here.
       - type: conditional

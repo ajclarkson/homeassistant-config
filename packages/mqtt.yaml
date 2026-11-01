@@ -136,6 +136,21 @@ mqtt:
       value_template: "{{ value_json.decision }}"
       json_attributes_topic: "bathroom/lighting/decision"
 
+    # New decision sensors use homerun's live topic homerun/{location}/{subsystem}/decision
+    # (retained). The older per-room decision sensors above subscribe to the legacy
+    # {location}/{subsystem}/decision topic, which no longer receives data.
+    - name: "Bathroom Shower Decision"
+      unique_id: bathroom_shower_decision
+      state_topic: "homerun/bathroom/shower/decision"
+      value_template: "{{ value_json.decision }}"
+      json_attributes_topic: "homerun/bathroom/shower/decision"
+
+    - name: "Bathroom Fan Decision"
+      unique_id: bathroom_fan_decision
+      state_topic: "homerun/bathroom/fan/decision"
+      value_template: "{{ value_json.decision }}"
+      json_attributes_topic: "homerun/bathroom/fan/decision"
+
     - name: "Home Office Lighting Decision"
       unique_id: home_office_lighting_decision
       state_topic: "home_office/lighting/decision"
@@ -209,6 +224,9 @@ mqtt:
     - name: "Bathroom Occupied"
       unique_id: bathroom_occupied
       state_topic: "bathroom/occupied/state"
+    - name: "Bathroom Shower"
+      unique_id: bathroom_shower
+      state_topic: "bathroom/shower/state"
     - name: "Home Office Occupied"
       unique_id: home_office_occupied
       state_topic: "home_office/occupied/state"
