@@ -1,16 +1,24 @@
+# Pulse "House" (v2): quiet by default, loud by exception. Header, one status card (verdict, people, prices),
+# room groups (needs attention / occupied now / other rooms), bins + heating, feed. The price strip in the
+# status card opens the Energy page (chart, windows, cost and usage live there).
+# Every section is `custom:pulse-card` (www/pulse-card.js, loaded via packages/frontend.yaml).
+# The price bars are drawn by pulse-card itself from the rates attribute (any slot count).
 title: House
 path: house
-subview: true
-back_path: /pulse-dashboard/now
+icon: mdi:home-heart
 type: sections
 max_columns: 1
 background: '#12151a'
 sections:
   - type: grid
     cards:
-      - {type: custom:pulse-card, mode: house-head}
-      - {type: custom:pulse-card, mode: house-mode}
-      - {type: custom:pulse-card, mode: house-people}
-      - {type: custom:pulse-card, mode: house-heating}
+      - {type: custom:pulse-card, mode: now-header}
+      # One status card: verdict, sentence, people/Mo chips and the Now/Next/Usage price strip.
+      - {type: custom:pulse-card, mode: status}
+      # Needs attention (full width), Occupied now (full width), Other rooms (2-column tiles).
+      - {type: custom:pulse-card, mode: rooms}
+      - {type: custom:pulse-card, mode: bins-heating}
+      - {type: custom:pulse-card, mode: cameras-card}
+      - {type: custom:pulse-card, mode: feed}
       # Bottom tab bar: fixed when HA's ancestors allow it, otherwise an in-flow bar (see pulse-card.js).
       - {type: custom:pulse-card, mode: tabbar, active: house}

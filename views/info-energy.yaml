@@ -4,7 +4,7 @@
 title: Energy
 path: energy
 subview: true
-back_path: /pulse-dashboard/now
+back_path: /pulse-dashboard/house
 type: sections
 max_columns: 1
 background: '#12151a'

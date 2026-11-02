@@ -293,6 +293,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   // `details_path`, and only when that view exists in info-dashboard.yaml (tests enforce both).
   const ENERGY_PATH = `${DASH}/energy`;
   const HOUSE_PATH = `${DASH}/house`;
+  const SETTINGS_PATH = `${DASH}/settings`;
   const CAMERAS_PATH = `${DASH}/cameras`;
   const RECENT_MS = 15 * 60 * 1000;
 
@@ -827,7 +828,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     bed: 'M4 20v-8a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8M4 16h16M7 10V7a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v3',
     back: 'M15 5l-7 7 7 7',
     chev: 'M6 9l6 6 6-6',
-    house: 'M4 21V8l8-5 8 5v13M9 21v-6h6v6',
+    gear: 'M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h0a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v0a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z',
     camera: 'M3 7h11a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1zM15 10.5l6-3v9l-6-3',
     play: 'M8 5v14l11-7z',
     home: 'M3 11l9-8 9 8M5 10v10h14V10',
@@ -894,7 +895,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   function sectionNowHeader(hass) {
     const mode = state(hass, 'sensor.house_active_mode');
     const mod = state(hass, 'input_select.house_active_mode_modifier');
-    const pill = usable(mode) ? `<a class="tag ok tap" data-act="nav" data-path="${HOUSE_PATH}" aria-label="Open house settings" style="padding:3px 9px;text-decoration:none">● ${esc(mode.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase()))}${usable(mod) && mod !== 'none' ? ' · ' + esc(mod) : ''}</a>` : '';
+    const pill = usable(mode) ? `<a class="tag ok tap" data-act="nav" data-path="${SETTINGS_PATH}" aria-label="Open settings" style="padding:3px 9px;text-decoration:none">● ${esc(mode.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase()))}${usable(mod) && mod !== 'none' ? ' · ' + esc(mod) : ''}</a>` : '';
     return `<div style="display:flex;align-items:center;gap:10px;min-height:44px"><div style="font-size:28px;font-weight:700;letter-spacing:-.4px">Pulse</div>${pill}</div>`;
   }
 
@@ -982,7 +983,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   const occupiedRooms = (hass) => ROOM_ORDER.filter((k) => { const m = roomModel(hass, k); return m.hasReport && m.occupied; });
 
   const STATUS_ROWS = 3;
-  const attentionPath = (item) => (ROOMS[item.key] ? roomPath(item.key) : `${DASH}/now`);
+  const attentionPath = (item) => (ROOMS[item.key] ? roomPath(item.key) : HOUSE_PATH);
   // "+N more" opens the first room not already listed above it; if every hidden item is in a listed room
   // (or has none), the first hidden item's own target is the honest answer.
   function moreAttentionPath(items) {
@@ -1006,7 +1007,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       head = `<div style="display:flex;align-items:center;gap:10px"><span class="dot${hasData ? '' : ' dim'}"></span><div style="font-size:15px;font-weight:700">${hasData ? 'All good' : 'No attention report'}</div><div style="flex:1"></div>${side}</div>`;
     } else {
       const shownItems = items.slice(0, STATUS_ROWS);
-      // Each row opens its own room; an item with no room (an unexplained reason) opens Now.
+      // Each row opens its own room; an item with no room (an unexplained reason) opens House.
       // The summary is room and what; the room card below carries the sentence.
       const shown = shownItems.map((i) => `<a class="tap" data-act="nav" data-path="${esc(attentionPath(i))}" style="display:block;font-size:13px;margin-top:6px;line-height:1.4"><b>${esc(i.room)}</b> · ${esc(itemLabel(i, ROOMS[i.key] ? roomModel(hass, i.key) : null))}</a>`).join('');
       const more = items.length > STATUS_ROWS ? `<a class="tap" data-act="nav" data-path="${esc(moreAttentionPath(items))}" style="display:block;font-size:12px;color:${TOKENS.text2};margin-top:4px">+${items.length - STATUS_ROWS} more</a>` : '';
@@ -1388,7 +1389,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   }
 
   function sectionEnergyHead(hass, at) {
-    return `<div style="display:flex;align-items:center;gap:4px"><a class="tap" data-act="nav" data-path="${DASH}/now" aria-label="Back to Now" style="min-height:44px;min-width:44px;display:flex;align-items:center;color:${TOKENS.text2}">${svg(ICON.back, 22)}</a><div style="font-size:28px;font-weight:700;letter-spacing:-.4px">Energy</div></div>
+    return `<div style="display:flex;align-items:center;gap:4px"><a class="tap" data-act="nav" data-path="${HOUSE_PATH}" aria-label="Back to House" style="min-height:44px;min-width:44px;display:flex;align-items:center;color:${TOKENS.text2}">${svg(ICON.back, 22)}</a><div style="font-size:28px;font-weight:700;letter-spacing:-.4px">Energy</div></div>
 <div class="card pad">${priceStrip(hass, at, true)}</div>`;
   }
 
@@ -1603,7 +1604,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const outside = num(attr(hass, 'weather.forecast_home', 'temperature'));
     const patio = state(hass, 'input_boolean.patio_door_heating_suspended') === 'on' ? ' · patio open' : '';
     const hSub = [inside !== null ? `in ${fmt1(inside)}°` : '', outside !== null ? `out ${fmt1(outside)}°` : ''].filter(Boolean).join(' · ') + patio || 'no readings';
-    return `<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px"><div class="card" style="padding:12px 14px${soon ? ';background:' + TOKENS.amberTag : ''}"><div class="lbl">Bins</div><div style="font-size:15px;font-weight:600;margin-top:4px${soon ? ';color:' + TOKENS.amber : ''}">${esc(binTitle)}</div><div style="font-size:12px;color:${soon ? TOKENS.amber : TOKENS.text2}">${esc(binSub)}</div></div><a class="card tap" data-act="nav" data-path="${HOUSE_PATH}" aria-label="Open house settings" style="padding:12px 14px;display:block"><div class="lbl">Heating</div><div style="font-size:15px;font-weight:600;margin-top:4px">${esc(hTitle)}</div><div style="font-size:12px;color:${TOKENS.text2}">${esc(hSub)}</div></a></div>`;
+    return `<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px"><div class="card" style="padding:12px 14px${soon ? ';background:' + TOKENS.amberTag : ''}"><div class="lbl">Bins</div><div style="font-size:15px;font-weight:600;margin-top:4px${soon ? ';color:' + TOKENS.amber : ''}">${esc(binTitle)}</div><div style="font-size:12px;color:${soon ? TOKENS.amber : TOKENS.text2}">${esc(binSub)}</div></div><a class="card tap" data-act="nav" data-path="${SETTINGS_PATH}" aria-label="Open settings" style="padding:12px 14px;display:block"><div class="lbl">Heating</div><div style="font-size:15px;font-weight:600;margin-top:4px">${esc(hTitle)}</div><div style="font-size:12px;color:${TOKENS.text2}">${esc(hSub)}</div></a></div>`;
   }
 
   function sectionFeed(hass, now) {
@@ -1619,10 +1620,10 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   // page, still usable, never overlapping) and names the offender. The card probes after its first paint and
   // defaults to 'inflow' until the probe says otherwise (fail safe).
   const TABS = [
-    { id: 'now', label: 'Now', path: `${DASH}/now`, icon: 'home' },
+    { id: 'house', label: 'House', path: HOUSE_PATH, icon: 'home' },
     { id: 'energy', label: 'Energy', path: ENERGY_PATH, icon: 'bolt' },
     { id: 'cameras', label: 'Cameras', path: CAMERAS_PATH, icon: 'camera' },
-    { id: 'house', label: 'House', path: HOUSE_PATH, icon: 'house' },
+    { id: 'settings', label: 'Settings', path: SETTINGS_PATH, icon: 'gear' },
   ];
   function tabbarPlacement(ancestors) {
     const none = (v) => v === undefined || v === null || v === '' || v === 'none';
@@ -1642,7 +1643,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   }
   function sectionTabbar(cfg, ui) {
     if (!TABBAR_ENABLED) return '';
-    const active = cfg && TABS.some((t) => t.id === cfg.active) ? cfg.active : 'now';
+    const active = cfg && TABS.some((t) => t.id === cfg.active) ? cfg.active : 'house';
     const fixed = ui && ui.tb === 'fixed';
     const tabs = TABS.map((t) => `<button type="button" class="tab" data-act="nav" data-path="${t.path}"${t.id === active ? ' aria-current="page"' : ''}>${svg(ICON[t.icon], 24)}<span>${t.label}</span></button>`).join('');
     return `${fixed ? '<div class="tabbar-spacer" style="--tbh:calc(58px + max(10px, env(safe-area-inset-bottom, 0px)))" aria-hidden="true"></div>' : ''}<nav class="tabs${fixed ? ' fixed' : ''}" aria-label="Pulse">${tabs}</nav>`;
@@ -1678,7 +1679,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       numbers = `<div class="two"><div class="card pad"><div class="lbl">Room</div><div class="big">${m.temp === null ? '–' : fmt1(m.temp) + '°'}</div><div style="font-size:12px;color:${TOKENS.text2};margin-top:2px">${m.humidity === null ? 'no humidity' : Math.round(m.humidity) + '% humidity'}</div></div>
 <div class="card pad"><div class="lbl">Target</div><div class="big" style="${differs ? 'color:' + TOKENS.amber : ''}">${m.target === null ? '–' : fmt1(m.target) + '°'}</div>${status}<div style="font-size:12px;color:${TOKENS.text2};margin-top:2px">${esc(sub2)}</div></div></div>`;
     }
-    return `<div style="display:flex;align-items:center;gap:4px"><a class="tap" data-act="nav" data-path="${DASH}/now" aria-label="Back to Now" style="min-height:44px;min-width:44px;display:flex;align-items:center;color:${TOKENS.text2}">${svg(ICON.back, 22)}</a><div style="font-size:28px;font-weight:700;letter-spacing:-.4px">${esc(m.cfg.name)}</div></div>${banner}${numbers}`;
+    return `<div style="display:flex;align-items:center;gap:4px"><a class="tap" data-act="nav" data-path="${HOUSE_PATH}" aria-label="Back to House" style="min-height:44px;min-width:44px;display:flex;align-items:center;color:${TOKENS.text2}">${svg(ICON.back, 22)}</a><div style="font-size:28px;font-weight:700;letter-spacing:-.4px">${esc(m.cfg.name)}</div></div>${banner}${numbers}`;
   }
 
   // The lights row of the Why card: why the lights are as they are, including why they are NOT on. One
@@ -2080,7 +2081,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return `<a class="rt gt tap wide" data-act="nav" data-path="${roomPath(key)}"><div class="nm">${dot}<span>${esc(g.name)}</span></div><div class="t gh">${esc(gardenHeadline(g))}</div><div class="b"><span>${esc(gardenSub(g, now))}</span></div></a>`;
   }
 
-  // ── House page ───────────────────────────────────────────────────────────────────────────────
+  // ── Settings page ───────────────────────────────────────────────────────────────────────────────
   // The house-wide settings. Writes go to fixed helper ids (never an id read from the page), so the
   // select and number services can only reach these two helpers.
   const HOUSE_MODIFIER = 'input_select.house_active_mode_modifier';
@@ -2127,7 +2128,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const mod = state(hass, HOUSE_MODIFIER);
     const modText = usable(mod) && mod !== 'none' && MODIFIERS[mod] ? ` · ${MODIFIERS[mod].label} modifier` : '';
     const banner = `<div class="card pad" style="display:flex;gap:10px;align-items:flex-start"><span class="dot${usable(mode) ? '' : ' dim'}" style="margin-top:5px"></span><div><div style="font-size:15px;font-weight:700">${esc(t.title)}</div><div style="font-size:13px;color:${TOKENS.text2};margin-top:3px;line-height:1.45">${esc(t.body)}${esc(when)}${esc(modText)}</div></div></div>`;
-    return `<div style="display:flex;align-items:center;gap:4px"><a class="tap" data-act="nav" data-path="${DASH}/now" aria-label="Back to Now" style="min-height:44px;min-width:44px;display:flex;align-items:center;color:${TOKENS.text2}">${svg(ICON.back, 22)}</a><div style="font-size:28px;font-weight:700;letter-spacing:-.4px">House</div></div>${banner}`;
+    return `<div style="display:flex;align-items:center;gap:4px"><a class="tap" data-act="nav" data-path="${HOUSE_PATH}" aria-label="Back to House" style="min-height:44px;min-width:44px;display:flex;align-items:center;color:${TOKENS.text2}">${svg(ICON.back, 22)}</a><div style="font-size:28px;font-weight:700;letter-spacing:-.4px">Settings</div></div>${banner}`;
   }
 
   function sectionHouseMode(hass, now) {
@@ -2304,7 +2305,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const banner = `<div class="card pad${warn ? ' warn' : ''}" style="display:flex;gap:10px;align-items:flex-start"><span class="dot${warn ? ' warn' : sum.live.length ? '' : ' dim'}" style="margin-top:5px"></span><div><div style="font-size:15px;font-weight:700">${esc(sum.title)}</div><div style="font-size:13px;color:${TOKENS.text2};margin-top:3px;line-height:1.45">${esc(notes.join(' · '))}</div></div></div>`;
     const usableCams = sum.st.filter((x) => !x.s.offline).length;
     const master = usableCams ? `<div class="card"><button class="tog tap" data-act="cameras-all" aria-pressed="${sum.live.length > 0}"><div><div class="h">Cameras</div><div class="s">${sum.live.length ? 'Tap to turn all off' : 'Tap to turn all on'}</div></div><span class="sw${sum.live.length ? '' : ' off'}" role="img" aria-label="${sum.live.length ? 'On' : 'Off'}"></span></button></div>` : '';
-    return `<div style="display:flex;align-items:center;gap:4px"><a class="tap" data-act="nav" data-path="${DASH}/now" aria-label="Back to Now" style="min-height:44px;min-width:44px;display:flex;align-items:center;color:${TOKENS.text2}">${svg(ICON.back, 22)}</a><div style="font-size:28px;font-weight:700;letter-spacing:-.4px">Cameras</div></div>${banner}${master}`;
+    return `<div style="display:flex;align-items:center;gap:4px"><a class="tap" data-act="nav" data-path="${HOUSE_PATH}" aria-label="Back to House" style="min-height:44px;min-width:44px;display:flex;align-items:center;color:${TOKENS.text2}">${svg(ICON.back, 22)}</a><div style="font-size:28px;font-weight:700;letter-spacing:-.4px">Cameras</div></div>${banner}${master}`;
   }
 
   // `live` says whether a stream belongs above `rest`. The element draws the stream in a slot of its own that
@@ -2517,7 +2518,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     }
   }
 
-  const api = { lightsStory, parseHistory, readHistory, historySentence, roomActivity, unexplainedReasons, REASON_TEXT, TILE, TILE_H, TILE_WIDE_H, tileNeededHeight, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, entrySentence, tidyVerdict, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, CAMERAS_PATH, PENDING_MS, cameraParts, cameraToggle, cameraPending, parseClips, frigateClipsId, roomGroups, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, GARDEN_ORDER, ALL_ROOM_KEYS, THEME_LABELS, THEME_ICON, ICON, gardenModel, gardenSub, themeSource, shortDate, ALLOWED, DEVICE_REASONS, FAN_NUMBERS, render, priceColour, PRICE_STOPS, PRICE_EXTREME_P, roomModel, attentionItems, handleAction, callService, num, parseList };
+  const api = { lightsStory, parseHistory, readHistory, historySentence, roomActivity, unexplainedReasons, REASON_TEXT, TILE, TILE_H, TILE_WIDE_H, tileNeededHeight, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, entrySentence, tidyVerdict, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, SETTINGS_PATH, CAMERAS_PATH, PENDING_MS, cameraParts, cameraToggle, cameraPending, parseClips, frigateClipsId, roomGroups, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, GARDEN_ORDER, ALL_ROOM_KEYS, THEME_LABELS, THEME_ICON, ICON, gardenModel, gardenSub, themeSource, shortDate, ALLOWED, DEVICE_REASONS, FAN_NUMBERS, render, priceColour, PRICE_STOPS, PRICE_EXTREME_P, roomModel, attentionItems, handleAction, callService, num, parseList };
   root.PulseLib = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 
