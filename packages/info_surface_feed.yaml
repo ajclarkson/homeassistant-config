@@ -30,9 +30,10 @@ template:
           {% set noisy = ['octopus', 'energy'] %}
           {# Plumbing that runs on a timer or on every sensor update and changes nothing the household would notice.
              Values from homerun-automations: heating/room-temp-feed.ts (decision update_external_temp, reason
-             heartbeat / temp_changed) and house/outdoor-temp-history.ts (decision record). #}
+             heartbeat / temp_changed), house/outdoor-temp-history.ts (decision record) and lib/theme-calendar.ts
+             (decision publish_calendar: the daily retained calendar publish, which never changes the theme). #}
           {% set plumbing_ids = ['room_temp_feed', 'outdoor_temp_history'] %}
-          {% set plumbing_decisions = ['update_external_temp', 'record'] %}
+          {% set plumbing_decisions = ['update_external_temp', 'record', 'publish_calendar'] %}
           {% set plumbing_reasons = ['heartbeat'] %}
           {% if trigger.platform == 'homeassistant' %}
             {{ true }}
