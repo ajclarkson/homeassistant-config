@@ -395,7 +395,7 @@ ok('device row sits under the scenes and only the bathroom page fills it', () =>
   const tpl = yaml.load(readFileSync(root + 'info_templates.yaml', 'utf8')).pulse_room;
   const modes = tpl.card.cards.map((c) => c.mode).filter(Boolean);
   assert.ok(modes.indexOf('device') === modes.indexOf('scenes') + 1, 'device directly after scenes');
-  assert.equal(tpl.variables.fan, '');
+  assert.deepEqual(tpl.default.find((d) => 'fan' in d), { fan: '' });
   for (const f of readdirSync(root + 'views').filter((x) => /^info-room-/.test(x))) {
     const cards = yaml.load(readFileSync(root + 'views/' + f, 'utf8')).sections[0].cards;
     const garden = GARDENS.some((g) => f === `info-room-${g}.yaml`);
@@ -405,6 +405,40 @@ ok('device row sits under the scenes and only the bathroom page fills it', () =>
     assert.equal(!!v.fan, f === 'info-room-bathroom.yaml', f);
     if (v.fan) assert.deepEqual([v.fan, v.fan_decision], ['switch.bathroom_fan_extractor', 'sensor.bathroom_fan_decision']);
   }
+});
+
+// Mirrors streamline-card's evaluateVariables: defaults come only from the template's `default` (list of
+// single-key maps or an object), never from a template-level `variables:`; the view's variables win.
+const streamlineVars = (tpl, viewVars) => {
+  const flat = (d) => (Array.isArray(d) ? Object.assign({}, ...d) : d || {});
+  return { ...flat(tpl.default), ...flat(viewVars) };
+};
+const substitute = (node, vars) => {
+  if (typeof node === 'string') return node.replace(/\[\[(\w+)\]\]/g, (m, k) => (Object.prototype.hasOwnProperty.call(vars, k) ? String(vars[k]) : m));
+  if (Array.isArray(node)) return node.map((x) => substitute(x, vars));
+  if (node && typeof node === 'object') return Object.fromEntries(Object.entries(node).map(([k, v]) => [k, substitute(v, vars)]));
+  return node;
+};
+
+ok('every room and garden view resolves its template with no placeholder left and valid pulse-cards', () => {
+  const templates = yaml.load(readFileSync(root + 'info_templates.yaml', 'utf8'));
+  for (const t of Object.values(templates)) assert.equal(t.variables, undefined, 'streamline ignores template-level variables');
+  const views = readdirSync(root + 'views').filter((x) => /^info-room-/.test(x));
+  assert.equal(views.length, P.ALL_ROOM_KEYS.length, 'one room view per room');
+  for (const f of views) {
+    const call = yaml.load(readFileSync(root + 'views/' + f, 'utf8')).sections[0].cards.find((c) => c.type === 'custom:streamline-card');
+    const tpl = templates[call.template];
+    assert.ok(tpl, `${f} names a known template`);
+    const resolved = substitute(tpl.card, streamlineVars(tpl, call.variables));
+    assert.doesNotMatch(JSON.stringify(resolved), /\[\[[^\]]*\]\]/, `${f} leaves no placeholder`);
+    const pulse = resolved.cards.filter((c) => c.type === 'custom:pulse-card');
+    assert.ok(pulse.length >= 4, `${f} has its pulse-cards`);
+    for (const c of pulse) assert.doesNotThrow(() => P.render(c.mode, c, mk(), NOW), `${f} ${c.mode}`);
+  }
+  // The regression itself: a room that passes no fan must resolve the device card to blank, not "[[fan]]".
+  const kitchen = templates.pulse_room;
+  const dev = substitute(kitchen.card, streamlineVars(kitchen, { room: 'kitchen' })).cards.find((c) => c.mode === 'device');
+  assert.deepEqual([dev.entity, dev.decision, dev.label], ['', '', '']);
 });
 
 ok('media only for rooms with players', () => {
