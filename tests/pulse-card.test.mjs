@@ -2813,7 +2813,8 @@ ok('history, catalogue and feed YAML: one history sensor per location plus house
   const mqtt = yaml.load(readFileSync(root + 'packages/mqtt.yaml', 'utf8')).mqtt.sensor;
   const by = (id) => mqtt.find((x) => x.unique_id === id);
   const locations = [...P.ALL_ROOM_KEYS];
-  for (const loc of new Set(catalog.automations.map((a) => a.location))) assert.ok(locations.includes(loc), `catalogue location ${loc} is a room or garden key in the card`);
+  const catalogLocations = [...locations, 'house']; // whole-house automations publish to sensor.house_history
+  for (const loc of new Set(catalog.automations.map((a) => a.location))) assert.ok(catalogLocations.includes(loc), `catalogue location ${loc} is a room, garden or house key in the card`);
   for (const k of locations) {
     const s = by(`${k}_history`);
     assert.ok(s, k);
