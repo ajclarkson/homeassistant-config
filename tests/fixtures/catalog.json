@@ -1,6 +1,73 @@
 {
   "automations": [
     {
+      "automation_id": "parlour:heating",
+      "location": "parlour",
+      "reasons": {
+        "automation_disabled": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "house_mode_away": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "acted"
+        },
+        "house_mode_sleep": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "acted"
+        },
+        "house_mode_vacation": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "acted"
+        },
+        "manual_override": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "acted"
+        },
+        "no_change": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "no_schedule_match": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "safety_heating_disabled": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "acted"
+        },
+        "safety_window_open": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "acted"
+        },
+        "schedule": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "acted"
+        },
+        "schedule_occupied": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "acted"
+        }
+      },
+      "subsystem": "heating"
+    },
+    {
       "automation_id": "parlour:lighting",
       "location": "parlour",
       "reasons": {
@@ -167,6 +234,73 @@
         }
       },
       "subsystem": "occupied"
+    },
+    {
+      "automation_id": "kitchen:heating",
+      "location": "kitchen",
+      "reasons": {
+        "automation_disabled": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "house_mode_away": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "acted"
+        },
+        "house_mode_sleep": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "acted"
+        },
+        "house_mode_vacation": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "acted"
+        },
+        "manual_override": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "acted"
+        },
+        "no_change": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "no_schedule_match": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "safety_heating_disabled": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "acted"
+        },
+        "safety_window_open": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "acted"
+        },
+        "schedule": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "acted"
+        },
+        "schedule_occupied": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "acted"
+        }
+      },
+      "subsystem": "heating"
     },
     {
       "automation_id": "kitchen:lighting",
@@ -337,6 +471,519 @@
       "subsystem": "occupied"
     },
     {
+      "automation_id": "kitchen:sonos",
+      "location": "kitchen",
+      "reasons": {
+        "automation_disabled": {
+          "facts": [],
+          "outcome": "acted"
+        },
+        "automation_disabled_idle": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "automation_enabled": {
+          "facts": [],
+          "outcome": "acted"
+        },
+        "automation_toggle_unknown_state": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "occupancy_off": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "occupancy_on": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "occupancy_unknown_state": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "unclassified_trigger": {
+          "facts": [],
+          "outcome": "ignored"
+        }
+      },
+      "subsystem": "sonos"
+    },
+    {
+      "automation_id": "house:away_detection",
+      "location": "house",
+      "reasons": {
+        "all_left_door_recently": {
+          "facts": [],
+          "outcome": "acted"
+        },
+        "all_left_door_recently_startup": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "away_duration_exceeded": {
+          "facts": [],
+          "outcome": "acted"
+        },
+        "no_door_event": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "not_in_away_mode": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "sitter_mode_ended_house_empty": {
+          "facts": [],
+          "outcome": "acted"
+        },
+        "sitter_present": {
+          "facts": [],
+          "outcome": "acted"
+        },
+        "sitter_present_no_change": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "someone_returned": {
+          "facts": [],
+          "outcome": "acted"
+        }
+      },
+      "subsystem": "house_mode"
+    },
+    {
+      "automation_id": "house:camera_mode_sync",
+      "location": "house",
+      "reasons": {
+        "away_but_guest_present": {
+          "facts": [],
+          "outcome": "declined"
+        },
+        "house_away": {
+          "facts": [],
+          "outcome": "acted"
+        },
+        "house_away_startup": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "house_not_away": {
+          "facts": [],
+          "outcome": "acted"
+        },
+        "house_not_away_startup": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "mode_not_managed": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "ignored"
+        },
+        "sleep_kitchen_camera_on": {
+          "facts": [],
+          "outcome": "acted"
+        },
+        "sleep_kitchen_camera_on_startup": {
+          "facts": [],
+          "outcome": "ignored"
+        }
+      },
+      "subsystem": "cameras"
+    },
+    {
+      "automation_id": "house:exit_sleep_button",
+      "location": "house",
+      "reasons": {
+        "bed_occupied": {
+          "facts": [],
+          "outcome": "declined"
+        },
+        "button_pressed": {
+          "facts": [],
+          "outcome": "acted"
+        },
+        "guest_mode_active": {
+          "facts": [],
+          "outcome": "declined"
+        },
+        "not_in_sleep_mode": {
+          "facts": [],
+          "outcome": "ignored"
+        }
+      },
+      "subsystem": "house_mode"
+    },
+    {
+      "automation_id": "house:exit_sleep_kitchen_motion",
+      "location": "house",
+      "reasons": {
+        "kitchen_motion_detected": {
+          "facts": [],
+          "outcome": "acted"
+        },
+        "not_in_sleep_mode": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "outside_morning_window": {
+          "facts": [],
+          "outcome": "ignored"
+        }
+      },
+      "subsystem": "house_mode"
+    },
+    {
+      "automation_id": "house:guest_mode",
+      "location": "house",
+      "reasons": {
+        "guest_absent": {
+          "facts": [
+            "modifier"
+          ],
+          "outcome": "acted"
+        },
+        "guest_absent_startup": {
+          "facts": [
+            "modifier"
+          ],
+          "outcome": "ignored"
+        },
+        "guest_present": {
+          "facts": [
+            "modifier"
+          ],
+          "outcome": "acted"
+        },
+        "guest_present_startup": {
+          "facts": [
+            "modifier"
+          ],
+          "outcome": "ignored"
+        }
+      },
+      "subsystem": "modifier"
+    },
+    {
+      "automation_id": "house:manual_privacy_toggle",
+      "location": "house",
+      "reasons": {
+        "button_double_press": {
+          "facts": [],
+          "outcome": "acted"
+        }
+      },
+      "subsystem": "cameras"
+    },
+    {
+      "automation_id": "house:mo_frigate",
+      "location": "house",
+      "reasons": {
+        "cooldown_active": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "eating": {
+          "facts": [
+            "room"
+          ],
+          "outcome": "acted"
+        },
+        "not_actionable": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "spotted": {
+          "facts": [
+            "room"
+          ],
+          "outcome": "acted"
+        }
+      },
+      "subsystem": "mo"
+    },
+    {
+      "automation_id": "house:octopus_points_credited",
+      "location": "house",
+      "reasons": {
+        "points_increased": {
+          "facts": [
+            "credited",
+            "balance"
+          ],
+          "outcome": "acted"
+        }
+      },
+      "subsystem": "energy"
+    },
+    {
+      "automation_id": "house:octopus_power_down_auto_join",
+      "location": "house",
+      "reasons": {
+        "sessions_joined": {
+          "facts": [
+            "count"
+          ],
+          "outcome": "acted"
+        }
+      },
+      "subsystem": "energy"
+    },
+    {
+      "automation_id": "house:cheap_rate_nudge",
+      "location": "house",
+      "reasons": {
+        "adam": {
+          "facts": [],
+          "outcome": "acted"
+        },
+        "adam_and_sarah": {
+          "facts": [],
+          "outcome": "acted"
+        },
+        "nobody_home": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "sarah": {
+          "facts": [],
+          "outcome": "acted"
+        }
+      },
+      "subsystem": "energy"
+    },
+    {
+      "automation_id": "house:tomorrow_rates_nudge",
+      "location": "house",
+      "reasons": {
+        "cheap_windows": {
+          "facts": [],
+          "outcome": "acted"
+        },
+        "negative_windows": {
+          "facts": [],
+          "outcome": "acted"
+        },
+        "no_notable_windows_tomorrow": {
+          "facts": [],
+          "outcome": "ignored"
+        }
+      },
+      "subsystem": "energy"
+    },
+    {
+      "automation_id": "house:octopus_wheel_of_fortune_spin",
+      "location": "house",
+      "reasons": {
+        "wheels_spun": {
+          "facts": [
+            "count"
+          ],
+          "outcome": "acted"
+        }
+      },
+      "subsystem": "energy"
+    },
+    {
+      "automation_id": "house:outdoor_temp_history",
+      "location": "house",
+      "reasons": {
+        "already_recorded_today": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "end_of_day": {
+          "facts": [],
+          "outcome": "ignored"
+        }
+      },
+      "subsystem": "thermal"
+    },
+    {
+      "automation_id": "house:sleep_mode_button",
+      "location": "house",
+      "reasons": {
+        "already_in_sleep_mode": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "bed_not_occupied": {
+          "facts": [],
+          "outcome": "declined"
+        },
+        "button_hold_bed_occupied": {
+          "facts": [],
+          "outcome": "acted"
+        },
+        "parlour_active": {
+          "facts": [],
+          "outcome": "declined"
+        }
+      },
+      "subsystem": "house_mode"
+    },
+    {
+      "automation_id": "house:wfh_adam",
+      "location": "house",
+      "reasons": {
+        "always_wfh_wed_fri": {
+          "facts": [],
+          "outcome": "acted"
+        },
+        "home_at_inference_time": {
+          "facts": [],
+          "outcome": "acted"
+        },
+        "house_away": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "not_home_at_inference_time": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "not_workday": {
+          "facts": [],
+          "outcome": "ignored"
+        }
+      },
+      "subsystem": "wfh_inference"
+    },
+    {
+      "automation_id": "house:wfh_sarah",
+      "location": "house",
+      "reasons": {
+        "home_at_inference_time": {
+          "facts": [],
+          "outcome": "acted"
+        },
+        "house_away": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "not_home_at_inference_time": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "not_workday": {
+          "facts": [],
+          "outcome": "ignored"
+        }
+      },
+      "subsystem": "wfh_inference"
+    },
+    {
+      "automation_id": "house:wfh_reset",
+      "location": "house",
+      "reasons": {
+        "non_workday": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "not_a_non_workday": {
+          "facts": [],
+          "outcome": "ignored"
+        }
+      },
+      "subsystem": "wfh_inference"
+    },
+    {
+      "automation_id": "house:window_thermal",
+      "location": "house",
+      "reasons": {
+        "close_bedroom": {
+          "facts": [],
+          "outcome": "acted"
+        },
+        "close_both": {
+          "facts": [],
+          "outcome": "acted"
+        },
+        "close_home_office": {
+          "facts": [],
+          "outcome": "acted"
+        },
+        "conditions_not_met": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "open_both": {
+          "facts": [],
+          "outcome": "acted"
+        }
+      },
+      "subsystem": "thermal"
+    },
+    {
+      "automation_id": "home_office:heating",
+      "location": "home_office",
+      "reasons": {
+        "automation_disabled": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "house_mode_away": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "acted"
+        },
+        "house_mode_sleep": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "acted"
+        },
+        "house_mode_vacation": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "acted"
+        },
+        "manual_override": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "acted"
+        },
+        "no_change": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "no_schedule_match": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "safety_heating_disabled": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "acted"
+        },
+        "safety_window_open": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "acted"
+        },
+        "schedule": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "acted"
+        },
+        "schedule_occupied": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "acted"
+        }
+      },
+      "subsystem": "heating"
+    },
+    {
       "automation_id": "home_office:lighting",
       "location": "home_office",
       "reasons": {
@@ -503,6 +1150,272 @@
         }
       },
       "subsystem": "occupied"
+    },
+    {
+      "automation_id": "home_office:sonos",
+      "location": "home_office",
+      "reasons": {
+        "automation_disabled": {
+          "facts": [],
+          "outcome": "acted"
+        },
+        "automation_disabled_idle": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "automation_enabled": {
+          "facts": [],
+          "outcome": "acted"
+        },
+        "automation_toggle_unknown_state": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "occupancy_off": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "occupancy_on": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "occupancy_unknown_state": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "unclassified_trigger": {
+          "facts": [],
+          "outcome": "ignored"
+        }
+      },
+      "subsystem": "sonos"
+    },
+    {
+      "automation_id": "house:boiler_demand",
+      "location": "house",
+      "reasons": {
+        "demand": {
+          "facts": [
+            "rooms"
+          ],
+          "outcome": "ignored"
+        },
+        "demand_ended": {
+          "facts": [],
+          "outcome": "acted"
+        },
+        "demand_started": {
+          "facts": [
+            "rooms"
+          ],
+          "outcome": "acted"
+        },
+        "heating_disabled": {
+          "facts": [],
+          "outcome": "acted"
+        },
+        "heating_disabled_idle": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "no_demand": {
+          "facts": [],
+          "outcome": "ignored"
+        }
+      },
+      "subsystem": "heating"
+    },
+    {
+      "automation_id": "house:patio_door",
+      "location": "house",
+      "reasons": {
+        "door_closed_not_suspended": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "door_closed_was_suspended": {
+          "facts": [],
+          "outcome": "acted"
+        },
+        "door_open_heating_already_off": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "door_open_heating_on": {
+          "facts": [],
+          "outcome": "acted"
+        },
+        "door_open_within_grace": {
+          "facts": [],
+          "outcome": "ignored"
+        }
+      },
+      "subsystem": "heating"
+    },
+    {
+      "automation_id": "parlour:room_temp_feed",
+      "location": "parlour",
+      "reasons": {
+        "heartbeat": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "temp_changed": {
+          "facts": [],
+          "outcome": "ignored"
+        }
+      },
+      "subsystem": "heating"
+    },
+    {
+      "automation_id": "kitchen:room_temp_feed",
+      "location": "kitchen",
+      "reasons": {
+        "heartbeat": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "temp_changed": {
+          "facts": [],
+          "outcome": "ignored"
+        }
+      },
+      "subsystem": "heating"
+    },
+    {
+      "automation_id": "hallway_downstairs:room_temp_feed",
+      "location": "hallway_downstairs",
+      "reasons": {
+        "heartbeat": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "temp_changed": {
+          "facts": [],
+          "outcome": "ignored"
+        }
+      },
+      "subsystem": "heating"
+    },
+    {
+      "automation_id": "bedroom:room_temp_feed",
+      "location": "bedroom",
+      "reasons": {
+        "heartbeat": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "temp_changed": {
+          "facts": [],
+          "outcome": "ignored"
+        }
+      },
+      "subsystem": "heating"
+    },
+    {
+      "automation_id": "bathroom:room_temp_feed",
+      "location": "bathroom",
+      "reasons": {
+        "heartbeat": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "temp_changed": {
+          "facts": [],
+          "outcome": "ignored"
+        }
+      },
+      "subsystem": "heating"
+    },
+    {
+      "automation_id": "home_office:room_temp_feed",
+      "location": "home_office",
+      "reasons": {
+        "heartbeat": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "temp_changed": {
+          "facts": [],
+          "outcome": "ignored"
+        }
+      },
+      "subsystem": "heating"
+    },
+    {
+      "automation_id": "house:trv_actuation",
+      "location": "house",
+      "reasons": {
+        "no_valid_rooms": {
+          "facts": [
+            "skipped"
+          ],
+          "outcome": "ignored"
+        },
+        "trvs_not_set": {
+          "facts": [
+            "skipped"
+          ],
+          "outcome": "declined"
+        },
+        "trvs_set": {
+          "facts": [
+            "rooms",
+            "skipped",
+            "clamped"
+          ],
+          "outcome": "ignored"
+        }
+      },
+      "subsystem": "heating"
+    },
+    {
+      "automation_id": "house:trv_adaptation",
+      "location": "house",
+      "reasons": {
+        "status_not_critical": {
+          "facts": [
+            "status"
+          ],
+          "outcome": "ignored"
+        },
+        "valve_characteristic_lost": {
+          "facts": [
+            "room"
+          ],
+          "outcome": "acted"
+        }
+      },
+      "subsystem": "heating"
+    },
+    {
+      "automation_id": "house:window_external",
+      "location": "house",
+      "reasons": {
+        "no_rooms": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "window_closed": {
+          "facts": [
+            "room"
+          ],
+          "outcome": "ignored"
+        },
+        "window_open": {
+          "facts": [
+            "room"
+          ],
+          "outcome": "ignored"
+        },
+        "windows_synced": {
+          "facts": [
+            "open_rooms"
+          ],
+          "outcome": "ignored"
+        }
+      },
+      "subsystem": "heating"
     },
     {
       "automation_id": "hallway_upstairs:lighting",
@@ -673,6 +1586,73 @@
       "subsystem": "occupied"
     },
     {
+      "automation_id": "hallway_downstairs:heating",
+      "location": "hallway_downstairs",
+      "reasons": {
+        "automation_disabled": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "house_mode_away": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "acted"
+        },
+        "house_mode_sleep": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "acted"
+        },
+        "house_mode_vacation": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "acted"
+        },
+        "manual_override": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "acted"
+        },
+        "no_change": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "no_schedule_match": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "safety_heating_disabled": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "acted"
+        },
+        "safety_window_open": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "acted"
+        },
+        "schedule": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "acted"
+        },
+        "schedule_occupied": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "acted"
+        }
+      },
+      "subsystem": "heating"
+    },
+    {
       "automation_id": "hallway_downstairs:lighting",
       "location": "hallway_downstairs",
       "reasons": {
@@ -841,6 +1821,71 @@
       "subsystem": "occupied"
     },
     {
+      "automation_id": "front_garden:halloween",
+      "location": "front_garden",
+      "reasons": {
+        "automation_disabled_idle": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "drift": {
+          "facts": [
+            "colour"
+          ],
+          "outcome": "ignored"
+        },
+        "echo_scheduled": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "halloween_no_longer_active": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "halloween_not_active": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "halloween_scene_activated": {
+          "facts": [],
+          "outcome": "acted"
+        },
+        "lightning_echo": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "lightning_strike": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "next_bolt_scheduled": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "no_feature_lights": {
+          "facts": [],
+          "outcome": "declined"
+        },
+        "other_scene_activated": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "past_lightning_cutoff": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "scene_reloaded_not_activated": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "startup_with_halloween_active": {
+          "facts": [],
+          "outcome": "ignored"
+        }
+      },
+      "subsystem": "lighting"
+    },
+    {
       "automation_id": "front_garden:lighting",
       "location": "front_garden",
       "reasons": {
@@ -922,6 +1967,95 @@
       "subsystem": "lighting"
     },
     {
+      "automation_id": "front_garden:porch_light",
+      "location": "front_garden",
+      "reasons": {
+        "already_warm": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "automation_disabled_idle": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "automation_disabled_restore": {
+          "facts": [],
+          "outcome": "acted"
+        },
+        "daylight": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "hold_expired": {
+          "facts": [],
+          "outcome": "acted"
+        },
+        "hold_expired_look_missing_garden_off": {
+          "facts": [],
+          "outcome": "acted"
+        },
+        "look_unreadable": {
+          "facts": [
+            "problem"
+          ],
+          "outcome": "declined"
+        },
+        "motion_cleared": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "motion_cleared_before_settle": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "motion_cleared_not_warm": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "motion_detected": {
+          "facts": [],
+          "outcome": "acted"
+        },
+        "motion_during_fade_back": {
+          "facts": [],
+          "outcome": "acted"
+        },
+        "motion_still_on": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "restore_look_missing": {
+          "facts": [],
+          "outcome": "declined"
+        },
+        "scene_changed_during_hold": {
+          "facts": [],
+          "outcome": "acted"
+        },
+        "scene_changed_during_motion": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "scene_changed_hold_dropped": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "scene_reloaded_not_activated": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "startup": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "theme_opted_out": {
+          "facts": [],
+          "outcome": "declined"
+        }
+      },
+      "subsystem": "lighting"
+    },
+    {
       "automation_id": "front_garden:theme_calendar",
       "location": "front_garden",
       "reasons": {
@@ -961,6 +2095,206 @@
         }
       },
       "subsystem": "lighting"
+    },
+    {
+      "automation_id": "front_garden:theme_effects",
+      "location": "front_garden",
+      "reasons": {
+        "automation_disabled_idle": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "no_effect_lights": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "no_effects_theme_active": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "no_lights_in_theme_roles": {
+          "facts": [
+            "theme"
+          ],
+          "outcome": "declined"
+        },
+        "off_scene_activated": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "scene_reloaded_not_activated": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "scene_without_effects_activated": {
+          "facts": [],
+          "outcome": "acted"
+        },
+        "startup_with_theme_active": {
+          "facts": [
+            "theme"
+          ],
+          "outcome": "ignored"
+        },
+        "theme_scene_activated": {
+          "facts": [
+            "theme"
+          ],
+          "outcome": "ignored"
+        },
+        "theme_scene_settled": {
+          "facts": [
+            "theme"
+          ],
+          "outcome": "acted"
+        }
+      },
+      "subsystem": "lighting"
+    },
+    {
+      "automation_id": "foreign_office:door_ventilation",
+      "location": "foreign_office",
+      "reasons": {
+        "close_door": {
+          "facts": [
+            "indoor",
+            "outdoor"
+          ],
+          "outcome": "acted"
+        },
+        "conditions_not_met": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "not_active": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "open_door": {
+          "facts": [
+            "indoor",
+            "outdoor"
+          ],
+          "outcome": "acted"
+        }
+      },
+      "subsystem": "thermal"
+    },
+    {
+      "automation_id": "foreign_office:heating_actuation",
+      "location": "foreign_office",
+      "reasons": {
+        "helper_unavailable": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "declined"
+        },
+        "mode_unavailable": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "ignored"
+        },
+        "temperature_set": {
+          "facts": [
+            "mode",
+            "target",
+            "clamped_from"
+          ],
+          "outcome": "ignored"
+        },
+        "temperature_set_arbitrage": {
+          "facts": [
+            "mode",
+            "target",
+            "clamped_from"
+          ],
+          "outcome": "acted"
+        },
+        "temperature_set_arbitrage_startup": {
+          "facts": [
+            "mode",
+            "target",
+            "clamped_from"
+          ],
+          "outcome": "ignored"
+        },
+        "unknown_mode": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "declined"
+        }
+      },
+      "subsystem": "heating"
+    },
+    {
+      "automation_id": "foreign_office:heating",
+      "location": "foreign_office",
+      "reasons": {
+        "automation_disabled": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "house_mode_away": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "acted"
+        },
+        "house_mode_sleep": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "acted"
+        },
+        "house_mode_vacation": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "acted"
+        },
+        "manual_override": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "acted"
+        },
+        "no_change": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "no_schedule_match": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "safety_heating_disabled": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "acted"
+        },
+        "safety_window_open": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "acted"
+        },
+        "schedule": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "acted"
+        },
+        "schedule_occupied": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "acted"
+        }
+      },
+      "subsystem": "heating"
     },
     {
       "automation_id": "foreign_office:lighting",
@@ -1131,6 +2465,94 @@
       "subsystem": "occupied"
     },
     {
+      "automation_id": "foreign_office:overtemp_safety",
+      "location": "foreign_office",
+      "reasons": {
+        "overtemp_heater_already_off": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "overtemp_heater_on": {
+          "facts": [
+            "temp"
+          ],
+          "outcome": "acted"
+        },
+        "temp_normal": {
+          "facts": [],
+          "outcome": "ignored"
+        }
+      },
+      "subsystem": "heating"
+    },
+    {
+      "automation_id": "bedroom:heating",
+      "location": "bedroom",
+      "reasons": {
+        "automation_disabled": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "house_mode_away": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "acted"
+        },
+        "house_mode_sleep": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "acted"
+        },
+        "house_mode_vacation": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "acted"
+        },
+        "manual_override": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "acted"
+        },
+        "no_change": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "no_schedule_match": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "safety_heating_disabled": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "acted"
+        },
+        "safety_window_open": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "acted"
+        },
+        "schedule": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "acted"
+        },
+        "schedule_occupied": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "acted"
+        }
+      },
+      "subsystem": "heating"
+    },
+    {
       "automation_id": "bedroom:lighting",
       "location": "bedroom",
       "reasons": {
@@ -1299,6 +2721,139 @@
       "subsystem": "occupied"
     },
     {
+      "automation_id": "bedroom:sleep_mode_bypass",
+      "location": "bedroom",
+      "reasons": {
+        "already_in_sleep_mode": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "double_press_bypass": {
+          "facts": [],
+          "outcome": "acted"
+        }
+      },
+      "subsystem": "house_mode"
+    },
+    {
+      "automation_id": "bathroom:fan",
+      "location": "bathroom",
+      "reasons": {
+        "automation_disabled": {
+          "facts": [],
+          "outcome": "declined"
+        },
+        "automation_disabled_idle": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "fan_holding_humidity_high": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "fan_holding_min_run": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "fan_idle": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "fan_not_auto_started": {
+          "facts": [],
+          "outcome": "declined"
+        },
+        "fan_not_auto_started_idle": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "fan_off_humidity_normal": {
+          "facts": [],
+          "outcome": "acted"
+        },
+        "fan_off_max_run": {
+          "facts": [],
+          "outcome": "acted"
+        },
+        "fan_on_shower_started": {
+          "facts": [],
+          "outcome": "acted"
+        },
+        "fan_run_extended": {
+          "facts": [],
+          "outcome": "ignored"
+        }
+      },
+      "subsystem": "fan"
+    },
+    {
+      "automation_id": "bathroom:heating",
+      "location": "bathroom",
+      "reasons": {
+        "automation_disabled": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "house_mode_away": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "acted"
+        },
+        "house_mode_sleep": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "acted"
+        },
+        "house_mode_vacation": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "acted"
+        },
+        "manual_override": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "acted"
+        },
+        "no_change": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "no_schedule_match": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "safety_heating_disabled": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "acted"
+        },
+        "safety_window_open": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "acted"
+        },
+        "schedule": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "acted"
+        },
+        "schedule_occupied": {
+          "facts": [
+            "mode"
+          ],
+          "outcome": "acted"
+        }
+      },
+      "subsystem": "heating"
+    },
+    {
       "automation_id": "bathroom:lighting",
       "location": "bathroom",
       "reasons": {
@@ -1465,6 +3020,41 @@
         }
       },
       "subsystem": "occupied"
+    },
+    {
+      "automation_id": "bathroom:shower",
+      "location": "bathroom",
+      "reasons": {
+        "no_shower": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "shower_end_pending": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "shower_ended": {
+          "facts": [],
+          "outcome": "acted"
+        },
+        "shower_max_duration": {
+          "facts": [],
+          "outcome": "acted"
+        },
+        "shower_resumed": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "shower_running": {
+          "facts": [],
+          "outcome": "ignored"
+        },
+        "shower_started": {
+          "facts": [],
+          "outcome": "acted"
+        }
+      },
+      "subsystem": "shower"
     },
     {
       "automation_id": "back_garden:lighting",

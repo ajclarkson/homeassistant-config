@@ -2717,7 +2717,7 @@ ok('wording table: every acted or declined reason in the catalogue snapshot has 
 });
 
 ok('wording table: sentences read only declared facts, never print a placeholder, and survive null facts', () => {
-  const SAMPLE = { lux: 85, lux_threshold: 40, source: 'input_boolean.kitchen_cooking', hold: 'binary_sensor.kitchen_monitor', theme: 'halloween', minutes: 30, scene: 'cosy_evening' };
+  const SAMPLE = { lux: 85, lux_threshold: 40, source: 'input_boolean.kitchen_cooking', hold: 'binary_sensor.kitchen_monitor', theme: 'halloween', minutes: 30, scene: 'cosy_evening', mode: 'baseline_night', rooms: 'parlour,home_office', skipped: 'bedroom', room: 'home_office', temp: 31.26, target: 21, clamped_from: 27, credited: 120, balance: 3400, count: 2, indoor: 26.4, outdoor: 18.2, problem: 'unreadable', modifier: 'guest' };
   const hass = mk({ 'binary_sensor.kitchen_monitor': { state: 'on', attributes: { friendly_name: 'Kitchen monitor' } } });
   const strict = (declaredKeys, values) => new Proxy(Object.fromEntries(declaredKeys.map((k) => [k, values(k)])), {
     get(target, prop) { if (typeof prop === 'string' && !(prop in target)) throw new Error(`reads undeclared fact "${prop}"`); return target[prop]; },
@@ -2752,6 +2752,38 @@ ok('wording table: the garden and feed sentences carry over, so the wording does
     const raw = P.REASON_TEXT[key]({ lux: 1, lux_threshold: 2, theme: 'x', minutes: 1, scene: '', hold: '' }, { name: () => '' });
     assert.ok(raw.toLowerCase().includes(phrase.toLowerCase()), `${key} keeps "${phrase}": ${raw}`);
   }
+});
+
+ok('wording table: sentences for the garden, heating, house, energy and cat reasons read their facts, and survive null ones', () => {
+  const text = (key, facts) => P.historySentence({ ts: histEntry(1).ts, location: 'k', automation_id: 'k', subsystem: key.split(':')[0], kind: 'decision', decision: 'd', reason: key.split(':')[1], outcome: declared.get(key).outcome, facts, detail: {} }, mk()).text;
+  assert.equal(text('heating:safety_window_open', { mode: 'minimum' }), 'Heating set to minimum · window open');
+  assert.equal(text('heating:house_mode_away', { mode: 'baseline_night' }), 'Heating set to night baseline · house away');
+  assert.equal(text('heating:house_mode_away', { mode: null }), 'Heating mode changed · house away');
+  assert.equal(text('heating:demand_started', { rooms: 'parlour,home_office' }), 'Boiler on · Parlour, Home office calling for heat');
+  assert.equal(text('heating:demand_started', { rooms: null }), 'Boiler on · a room calling for heat');
+  assert.equal(text('heating:trvs_not_set', { skipped: 'hallway_downstairs' }), 'Radiators left as they are: no temperature for the mode in Hallway downstairs');
+  assert.equal(text('heating:trvs_not_set', { skipped: null }), 'Radiators left as they are: no temperature for the mode in some rooms');
+  assert.equal(text('heating:valve_characteristic_lost', { room: 'home office' }), 'Home office radiator valve needs an adaptation run · notification sent');
+  assert.equal(text('heating:valve_characteristic_lost', { room: null }), 'A radiator valve needs an adaptation run · notification sent');
+  assert.equal(text('heating:overtemp_heater_on', { temp: 31.26 }), 'Heater off · too hot (31.3°)');
+  assert.equal(text('heating:overtemp_heater_on', { temp: 1e9 }), 'Heater off · too hot (50°)', 'clamped');
+  assert.equal(text('heating:overtemp_heater_on', { temp: null }), 'Heater off · too hot');
+  assert.equal(text('heating:temperature_set_arbitrage', { mode: 'comfort', target: 21, clamped_from: 27 }), 'Heating set to comfort (21°) · cheap power, limited from 27°');
+  assert.equal(text('heating:temperature_set_arbitrage', { mode: 'comfort', target: null, clamped_from: null }), 'Heating set to comfort · cheap power');
+  assert.equal(text('house_mode:parlour_active', {}), 'Sleep mode not started: parlour in use');
+  assert.equal(text('lighting:theme_scene_settled', { theme: 'halloween' }), 'Light effects started · halloween theme scene');
+  assert.equal(text('lighting:theme_scene_settled', { theme: null }), 'Light effects started · new theme scene');
+  assert.equal(text('lighting:no_lights_in_theme_roles', { theme: null }), 'Effects not started: no lights set up for this theme');
+  assert.equal(text('lighting:automation_disabled_restore', {}), 'Automation switched off · porch look restored');
+  assert.equal(text('energy:points_increased', { credited: 120, balance: 3400 }), 'Octopus points credited (+120) · balance 3400');
+  assert.equal(text('energy:points_increased', { credited: null, balance: null }), 'Octopus points credited');
+  assert.equal(text('energy:sessions_joined', { count: 1 }), 'Joined 1 power down session');
+  assert.equal(text('energy:sessions_joined', { count: 1e9 }), 'Joined 1000 power down sessions', 'clamped');
+  assert.equal(text('energy:wheels_spun', { count: null }), 'Spun the Octopus wheels');
+  assert.equal(text('mo:eating', { room: 'Home Office' }), 'Mo eating · Home office');
+  assert.equal(text('mo:spotted', { room: null }), 'Mo spotted');
+  assert.equal(text('thermal:open_door', { indoor: 26.4, outdoor: 18.2 }), 'Told to open the door · inside 26.4°, outside 18.2°');
+  assert.equal(text('thermal:close_door', { indoor: null, outdoor: null }), 'Told to close the door · outside warmer');
 });
 
 ok('unexplained_reason: a catalogue reason with no wording raises attention; the real catalogue raises none', () => {
