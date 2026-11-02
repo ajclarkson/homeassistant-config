@@ -25,43 +25,43 @@ template:
           rooms: >-
             {# hold = [subsystem, entity, state that means "holding", label] #}
             {% set cfg = [
-              {'k': 'parlour', 'n': 'Parlour', 'nav': '/mobile-dashboard/parlour',
+              {'k': 'parlour', 'n': 'Parlour', 'nav': '/pulse-dashboard/room-parlour',
                'cl': 'climate.parlour_trv', 'he': true,
                'holds': [
                  ['presence', 'binary_sensor.parlour_occupied_contained', 'on', 'Doors closed'],
                  ['presence', 'binary_sensor.parlour_sensor_sofa_occupancy', 'on', 'Sofa occupied'],
                  ['presence', 'media_player.parlour', 'playing', 'Sonos playing'],
                  ['heating', 'binary_sensor.parlour_external_openings', 'on', 'Door open']]},
-              {'k': 'kitchen', 'n': 'Kitchen', 'nav': '/mobile-dashboard/kitchen',
+              {'k': 'kitchen', 'n': 'Kitchen', 'nav': '/pulse-dashboard/room-kitchen',
                'cl': 'climate.kitchen_trv', 'he': true,
                'holds': [
                  ['presence', 'binary_sensor.kitchen_occupied_contained', 'on', 'Contained'],
                  ['heating', 'binary_sensor.kitchen_external_openings', 'on', 'Window open']]},
-              {'k': 'hallway_downstairs', 'n': 'Hallway downstairs', 'nav': '/mobile-dashboard/hallway',
+              {'k': 'hallway_downstairs', 'n': 'Hallway downstairs', 'nav': '/pulse-dashboard/room-hallway_downstairs',
                'cl': 'climate.hallway_downstairs_trv', 'he': true,
                'holds': [
                  ['heating', 'binary_sensor.hallway_downstairs_external_openings', 'on', 'Door open']]},
-              {'k': 'hallway_upstairs', 'n': 'Hallway upstairs', 'nav': '/mobile-dashboard/hallway',
+              {'k': 'hallway_upstairs', 'n': 'Hallway upstairs', 'nav': '/pulse-dashboard/room-hallway_upstairs',
                'cl': '', 'he': false, 'holds': []},
-              {'k': 'bedroom', 'n': 'Bedroom', 'nav': '/mobile-dashboard/bedroom',
+              {'k': 'bedroom', 'n': 'Bedroom', 'nav': '/pulse-dashboard/room-bedroom',
                'cl': 'climate.bedroom_trv', 'he': true,
                'holds': [
                  ['presence', 'binary_sensor.bedroom_sensor_bed_occupancy', 'on', 'Bed occupied'],
                  ['presence', 'binary_sensor.bedroom_occupied_contained', 'on', 'Doors closed'],
                  ['heating', 'binary_sensor.bedroom_external_openings', 'on', 'Window open']]},
-              {'k': 'bathroom', 'n': 'Bathroom', 'nav': '/mobile-dashboard/bathroom',
+              {'k': 'bathroom', 'n': 'Bathroom', 'nav': '/pulse-dashboard/room-bathroom',
                'cl': 'climate.bathroom_trv', 'he': true,
                'holds': [
                  ['presence', 'binary_sensor.bathroom_occupied_contained', 'on', 'Doors closed'],
                  ['heating', 'binary_sensor.bathroom_external_openings', 'on', 'Window open']]},
-              {'k': 'home_office', 'n': 'Home office', 'nav': '/mobile-dashboard/home-office',
+              {'k': 'home_office', 'n': 'Home office', 'nav': '/pulse-dashboard/room-home_office',
                'cl': 'climate.home_office_trv', 'he': true,
                'holds': [
                  ['presence', 'binary_sensor.home_office_occupied_contained', 'on', 'Doors closed'],
                  ['presence', 'media_player.home_office', 'playing', 'Sonos playing'],
                  ['presence', 'binary_sensor.home_office_monitor', 'on', 'Monitor on'],
                  ['heating', 'binary_sensor.home_office_external_openings', 'on', 'Window open']]},
-              {'k': 'foreign_office', 'n': 'Foreign office', 'nav': '/mobile-dashboard/foreign-office',
+              {'k': 'foreign_office', 'n': 'Foreign office', 'nav': '/pulse-dashboard/room-foreign_office',
                'cl': 'climate.foreign_office', 'he': true,
                'holds': [
                  ['presence', 'binary_sensor.foreign_office_occupied_contained', 'on', 'Doors closed'],

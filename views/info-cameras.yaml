@@ -14,4 +14,4 @@ sections:
       - {type: custom:pulse-card, mode: camera, camera: kitchen}
       - {type: custom:pulse-card, mode: camera, camera: home_office}
       # Bottom tab bar: fixed when HA's ancestors allow it, otherwise an in-flow bar (see pulse-card.js).
-      - {type: custom:pulse-card, mode: tabbar, active: now}
+      - {type: custom:pulse-card, mode: tabbar, active: cameras}
