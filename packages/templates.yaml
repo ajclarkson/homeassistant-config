@@ -123,6 +123,108 @@ template:
           {% endfor %}
           {{ ns.latest }}
 
+      # Back Garden lighting for the Pulse garden card. Scenes are found by label inside the area, so no scene id
+      # is written here: scene_order_1 is the Normal look, scene_theme_<theme> a theme's look and
+      # scene_control_off the scene that switches the garden off. The state is the scene for the current
+      # theme, or `missing` when there is none; unknown inputs also give `missing`, never a guess.
+      # `lights` is whatever the off scene lists (the back garden has a switch, not lights), and
+      # `lights_on` counts those that are on. now() re-renders the template each minute, because labelling
+      # a scene in the UI changes the registry, not a state, and would otherwise not show until
+      # something else changed.
+      - name: "Back Garden Lighting Scenes"
+        unique_id: back_garden_lighting_scenes
+        state: >
+          {% set _ = now().minute %}
+          {% set area = area_entities('back_garden') | select('match', '^scene[.]') | list %}
+          {% set theme = 'normal' %}
+          {% set label = 'scene_order_1' if theme == 'normal' else 'scene_theme_' ~ theme %}
+          {% set hits = label_entities(label) | select('in', area) | list | sort %}
+          {{ hits[0] if (hits and theme not in ['', 'unknown', 'unavailable']) else 'missing' }}
+        attributes:
+          theme: "{{ 'normal' }}"
+          off_scene: >
+            {% set _ = now().minute %}
+            {% set area = area_entities('back_garden') | select('match', '^scene[.]') | list %}
+            {% set off = label_entities('scene_control_off') | select('in', area) | list | sort %}
+            {{ off[0] if off else 'missing' }}
+          missing_themes: >
+            {% set _ = now().minute %}
+            {% set area = area_entities('back_garden') | select('match', '^scene[.]') | list %}
+            {% set ns = namespace(out=[]) %}
+            {% for o in [] %}
+              {% set label = 'scene_order_1' if o == 'normal' else 'scene_theme_' ~ o %}
+              {% if not (label_entities(label) | select('in', area) | list) %}
+                {% set ns.out = ns.out + [o] %}
+              {% endif %}
+            {% endfor %}
+            {{ ns.out | tojson }}
+          lights: >
+            {% set _ = now().minute %}
+            {% set area = area_entities('back_garden') | select('match', '^scene[.]') | list %}
+            {% set off = label_entities('scene_control_off') | select('in', area) | list | sort %}
+            {% set l = state_attr(off[0], 'entity_id') if off else none %}
+            {% set l = l if (l is iterable and l is not string) else [] %}
+            {{ l | list | tojson }}
+          lights_on: >
+            {% set area = area_entities('back_garden') | select('match', '^scene[.]') | list %}
+            {% set off = label_entities('scene_control_off') | select('in', area) | list | sort %}
+            {% set l = state_attr(off[0], 'entity_id') if off else none %}
+            {% set l = l if (l is iterable and l is not string) else [] %}
+            {% set ns = namespace(n=0) %}
+            {% for e in l if is_state(e, 'on') %}{% set ns.n = ns.n + 1 %}{% endfor %}
+            {{ ns.n }}
+
+      # Front Garden lighting for the Pulse garden card. Scenes are found by label inside the area, so no scene id
+      # is written here: scene_order_1 is the Normal look, scene_theme_<theme> a theme's look and
+      # scene_control_off the scene that switches the garden off. The state is the scene for the current
+      # theme, or `missing` when there is none; unknown inputs also give `missing`, never a guess.
+      # `lights` is whatever the off scene lists (the back garden has a switch, not lights), and
+      # `lights_on` counts those that are on. now() re-renders the template each minute, because labelling
+      # a scene in the UI changes the registry, not a state, and would otherwise not show until
+      # something else changed.
+      - name: "Front Garden Lighting Scenes"
+        unique_id: front_garden_lighting_scenes
+        state: >
+          {% set _ = now().minute %}
+          {% set area = area_entities('front_garden') | select('match', '^scene[.]') | list %}
+          {% set theme = states('input_select.front_garden_light_theme') %}
+          {% set label = 'scene_order_1' if theme == 'normal' else 'scene_theme_' ~ theme %}
+          {% set hits = label_entities(label) | select('in', area) | list | sort %}
+          {{ hits[0] if (hits and theme not in ['', 'unknown', 'unavailable']) else 'missing' }}
+        attributes:
+          theme: "{{ states('input_select.front_garden_light_theme') }}"
+          off_scene: >
+            {% set _ = now().minute %}
+            {% set area = area_entities('front_garden') | select('match', '^scene[.]') | list %}
+            {% set off = label_entities('scene_control_off') | select('in', area) | list | sort %}
+            {{ off[0] if off else 'missing' }}
+          missing_themes: >
+            {% set _ = now().minute %}
+            {% set area = area_entities('front_garden') | select('match', '^scene[.]') | list %}
+            {% set ns = namespace(out=[]) %}
+            {% for o in state_attr('input_select.front_garden_light_theme', 'options') or [] %}
+              {% set label = 'scene_order_1' if o == 'normal' else 'scene_theme_' ~ o %}
+              {% if not (label_entities(label) | select('in', area) | list) %}
+                {% set ns.out = ns.out + [o] %}
+              {% endif %}
+            {% endfor %}
+            {{ ns.out | tojson }}
+          lights: >
+            {% set _ = now().minute %}
+            {% set area = area_entities('front_garden') | select('match', '^scene[.]') | list %}
+            {% set off = label_entities('scene_control_off') | select('in', area) | list | sort %}
+            {% set l = state_attr(off[0], 'entity_id') if off else none %}
+            {% set l = l if (l is iterable and l is not string) else [] %}
+            {{ l | list | tojson }}
+          lights_on: >
+            {% set area = area_entities('front_garden') | select('match', '^scene[.]') | list %}
+            {% set off = label_entities('scene_control_off') | select('in', area) | list | sort %}
+            {% set l = state_attr(off[0], 'entity_id') if off else none %}
+            {% set l = l if (l is iterable and l is not string) else [] %}
+            {% set ns = namespace(n=0) %}
+            {% for e in l if is_state(e, 'on') %}{% set ns.n = ns.n + 1 %}{% endfor %}
+            {{ ns.n }}
+
   # Octopus Agile Helpers
   - sensor:
       - name: "Bin Collection Min Days"

@@ -30,9 +30,10 @@ template:
           {% set noisy = ['octopus', 'energy'] %}
           {# Plumbing that runs on a timer or on every sensor update and changes nothing the household would notice.
              Values from homerun-automations: heating/room-temp-feed.ts (decision update_external_temp, reason
-             heartbeat / temp_changed) and house/outdoor-temp-history.ts (decision record). #}
+             heartbeat / temp_changed), house/outdoor-temp-history.ts (decision record) and lib/theme-calendar.ts
+             (decision publish_calendar: the daily retained calendar publish, which never changes the theme). #}
           {% set plumbing_ids = ['room_temp_feed', 'outdoor_temp_history'] %}
-          {% set plumbing_decisions = ['update_external_temp', 'record'] %}
+          {% set plumbing_decisions = ['update_external_temp', 'record', 'publish_calendar'] %}
           {% set plumbing_reasons = ['heartbeat'] %}
           {% if trigger.platform == 'homeassistant' %}
             {{ true }}
@@ -75,7 +76,8 @@ template:
                 'activate_scene': 'scene set', 'set_occupied': 'marked occupied',
                 'clear_occupied': 'marked empty', 'notify': 'notification sent',
                 'join': 'joined the speaker group', 'unjoin': 'left the speaker group',
-                'exit_sleep': 'left sleep mode', 'clear_recent_auto_off': 'reset after switching off'
+                'exit_sleep': 'left sleep mode', 'clear_recent_auto_off': 'reset after switching off',
+                'switch_theme': 'theme switched', 'start_preview': 'preview started'
               } %}
               {% set nouns = {'lighting': 'lights', 'occupied': 'occupancy', 'heating': 'heating'} %}
               {% set reasons = {
@@ -101,7 +103,10 @@ template:
                 'outside_morning_window': 'outside the morning window',
                 'contained_failsafe_wait': 'waiting in case a door was left shut',
                 'containment_failsafe_expired': 'closed-door timeout ended',
-                'parlour_active': 'parlour in use', 'overtemp_heater_on': 'too hot'
+                'parlour_active': 'parlour in use', 'overtemp_heater_on': 'too hot',
+                'calendar_boundary': 'calendar', 'calendar_boundary_catch_up': 'calendar, after a restart',
+                'on_outside_evening_window': 'turned on outside the evening', 'preview_ended': 'preview over',
+                'theme_scene_missing': 'no scene for this theme'
               } %}
               {% set loc = e.get('location') | string %}
               {% set sub = e.get('subsystem') | string %}

@@ -186,6 +186,11 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 .lt input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:${TOKENS.sceneActive};border:2px solid ${TOKENS.surface}}
 .round{min-height:44px;min-width:44px;border-radius:999px;border:0;background:${TOKENS.sceneActive};color:${TOKENS.sceneActiveText};display:flex;align-items:center;justify-content:center;cursor:pointer;flex:none}
 .round.quiet{background:${TOKENS.divider};color:${TOKENS.text}}
+.gbtn{border:0;font:inherit;font-size:13.5px;font-weight:600;min-height:44px;min-width:92px;padding:0 16px;border-radius:999px;cursor:pointer;background:${TOKENS.sceneActive};color:${TOKENS.sceneActiveText};align-self:center}
+.gbtn.quiet{background:${TOKENS.divider};color:${TOKENS.text}}
+.gbtn:disabled{opacity:.4;cursor:default}
+.gl{align-items:center}
+.rt.wide .t.gh{font-size:15px;font-weight:600;white-space:nowrap}
 .big{font-size:32px;font-weight:700;letter-spacing:-.6px;line-height:1.1;margin-top:4px}
 .two{display:flex;gap:10px}
 .two .card{flex:1}
@@ -195,9 +200,10 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 `;
 
   // ── Room configuration (entity ids from views/*.yaml and packages/groups.yaml) ──────────────
-  // `report` is the key in sensor.info_rooms; gardens have no report (lights automation only).
-  // Gaps, reported rather than guessed: gardens have no individual light ids in the repo;
-  // foreign_office has no media player in views/foreign-office.yaml.
+  // `report` is the key in sensor.info_rooms. Gardens (kind 'garden') have no report, climate, scenes or
+  // lights here: their lights come from sensor.<garden>_lighting_scenes and their look from `theme`, the
+  // theme helper ('' when the garden has none). Gap, reported rather than guessed: foreign_office has no
+  // media player in views/foreign-office.yaml.
   const SCENE_LABELS = {
     off: 'Off', all: 'All', all_full: 'Full', full: 'Full', lamps: 'Lamps', dining: 'Dining',
     cabinets: 'Cabinets', low: 'Low', daylight: 'Daylight', autumn: 'Autumn', halloween: 'Halloween',
@@ -264,16 +270,13 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       lights: [['light.dig_uno_v3', 'Lights']],
       media: [],
     },
-    back_garden: {
-      name: 'Back garden', short: 'Back garden', report: false,
-      climate: '', temp: '', hum: '', scenes: ['all', 'off'], lights: [], media: [],
-    },
-    front_garden: {
-      name: 'Front garden', short: 'Front garden', report: false,
-      // Stopgap: 'bonfire' is listed by hand until the garden theme picker replaces this list.
-      climate: '', temp: '', hum: '', scenes: ['all', 'autumn', 'halloween', 'bonfire', 'off'], lights: [], media: [],
-    },
+    back_garden: { kind: 'garden', name: 'Back garden', short: 'Back garden', theme: '' },
+    front_garden: { kind: 'garden', name: 'Front garden', short: 'Front garden', theme: 'input_select.front_garden_light_theme' },
   };
+  const GARDEN_ORDER = ['front_garden', 'back_garden'];
+  const isGarden = (key) => Object.prototype.hasOwnProperty.call(ROOMS, key) && ROOMS[key].kind === 'garden';
+  // What the shared room code may read from a garden: nothing it would otherwise mistake for a room feature.
+  const GARDEN_ROOM_DEFAULTS = { report: false, climate: '', temp: '', hum: '', scenes: [], lights: [], media: [] };
   const ROOM_ORDER = [
     'parlour', 'kitchen', 'hallway_downstairs', 'hallway_upstairs', 'bedroom', 'bathroom',
     'home_office', 'foreign_office',
@@ -307,7 +310,9 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     input_number: ['set_value'],
   };
 
-  const PLUMBING_DECISIONS = ['update_external_temp', 'record'];
+  // publish_calendar: the daily theme calendar refresh that switched nothing; the startup window publish is the
+  // same kind of plumbing. Neither tells the household anything.
+  const PLUMBING_DECISIONS = ['update_external_temp', 'record', 'publish_calendar'];
   const PLUMBING_AUTOS = ['room_temp_feed', 'outdoor_temp_history'];
 
   // ── Safe readers ─────────────────────────────────────────────────────────────────────────────
@@ -401,7 +406,8 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const m = { ...BLANK_ROOM };
     for (const k of Object.keys(BLANK_ROOM)) if (e[k] !== undefined && e[k] !== null) m[k] = e[k];
     m.key = key;
-    m.cfg = cfg;
+    m.cfg = cfg.kind === 'garden' ? { ...GARDEN_ROOM_DEFAULTS, ...cfg } : cfg;
+    m.window_off = cfg.kind === 'garden' ? windowOff(hass, key) : '';
     m.hasReport = !!roomEntry(hass, key);
     m.temp = num(e.temp);
     m.target = num(e.target);
@@ -427,6 +433,13 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return m;
   }
 
+  // The off time the garden's lights automation publishes (retained), or '' when none is known: callers drop
+  // the time from their sentence rather than invent one.
+  function windowOff(hass, key) {
+    const v = state(hass, `sensor.${key}_lighting_window`);
+    return /^\d{1,2}:\d{2}$/.test(v) ? v.padStart(5, '0') : '';
+  }
+
   function attentionItems(hass) {
     return parseList(attr(hass, 'sensor.info_attention', 'items')).map((i) => ({
       room: str(i.room), key: str(i.key), kind: str(i.kind), text: str(i.text), nav: str(i.nav),
@@ -447,6 +460,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       case 'automation_disabled': return 'Automation off';
       case 'hold_active': return 'Override on';
       case 'motion_disabled': return 'Motion sensor off';
+      case 'garden_theme_config': return 'Theme setup';
       case 'sensor_unavailable': return 'Sensor unavailable';
       case 'sensor_stale': return 'Sensor not updating';
       case 'cold_not_heating': return 'Too cold, heating off';
@@ -542,6 +556,9 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     hand: 'M8 13V5a1.5 1.5 0 0 1 3 0v6M11 10V4a1.5 1.5 0 0 1 3 0v6M14 10V6a1.5 1.5 0 0 1 3 0v8a6 6 0 0 1-6 6h-1a6 6 0 0 1-5-3l-2-4a1.5 1.5 0 0 1 2.5-1.5L8 14',
     window: 'M4 4h16v16H4zM12 4v16M4 12h16',
     pause: 'M7 5h4v14H7zM13 5h4v14h-4z',
+    leaf: 'M5 19c0-8 5-13 14-14 0 9-5 14-14 14zM5 19l8-8',
+    skull: 'M12 3a7 7 0 0 0-7 7c0 2.5 1.2 4 3 5v3h8v-3c1.8-1 3-2.5 3-5a7 7 0 0 0-7-7zM9.5 11h.01M14.5 11h.01M10 18v2M14 18v2',
+    tree: 'M12 3l5 7h-3l4 6H6l4-6H7l5-7zM12 16v5',
   };
   const svg = (path, size, extra) => `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"${extra || ''}><path d="${path}"/></svg>`;
   // Occupancy indicator (the dot stays health): filled person = occupied, outlined dim = empty,
@@ -589,6 +606,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       return { warn: true, title: mine.length === 1 ? itemLabel(mine[0], m) : `${mine.length} things need attention`, body: mine.length === 1 ? itemDetail(mine[0], m) : mine.map((i) => itemDetail(i, m)).join(' · ') };
     }
     if (m.cfg.report && !m.hasReport) return { warn: false, dim: true, title: 'No report yet', body: 'sensor.info_rooms has no entry for this room' };
+    if (m.cfg.kind === 'garden') return { warn: false, title: 'Evening lighting', body: `Lights from sunset until ${m.window_off ? m.window_off + ' and bedtime' : 'bedtime'}` };
     if (!m.cfg.report) return { warn: false, title: 'Lights only', body: 'This area has scenes and a lights automation, no climate or presence report' };
     return { warn: false, title: 'All good', body: tidyVerdict(m.verdict, m.pres_labels) || 'No reasons to show' };
   }
@@ -796,6 +814,8 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     if (g.attention.length) out.push(`<div class="lbl" style="margin:4px 4px -10px">Needs attention</div>${g.attention.map((k) => attentionCard(hass, k, items)).join('')}`);
     if (g.occupied.length) out.push(`<div class="lbl" style="margin:4px 4px -10px">Occupied now</div>${g.occupied.map((k) => occupiedCard(hass, k, now)).join('')}`);
     if (g.other.length) out.push(`<div class="lbl" style="margin:4px 4px -10px">${g.occupied.length || g.attention.length ? 'Other rooms' : 'Rooms'}</div><div class="rgrid">${g.other.map((k, i) => roomTile(hass, k, now, g.other.length % 2 === 1 && i === g.other.length - 1)).join('')}</div>`);
+    const flagged = new Set(items.map((i) => i.key));
+    out.push(`<div class="lbl" style="margin:4px 4px -10px">Outside</div><div class="rgrid">${GARDEN_ORDER.map((k) => gardenTile(hass, k, now, flagged.has(k))).join('')}</div>`);
     return out.join('');
   }
 
@@ -1560,7 +1580,10 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       const on = s === 'on';
       rows.push(`<button class="tog tap" data-act="toggle" data-entity="${id}" aria-pressed="${on}"><div><div class="h">${title}</div><div class="s">${sub}</div></div><span class="sw${on ? '' : ' off'}" role="img" aria-label="${on ? 'On' : 'Off'}"></span></button>`);
     };
-    toggle(`input_boolean.${key}_automation_lights_enabled`, 'Lights automation', 'Decides lights from presence and time of day');
+    const lightsSub = isGarden(key)
+      ? `${windowOff(hass, key) ? 'Sunset until ' + windowOff(hass, key) : 'From sunset'}; off when the house goes to sleep`
+      : 'Decides lights from presence and time of day';
+    toggle(`input_boolean.${key}_automation_lights_enabled`, 'Lights automation', lightsSub);
     toggle(`input_boolean.${key}_automation_heating_enabled`, 'Heating automation', 'Sets the target from mode, windows and schedule');
     toggle(`input_boolean.${key}_automation_fan_enabled`, 'Fan automation', 'Runs the extractor fan after a shower until the steam clears');
     const motionOn = state(hass, `input_boolean.${key}_sensor_motion_enabled`) === 'on';
@@ -1570,6 +1593,165 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     toggle(`input_boolean.${key}_automation_presence_override`, 'Keep room occupied', heldOn ? (guest ? 'Set by guest mode · lights and heating treat the room as in use' : 'Room held occupied · lights and heating treat it as in use') : 'Holds the room occupied until switched off');
     if (rows.length === 0) return '';
     return `<div class="lbl" style="margin:4px 4px -10px">Automations</div><div class="card">${rows.join('')}</div>`;
+  }
+
+  // ── Gardens ──────────────────────────────────────────────────────────────────────────────────
+  // The theme helper is the only thing a person picks for the look; the Lights button turns the garden on (in
+  // that theme) or off. Scenes are an implementation detail: the card never offers one directly, and it
+  // never falls back silently when the theme has no scene.
+  const THEME_LABELS = { normal: 'Normal', autumn: 'Autumn', halloween: 'Halloween', bonfire: 'Bonfire', christmas: 'Christmas' };
+  const THEME_ICON = { normal: 'bulb', autumn: 'leaf', halloween: 'skull', bonfire: 'flame', christmas: 'tree' };
+  const themeLabel = (id) => THEME_LABELS[id] || str(id).replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
+  const themeIcon = (id) => ICON[THEME_ICON[id] || 'bulb'];
+
+  // 'Wed 5 Nov' from a YYYY-MM-DD date, or '' for anything else. Built from the parts (not Date.parse) so the
+  // weekday cannot shift with the time zone.
+  function shortDate(iso) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(str(iso));
+    if (!m) return '';
+    const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    if (d.getFullYear() !== Number(m[1]) || d.getMonth() !== Number(m[2]) - 1 || d.getDate() !== Number(m[3])) return '';
+    return `${WEEKDAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]}`;
+  }
+  const hhmmMs = (ms) => (Number.isFinite(ms) ? localHm(ms) : '');
+  const sameLocalDay = (a, b) => { const x = new Date(a); const y = new Date(b); return x.getFullYear() === y.getFullYear() && x.getMonth() === y.getMonth() && x.getDate() === y.getDate(); };
+  // Minutes since noon, so an off time at or after midnight sorts after the evening (as the lights automation does).
+  const sinceNoon = (h, m) => (h * 60 + m - 720 + 1440) % 1440;
+  function beforeOff(nowMs, off) {
+    const m = /^(\d{1,2}):(\d{2})$/.exec(off);
+    if (!m) return true;
+    const d = new Date(nowMs);
+    return sinceNoon(d.getHours(), d.getMinutes()) < sinceNoon(Number(m[1]), Number(m[2]));
+  }
+
+  // The next calendar change as {date, theme}, or null. The topic's JSON may arrive as an object or a string.
+  function calendarNext(v) {
+    let x = v;
+    if (typeof x === 'string') { try { x = JSON.parse(x); } catch (e) { return null; } }
+    if (!isObj(x) || !shortDate(x.date) || typeof x.theme !== 'string' || !x.theme) return null;
+    return { date: x.date, theme: x.theme };
+  }
+
+  // The most recent time any of this garden's scenes except the off scene was activated (a scene's state is
+  // its activation time), or null. A preview ends `preview_min` after this; a picked theme "applies at sunset"
+  // when it was chosen after this.
+  function lastLitMs(hass, key, offScene) {
+    let best = null;
+    for (const id of Object.keys(hass && isObj(hass.states) ? hass.states : {})) {
+      if (!id.startsWith(`scene.${key}_`) || id === offScene) continue;
+      const t = parseTs(state(hass, id));
+      if (t !== null && (best === null || t > best)) best = t;
+    }
+    return best;
+  }
+
+  const sceneOf = (key, v) => (typeof v === 'string' && new RegExp(`^scene\\.${key}_[a-z0-9_]+$`).test(v) ? v : '');
+
+  function gardenModel(hass, key, now) {
+    if (!isGarden(key)) throw new Error(`pulse-card: unknown garden "${key}"`);
+    const cfg = ROOMS[key];
+    const sc = `sensor.${key}_lighting_scenes`;
+    const scState = state(hass, sc);
+    const reporting = usable(scState);
+    const onScene = reporting ? sceneOf(key, scState) : '';
+    const offScene = reporting ? sceneOf(key, attr(hass, sc, 'off_scene')) : '';
+    const lights = strList(attr(hass, sc, 'lights'));
+    // Clamped: a count above the list length would claim lights that the scene does not list.
+    const lightsOn = lights.length ? Math.min(lights.length, Math.max(0, num(attr(hass, sc, 'lights_on')) || 0)) : 0;
+    const helper = cfg.theme;
+    const themeState = helper ? state(hass, helper) : 'normal';
+    const theme = usable(themeState) ? themeState : '';
+    const cal = `sensor.${key}_light_theme_calendar`;
+    const calState = state(hass, cal);
+    const previewMin = num(attr(hass, `sensor.${key}_lighting_window`, 'preview_min'));
+    const sunset = parseTs(state(hass, 'sensor.sun_next_setting'));
+    const calOn = state(hass, `input_boolean.${key}_light_theme_calendar_enabled`);
+    const helperObj = helper ? stateObj(hass, helper) : null;
+    return {
+      key, name: cfg.name, hasTheme: !!helper, helper, reporting,
+      onScene, offScene, sceneMissing: reporting && !onScene, lights, lightsOn, on: lightsOn > 0,
+      theme, options: helper ? strList(attr(hass, helper, 'options')) : [],
+      themeChangedMs: helperObj ? parseTs(helperObj.last_changed) : null,
+      off: windowOff(hass, key), previewMin: previewMin !== null && previewMin > 0 ? Math.round(previewMin) : null,
+      automationOn: state(hass, `input_boolean.${key}_automation_lights_enabled`) !== 'off',
+      asleep: state(hass, 'sensor.house_active_mode') === 'sleep',
+      sunBelow: state(hass, 'sun.sun') === 'below_horizon',
+      sunsetMs: sunset, sunsetToday: sunset !== null && sunset > now && sameLocalDay(sunset, now),
+      litMs: lastLitMs(hass, key, offScene),
+      calToggle: usable(calOn) ? calOn : '', calToday: usable(calState) ? calState : '',
+      calNext: calendarNext(attr(hass, cal, 'next')), calToggleId: `input_boolean.${key}_light_theme_calendar_enabled`,
+    };
+  }
+
+  const gardenHeadline = (g) => {
+    if (!g.reporting) return 'Lights unknown';
+    if (!g.on) return 'Off';
+    return g.hasTheme && g.theme ? `${themeLabel(g.theme)} · on` : 'On';
+  };
+
+  // The one sentence under the headline; first match wins. A missing scene is shown first when the garden is off,
+  // because it is why the button is disabled. Unknown times are dropped, never invented.
+  function gardenSub(g, now) {
+    if (!g.reporting) return 'No lighting report from Home Assistant';
+    if (!g.on && g.sceneMissing) return `No scene for ${themeLabel(g.theme || 'normal')}`;
+    if (!g.automationOn) return 'Lights automation is off · they change only by hand';
+    if (g.on) {
+      if (g.sunBelow && (!g.off || beforeOff(now, g.off))) return g.off ? `Until ${g.off} or bedtime` : 'Until bedtime';
+      if (g.previewMin !== null) {
+        const ends = g.litMs === null ? null : g.litMs + g.previewMin * 60000;
+        if (ends === null) return `Preview · off within ${g.previewMin} min`;
+        return ends > now ? `Preview · off by ${hhmmMs(ends)}` : 'Preview · ending';
+      }
+      return g.off ? `Until ${g.off}` : 'Until bedtime';
+    }
+    if (g.asleep) return 'House asleep · back at sunset';
+    return g.sunsetToday ? `On at sunset · ${hhmmMs(g.sunsetMs)}` : 'On at sunset tomorrow';
+  }
+
+  // Why the theme is what it is, from the calendar topic and its toggle.
+  function themeSource(g) {
+    if (g.calToggle === 'off') return 'Calendar paused · stays until you change it';
+    if (!g.calToday) return '';
+    const next = g.calNext;
+    if (g.theme === g.calToday) return next ? `From calendar · ${themeLabel(next.theme)} from ${shortDate(next.date)}` : 'From calendar';
+    return next ? `Picked by hand · calendar resumes ${shortDate(next.date)} with ${themeLabel(next.theme)}` : 'Picked by hand';
+  }
+  // A theme picked after the garden last showed anything has not been seen yet.
+  function themeApplies(g, now) {
+    if (!g.reporting || g.on || !g.hasTheme || !g.automationOn || g.asleep) return '';
+    const pending = g.litMs === null || (g.themeChangedMs !== null && g.themeChangedMs > g.litMs);
+    if (!pending) return '';
+    return g.sunsetToday ? `Applies at sunset · ${hhmmMs(g.sunsetMs)}` : 'Applies at sunset';
+  }
+
+  function sectionGardenLights(hass, key, now) {
+    const g = gardenModel(hass, key, now);
+    const wantOn = !g.on;
+    const target = wantOn ? g.onScene : g.offScene;
+    const disabled = !g.reporting || !target;
+    const btn = `<button class="gbtn${wantOn ? '' : ' quiet'}" data-act="garden-power" data-garden="${key}" data-want="${wantOn ? 'on' : 'off'}"${disabled ? ' disabled' : ''}>${wantOn ? 'Turn on' : 'Turn off'}</button>`;
+    return `<div class="card"><div class="item gl">${svg(ICON.bulb, 18)}<div><div class="h">${esc(gardenHeadline(g))}</div><div class="s">${esc(gardenSub(g, now))}</div></div>${btn}</div></div>`;
+  }
+
+  function sectionGardenTheme(hass, key, now) {
+    const g = gardenModel(hass, key, now);
+    if (!g.hasTheme || !g.options.length) return '';
+    const cols = g.options.length <= 4 ? g.options.length : 3;
+    const tiles = g.options.map((o) => `<button class="tile${o === g.theme ? ' on' : ''}" data-act="garden-theme" data-garden="${key}" data-option="${esc(o)}" aria-pressed="${o === g.theme}">${svg(themeIcon(o), 20)}<span>${esc(themeLabel(o))}</span></button>`).join('');
+    const lines = [themeSource(g), themeApplies(g, now)].filter(Boolean).map((t) => `<div class="note">${esc(t)}</div>`).join('');
+    // Only when the calendar is not in charge: paused, or a theme picked by hand. Acting needs the toggle's state.
+    const follow = !!g.calToday && !!g.calToggle && (g.calToggle === 'off' || g.theme !== g.calToday);
+    const use = follow ? `<button class="tog tap" data-act="use-calendar" data-garden="${key}"><div><div class="h">Use calendar</div><div class="s">Back to ${esc(themeLabel(g.calToday))}, then follow the calendar</div></div></button>` : '';
+    const toggle = g.calToggle ? `<button class="tog tap" data-act="toggle" data-entity="${g.calToggleId}" aria-pressed="${g.calToggle === 'on'}"><div><div class="h">Follow calendar</div><div class="s">Switches theme on the days it changes</div></div><span class="sw${g.calToggle === 'on' ? '' : ' off'}" role="img" aria-label="${g.calToggle === 'on' ? 'On' : 'Off'}"></span></button>` : '';
+    return `<div class="lbl" style="margin:4px 4px -10px">Theme</div><div class="card" style="padding:12px 12px 10px"><div class="tiles" style="grid-template-columns:repeat(${cols},minmax(0,1fr))">${tiles}</div>${lines}</div>${use || toggle ? `<div class="card">${use}${toggle}</div>` : ''}`;
+  }
+
+  // Now: one wide tile per garden, below the indoor groups. Gardens stay out of the indoor attention,
+  // occupied and other groups; the tile only shows a warn dot when the garden has items.
+  function gardenTile(hass, key, now, flagged) {
+    const g = gardenModel(hass, key, now);
+    const dot = flagged ? '<span class="dot warn"></span>' : '';
+    return `<a class="rt gt tap wide" data-act="nav" data-path="${roomPath(key)}"><div class="nm">${dot}<span>${esc(g.name)}</span></div><div class="t gh">${esc(gardenHeadline(g))}</div><div class="b"><span>${esc(gardenSub(g, now))}</span></div></a>`;
   }
 
   // ── House page ───────────────────────────────────────────────────────────────────────────────
@@ -1884,6 +2066,8 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     device: (h, c) => sectionDevice(h, c),
     automations: (h, c) => sectionAutomations(h, c.room),
     'room-feed': (h, c, n) => sectionRoomFeed(h, c.room, n),
+    'garden-lights': (h, c, n) => sectionGardenLights(h, c.room, n),
+    'garden-theme': (h, c, n) => sectionGardenTheme(h, c.room, n),
     'house-head': (h, c, n) => sectionHouseHead(h, n),
     'house-mode': (h, c, n) => sectionHouseMode(h, n),
     'house-people': (h) => sectionHousePeople(h),
@@ -1892,7 +2076,11 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     'cameras-head': (h, c, n) => sectionCamerasHead(h, n),
     camera: (h, c, n, ui) => sectionCamera(h, c.camera, n, ui),
   };
-  const ROOM_MODES = ['room-head', 'why', 'scenes', 'media', 'automations', 'room-feed'];
+  const ROOM_MODES = ['room-head', 'why', 'scenes', 'media', 'automations', 'room-feed', 'garden-lights', 'garden-theme'];
+  // Indoor rooms have scenes, a report and media; gardens have a lights row and a theme. The shared modes
+  // (room-head, automations, room-feed) work for both.
+  const GARDEN_MODES = ['garden-lights', 'garden-theme'];
+  const INDOOR_MODES = ['why', 'scenes', 'media'];
 
   function validate(config) {
     if (!isObj(config) || !MODES[config.mode]) throw new Error(`pulse-card: unknown mode "${config && config.mode}"`);
@@ -1904,7 +2092,9 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       const allowed = ALLOWED[config.entity.split('.')[0]];
       if (!allowed || !allowed.includes('turn_on') || !allowed.includes('turn_off')) throw new Error(`pulse-card: mode "device" cannot switch "${config.entity}"`);
     }
-    if (ROOM_MODES.includes(config.mode) && !ROOMS[config.room]) throw new Error(`pulse-card: mode "${config.mode}" needs a known room, got "${config.room}"`);
+    if (ROOM_MODES.includes(config.mode) && !(typeof config.room === 'string' && Object.prototype.hasOwnProperty.call(ROOMS, config.room))) throw new Error(`pulse-card: mode "${config.mode}" needs a known room, got "${config.room}"`);
+    if (GARDEN_MODES.includes(config.mode) && !isGarden(config.room)) throw new Error(`pulse-card: mode "${config.mode}" is for gardens, got "${config.room}"`);
+    if (INDOOR_MODES.includes(config.mode) && isGarden(config.room)) throw new Error(`pulse-card: mode "${config.mode}" is for indoor rooms, got "${config.room}"`);
   }
 
   function render(mode, config, hass, now, ui) {
@@ -1919,6 +2109,31 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       throw new Error(`pulse-card: service ${domain}.${service} is not an allowed write path`);
     }
     return hass.callService(domain, service, data);
+  }
+
+  // Garden writes go to a fixed helper or to a scene read from the garden's own lighting sensor at click time
+  // (never an id from the page), and each is checked against the garden before anything is called.
+  function gardenPower(hass, key, want) {
+    if (want !== 'on' && want !== 'off') throw new Error(`pulse-card: unknown garden power "${want}"`);
+    const g = gardenModel(hass, key, Date.now());
+    const entity = want === 'on' ? g.onScene : g.offScene;
+    if (!entity) throw new Error(`pulse-card: ${key} has no scene to turn ${want}`);
+    return callService(hass, 'scene', 'turn_on', { entity_id: entity });
+  }
+  function gardenTheme(hass, key, option) {
+    const g = gardenModel(hass, key, Date.now());
+    if (!g.hasTheme) throw new Error(`pulse-card: ${key} has no theme`);
+    if (!g.options.includes(option)) throw new Error(`pulse-card: "${option}" is not a theme of ${key}`);
+    return callService(hass, 'input_select', 'select_option', { entity_id: g.helper, option });
+  }
+  // Calendar back in charge: switch the toggle on if it is off, then select the calendar's theme. In that
+  // order, so the toggle is never off while the theme says "from calendar".
+  async function useCalendar(hass, key) {
+    const g = gardenModel(hass, key, Date.now());
+    if (!g.hasTheme || !g.calToggle || !g.calToday) throw new Error(`pulse-card: ${key} has no calendar to use`);
+    if (!g.options.includes(g.calToday)) throw new Error(`pulse-card: calendar theme "${g.calToday}" is not an option of ${key}`);
+    if (g.calToggle === 'off') await callService(hass, 'input_boolean', 'turn_on', { entity_id: g.calToggleId });
+    return callService(hass, 'input_select', 'select_option', { entity_id: g.helper, option: g.calToday });
   }
 
   function handleAction(hass, el, value) {
@@ -1966,6 +2181,9 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         if (!d) throw new Error(`pulse-card: unknown fan setting "${id}/${el.dataset.key}"`);
         return stepNumber(hass, d, el.dataset.delta);
       }
+      case 'garden-power': return gardenPower(hass, el.dataset.garden, el.dataset.want);
+      case 'garden-theme': return gardenTheme(hass, el.dataset.garden, el.dataset.option);
+      case 'use-calendar': return useCalendar(hass, el.dataset.garden);
       case 'media-play': return callService(hass, 'media_player', 'media_play_pause', { entity_id: id });
       case 'media-power': return callService(hass, 'media_player', ['off', 'standby'].includes(state(hass, id)) ? 'turn_on' : 'turn_off', { entity_id: id });
       case 'volume': return callService(hass, 'media_player', 'volume_set', { entity_id: id, volume_level: Math.max(0, Math.min(1, Number(value) / 100)) });
@@ -1973,7 +2191,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     }
   }
 
-  const api = { TILE, TILE_H, TILE_WIDE_H, tileNeededHeight, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, entrySentence, tidyVerdict, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, CAMERAS_PATH, PENDING_MS, cameraParts, cameraToggle, cameraPending, parseClips, frigateClipsId, roomGroups, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, MOBILE, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, ALL_ROOM_KEYS, ALLOWED, DEVICE_REASONS, FAN_NUMBERS, render, priceColour, PRICE_STOPS, PRICE_EXTREME_P, roomModel, attentionItems, handleAction, callService, num, parseList };
+  const api = { TILE, TILE_H, TILE_WIDE_H, tileNeededHeight, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, entrySentence, tidyVerdict, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, CAMERAS_PATH, PENDING_MS, cameraParts, cameraToggle, cameraPending, parseClips, frigateClipsId, roomGroups, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, MOBILE, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, GARDEN_ORDER, ALL_ROOM_KEYS, THEME_LABELS, THEME_ICON, ICON, gardenModel, gardenSub, themeSource, shortDate, ALLOWED, DEVICE_REASONS, FAN_NUMBERS, render, priceColour, PRICE_STOPS, PRICE_EXTREME_P, roomModel, attentionItems, handleAction, callService, num, parseList };
   root.PulseLib = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 

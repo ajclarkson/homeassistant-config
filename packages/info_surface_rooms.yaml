@@ -243,12 +243,27 @@ template:
                   'text': s['entity'] ~ ': no update for ' ~ (dur(s['age_s'] | float(0)) | trim), 'nav': r['nav']}] %}
               {% endfor %}
             {% endfor %}
-            {% for g in [['back_garden', 'Back garden', '/mobile-dashboard/back-garden'], ['front_garden', 'Front garden', '/mobile-dashboard/front-garden']] %}
+            {# Gardens: the Pulse garden page is where the lights and themes are explained. #}
+            {% for g in [['back_garden', 'Back garden', '/pulse-dashboard/room-back_garden'], ['front_garden', 'Front garden', '/pulse-dashboard/room-front_garden']] %}
               {% set gh = 'input_boolean.' ~ g[0] ~ '_automation_lights_enabled' %}
               {% if is_state(gh, 'off') and (age(gh) | trim | float(-1)) > disabled_s %}
                 {% set out.items = out.items + [{'room': g[1], 'key': g[0], 'kind': 'automation_disabled',
                   'text': 'Lights automation off', 'nav': g[2]}] %}
               {% endif %}
+              {# A theme the garden cannot show: no labelled scene for a helper option, or a calendar theme that is
+                 not an option. Read from the lighting scenes template and the calendar topic; unknown gives none. #}
+              {% set miss_raw = state_attr('sensor.' ~ g[0] ~ '_lighting_scenes', 'missing_themes') %}
+              {% set miss = (miss_raw | from_json if miss_raw is string else (miss_raw or [])) | list %}
+              {% set unk_raw = state_attr('sensor.' ~ g[0] ~ '_light_theme_calendar', 'unknown_themes') %}
+              {% set unk = (unk_raw | from_json if unk_raw is string else (unk_raw or [])) | list %}
+              {% if miss %}
+                {% set out.items = out.items + [{'room': g[1], 'key': g[0], 'kind': 'garden_theme_config',
+                  'text': 'No scene for ' ~ (miss | map('capitalize') | join(', ')), 'nav': g[2]}] %}
+              {% endif %}
+              {% for t in unk %}
+                {% set out.items = out.items + [{'room': g[1], 'key': g[0], 'kind': 'garden_theme_config',
+                  'text': "Calendar theme '" ~ t ~ "' is not an option", 'nav': g[2]}] %}
+              {% endfor %}
             {% endfor %}
             {# Temperature kinds come from the debounced binary sensors (see Info Temperature Rule); the room
                sensor (rooms[].temp), not the TRV reading, is the temperature. A non-numeric temp or target gives
