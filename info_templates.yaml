@@ -2,7 +2,9 @@
 # (views/info-room-*.yaml) is a single call to it. Sections that do not apply to a room (heating, media,
 # fan, individual lights, chart) hide themselves, so there is no per-room card list to copy.
 # The page reads by subsystem: banner, Lights, Heating (numbers, why, 24 h chart), Presence, Media, the fan
-# row where a room has one, Automations, Recent activity. Each subsystem explains itself beside its controls.
+# row where a room has one, Recent activity. Each subsystem explains itself beside its controls. Automation
+# switches and their tuning are in the settings sheet opened by the gear in the banner (room-head), so this
+# template has no card for them.
 #
 # Variables (for rooms without climate pass the conventional ids anyway; the chart hides itself):
 #   room     key used by custom:pulse-card (see ROOMS in www/pulse-card.js) and by helper ids
@@ -134,9 +136,6 @@ pulse_room:
         decision: '[[fan_decision]]'
         label: '[[fan_label]]'
       - type: custom:pulse-card
-        mode: automations
-        room: '[[room]]'
-      - type: custom:pulse-card
         mode: room-feed
         room: '[[room]]'
 
@@ -160,9 +159,6 @@ pulse_garden:
         room: '[[room]]'
       - type: custom:pulse-card
         mode: garden-theme
-        room: '[[room]]'
-      - type: custom:pulse-card
-        mode: automations
         room: '[[room]]'
       - type: custom:pulse-card
         mode: room-feed
