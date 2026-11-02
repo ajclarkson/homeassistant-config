@@ -480,7 +480,6 @@ ok('every nav path targets the registered dashboard (/pulse-dashboard) or Mobile
     for (const m of html.matchAll(/data-path="([^"]*)"/g)) {
       seen += 1;
       const p = m[1];
-      if (p.startsWith(P.MOBILE)) { assert.match(p, /^\/mobile-dashboard(\/mo)?$/, `${k}: ${p}`); continue; } // Controls tab, Mo chip
       assert.ok(p.startsWith(P.DASH + '/'), `${k}: ${p} must start with ${P.DASH}/`);
       assert.ok(viewPaths.has(p.slice(P.DASH.length + 1)), `${k}: ${p} has no matching view path`);
     }
@@ -1554,7 +1553,7 @@ ok('Now v3 header is the title and mode pill only; no "Updated" text anywhere on
   assert.doesNotMatch(hdr, /sliders/, 'no icon in the title row');
   for (const hass of [mk(), withRooms(calmRooms(), []), withRooms(P.ROOM_ORDER.map((k) => quietRoom(k, { occupied: true })), [attn('Bedroom', 'bedroom', 'automation_disabled', 't')]), { states: {} }]) assert.doesNotMatch(nowPage(hass), /Updated/);
   assert.equal(count(nowPage(mk()), /data-path="\/mobile-dashboard"/g), 0);
-  assert.match(P.render('tabbar', { active: 'now' }, mk(), NOW, {}), /data-path="\/mobile-dashboard"[^>]*>[\s\S]*Controls/);
+  assert.doesNotMatch(P.render('tabbar', { active: 'now' }, mk(), NOW, {}), /mobile-dashboard|Controls/);
   const view = yaml.load(readFileSync(root + 'views/info-now.yaml', 'utf8'));
   assert.deepEqual(view.sections[0].cards.map((c) => c.mode), ['now-header', 'status', 'rooms', 'bins-heating', 'cameras-card', 'feed', 'tabbar']);
 });
@@ -1563,7 +1562,7 @@ ok('Now v3 status card: verdict row with the sentence right-aligned, ONE chip ro
   const hass = withRooms(calmRooms({ parlour: { occupied: true }, kitchen: { occupied: true }, bedroom: { occupied: true }, bathroom: { occupied: true } }), []);
   const st = P.render('status', {}, hass, NOW);
   assert.match(st, /<div style="font-size:15px;font-weight:700">All good<\/div><div style="flex:1"><\/div><div style="font-size:12px;color:#a3adba;text-align:right">4 rooms occupied · heating idle<\/div>/);
-  const chips = st.match(/<div class="chips">[\s\S]*?<\/a><\/div>/)[0];
+  const chips = st.match(/<div class="chips">[\s\S]*?<\/div><\/div>/)[0];
   assert.equal(count(chips, /class="chip[" ]/g), 3, 'Adam, Sarah, Mo in one row');
   assert.doesNotMatch(chips, /flex-wrap:wrap/);
   const css = readFileSync(root + 'www/pulse-card.js', 'utf8');
@@ -1574,7 +1573,7 @@ ok('Now v3 status card: verdict row with the sentence right-aligned, ONE chip ro
   assert.match(chips, />Mo</);
   // the long variants are shortened rather than wrapped
   const worst = P.render('status', {}, mk({ 'person.adam': { state: 'not_home', attributes: {} }, 'input_boolean.wfh_adam': { state: 'on', attributes: {} }, 'sensor.mo_timeline': { state: 'x', attributes: { eating: [{ ts: Date.parse('2026-10-24T18:05:00Z') }] } } }), NOW);
-  const wc = worst.match(/<div class="chips">[\s\S]*?<\/a><\/div>/)[0];
+  const wc = worst.match(/<div class="chips">[\s\S]*?<\/div><\/div>/)[0];
   assert.match(wc, /Adam · Away/);
   assert.match(wc, /Mo · ate yest 18:05/);
   assert.doesNotMatch(wc, /yesterday|Away · WFH/);
@@ -1707,15 +1706,15 @@ ok('Now v3 sparse and missing data: every Now mode renders cleanly', () => {
 // ── Tab bar ────────────────────────────────────────────────────────────────────────────────────
 const SNAP = (over = {}) => ({ name: 'div', transform: 'none', filter: 'none', perspective: 'none', contain: 'none', willChange: 'auto', backdropFilter: 'none', ...over });
 
-ok('tab bar renders five tabs, one per id, with aria-current on the active one only', () => {
-  for (const [active, label] of [['now', 'Now'], ['energy', 'Energy'], ['cameras', 'Cameras'], ['house', 'House'], ['controls', 'Controls']]) {
+ok('tab bar renders four tabs, one per id, with aria-current on the active one only', () => {
+  for (const [active, label] of [['now', 'Now'], ['energy', 'Energy'], ['cameras', 'Cameras'], ['house', 'House']]) {
     const html = P.render('tabbar', { active }, mk(), NOW, {});
     assert.match(html, /<nav class="tabs" aria-label="Pulse">/);
-    assert.equal(count(html, /<button type="button" class="tab"/g), 5);
+    assert.equal(count(html, /<button type="button" class="tab"/g), 4);
     assert.equal(count(html, /aria-current="page"/g), 1);
     assert.match(html, new RegExp(`aria-current="page">[\\s\\S]*?<span>${label}</span>`));
-    for (const t of ['Now', 'Energy', 'Cameras', 'House', 'Controls']) assert.match(html, new RegExp(`<span>${t}</span>`));
-    assert.equal(count(html, /<svg /g), 5, 'inline SVG icons');
+    for (const t of ['Now', 'Energy', 'Cameras', 'House']) assert.match(html, new RegExp(`<span>${t}</span>`));
+    assert.equal(count(html, /<svg /g), 4, 'inline SVG icons');
     noNoise({ html }, 'tabbar');
   }
   assert.match(P.render('tabbar', { active: 'bogus' }, mk(), NOW, {}), /aria-current="page">[\s\S]*?<span>Now<\/span>/, 'unknown active falls back to Now');
@@ -1728,13 +1727,13 @@ ok('tab bar renders five tabs, one per id, with aria-current on the active one o
   assert.equal(P.TOKENS.text3, '#8f9aa8');
 });
 
-ok('tab bar nav paths use the DASH / MOBILE constants and match real views', () => {
+ok('tab bar nav paths use the DASH constant and match real views', () => {
   const html = P.render('tabbar', { active: 'now' }, mk(), NOW, {});
   const paths = [...html.matchAll(/data-path="([^"]*)"/g)].map((m) => m[1]);
-  assert.deepEqual(paths, ['/pulse-dashboard/now', '/pulse-dashboard/energy', '/pulse-dashboard/cameras', '/pulse-dashboard/house', '/mobile-dashboard']);
+  assert.deepEqual(paths, ['/pulse-dashboard/now', '/pulse-dashboard/energy', '/pulse-dashboard/cameras', '/pulse-dashboard/house']);
   const viewPaths = readdirSync(root + 'views').filter((x) => x.startsWith('info-')).map((f) => yaml.load(readFileSync(root + 'views/' + f, 'utf8')).path);
-  for (const p of paths) if (p.startsWith(P.DASH)) assert.ok(viewPaths.includes(p.slice(P.DASH.length + 1)), p); else assert.equal(p, P.MOBILE);
-  assert.ok(P.TABS.every((t) => t.path.startsWith(P.DASH) || t.path === P.MOBILE));
+  for (const p of paths) { assert.ok(p.startsWith(P.DASH + '/'), p); assert.ok(viewPaths.includes(p.slice(P.DASH.length + 1)), p); }
+  assert.ok(P.TABS.every((t) => t.path.startsWith(P.DASH)));
 });
 
 ok('placement: fixed in-flow decision from ancestor snapshots, naming the offender', () => {
@@ -1816,28 +1815,21 @@ ok('every Pulse view has exactly one tabbar card, last in its section, with its 
   assert.deepEqual([...seen].sort(), ['cameras', 'energy', 'house', 'now']);
 });
 
-ok('tab bar: Now, Energy, Cameras, House, then Controls last; every non-Controls tab is a real Pulse view', () => {
-  assert.deepEqual(P.TABS.map((t) => t.id), ['now', 'energy', 'cameras', 'house', 'controls']);
+ok('tab bar: exactly Now, Energy, Cameras, House, each a real Pulse view, each activatable', () => {
+  assert.deepEqual(P.TABS.map((t) => t.id), ['now', 'energy', 'cameras', 'house']);
   const paths = new Set(readdirSync(root + 'views').filter((x) => x.startsWith('info-')).map((f) => yaml.load(readFileSync(root + 'views/' + f, 'utf8')).path));
-  for (const t of P.TABS.filter((x) => x.id !== 'controls')) assert.ok(paths.has(t.path.slice(P.DASH.length + 1)), t.path);
-  assert.equal(P.TABS[4].path, P.MOBILE);
+  for (const t of P.TABS) assert.ok(paths.has(t.path.slice(P.DASH.length + 1)), t.path);
   for (const t of P.TABS) {
     const html = P.render('tabbar', { active: t.id }, mk(), NOW, {});
     assert.match(html, new RegExp(`aria-current="page"[^>]*>[\\s\\S]*?<span>${t.label}</span>`));
   }
 });
 
-ok('no Pulse page links to Mobile apart from the Controls tab (and the Mo chip, which has no Pulse page yet)', () => {
+ok('no Pulse page renders a Mobile dashboard link (every mode, rooms with attention, Mo chip kept)', () => {
   const items = P.ALL_ROOM_KEYS.map((k) => ({ room: k, key: k, kind: 'warm_heating', text: 't', nav: '/x' })).concat([{ room: 'House', key: '', kind: 'unexplained_reason', text: 'x', nav: '' }]);
   const hass = withRooms(P.ROOM_ORDER.map(FULL), items);
-  for (const [k, html] of Object.entries(renderAll(hass))) {
-    for (const m of html.matchAll(/data-path="(\/mobile-dashboard[^"]*)"/g)) {
-      const ok2 = k === 'tabbar' ? m[1] === '/mobile-dashboard' : m[1] === '/mobile-dashboard/mo';
-      assert.ok(ok2, `${k}: ${m[1]}`);
-    }
-  }
-  const status = P.render('status', {}, hass, NOW);
-  assert.doesNotMatch(status.replace(/data-path="\/mobile-dashboard\/mo"/, ''), /mobile-dashboard/);
+  for (const [k, html] of Object.entries(renderAll(hass))) assert.doesNotMatch(html, /mobile-dashboard/, k);
+  assert.match(P.render('status', {}, hass, NOW), /class="chip"[^>]*>Mo/);
   assert.doesNotMatch(readFileSync(root + 'views/info-now.yaml', 'utf8'), /footer/);
 });
 
