@@ -8,8 +8,11 @@
 #
 # One trigger-based sensor keeps:
 #   entries  last 8 meaningful decisions (not no_action / no_change), newest first
-#   by_room  newest meaningful decision per location (so quiet rooms keep their last action)
 #   aborts   last 5 notable aborts, de-duplicated by automation+kind+detail with a repeat count
+#
+# Per-room activity and the lights explanation no longer come from here: they read
+# `sensor.<location>_history` (mqtt.yaml, homerun's retained history). This sensor stays only for
+# Now's "What the house did" until that switches to `sensor.house_history`.
 #
 # Aborts live in their own list so a burst of them can never push decisions out of the feed.
 # Noisy automations (see `noisy` below) are dropped before they are stored.
@@ -60,9 +63,6 @@ template:
           old_entries: >-
             {% set x = state_attr('sensor.info_decision_feed', 'entries') %}
             {{ (x | from_json if x is string else (x or [])) | tojson }}
-          old_by_room: >-
-            {% set x = state_attr('sensor.info_decision_feed', 'by_room') %}
-            {{ (x | from_json if x is string else (x or [])) | tojson }}
           old_aborts: >-
             {% set x = state_attr('sensor.info_decision_feed', 'aborts') %}
             {{ (x | from_json if x is string else (x or [])) | tojson }}
@@ -95,7 +95,7 @@ template:
                 'bed_occupied': 'bed occupied', 'bed_not_occupied': 'bed empty',
                 'button_off': 'button pressed off', 'button_cycle': 'button pressed',
                 'button_pressed': 'button pressed', 'button_double_press': 'button double press',
-                'strong_hold_active': 'kept on by a hold', 'recent_auto_off': 'back soon after lights went off',
+                'strong_hold_active': 'kept on by a hold', 'strong_hold_started': 'started by a hold', 'recent_auto_off': 'back soon after lights went off',
                 'recent_auto_off_expired': 'lights back to automatic', 'startup_sync': 'checked after a restart',
                 'schedule_off': 'scheduled off', 'door_open_heating_on': 'door open while heating',
                 'door_closed_was_suspended': 'door closed, heating resumed',
@@ -170,27 +170,6 @@ template:
             {% set old = old_entries | from_json if old_entries is string else old_entries %}
             {% set new = entry | from_json if entry is string else entry %}
             {{ (([new] + old) if new else old)[:8] | tojson }}
-          by_room: >-
-            {% set old = old_by_room | from_json if old_by_room is string else old_by_room %}
-            {% set new = entry | from_json if entry is string else entry %}
-            {% if new %}
-              {{ ([new] + (old | selectattr('loc', 'ne', new.loc) | list))[:30] | tojson }}
-            {% else %}
-              {{ old | tojson }}
-            {% endif %}
-          # Newest meaningful lighting decision per location, so the room card can say why the
-          # lights are as they are. Kept apart from by_room, which holds one entry per location
-          # and would otherwise need a 3x larger list (attribute size limit).
-          lights: >-
-            {% set x = state_attr('sensor.info_decision_feed', 'lights') %}
-            {% set old = x | from_json if x is string else (x or []) %}
-            {% set new = entry | from_json if entry is string else entry %}
-            {% if new and new.get('sub') == 'lighting' %}
-              {{ ([{'loc': new.get('loc'), 'ts': new.get('ts'), 'decision': new.get('decision'), 'reason': new.get('reason'), 'why': new.get('why')}]
-                  + (old | rejectattr('loc', 'eq', new.get('loc')) | list))[:12] | tojson }}
-            {% else %}
-              {{ old | tojson }}
-            {% endif %}
           aborts: >-
             {% set old = old_aborts | from_json if old_aborts is string else old_aborts %}
             {% set new = abort_entry | from_json if abort_entry is string else abort_entry %}
