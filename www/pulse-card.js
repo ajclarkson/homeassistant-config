@@ -15,6 +15,8 @@
  *    every list through parseList, every number through num. Missing data renders an honest
  *    empty state, never a made-up value.
  *  - Style tokens live once, in TOKENS / STYLE.
+ *  - Every write gives feedback (see Tap feedback): the control shows busy until its entity moves or
+ *    8 s pass, and a failed call shows an error on the card.
  *  - Write paths are whitelisted in ALLOWED. HA is a read-only consumer of homerun events: this
  *    card never publishes to MQTT and never calls anything but the services below.
  */
@@ -101,6 +103,8 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 .det{grid-column:2 / 4;display:flex;flex-direction:column;gap:6px;padding:4px 0 6px}
 .det .l{display:flex;gap:8px;font-size:12.5px;color:#cfd5dd;line-height:1.4}
 .det .l b{color:${TOKENS.amber};font-weight:600}
+.err{background:${TOKENS.amberBg};border:1px solid ${TOKENS.amberBorder};color:${TOKENS.amber};border-radius:12px;padding:10px 14px;font-size:13px;font-weight:600}
+[aria-busy="true"]{opacity:.55;cursor:progress}
 .tag{font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:${TOKENS.amberTag};color:${TOKENS.amber};white-space:nowrap}
 .tag.ok{background:${TOKENS.okBg};color:${TOKENS.ok}}
 .tag.off{background:${TOKENS.divider};color:${TOKENS.text2}}
@@ -313,11 +317,8 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     input_number: ['set_value'],
   };
 
-  // publish_calendar: the daily theme calendar refresh that switched nothing; the startup window publish is the
-  // same kind of plumbing. Neither tells the household anything.
-  const PLUMBING_DECISIONS = ['update_external_temp', 'record', 'publish_calendar'];
-  const PLUMBING_AUTOS = ['room_temp_feed', 'outdoor_temp_history'];
   const ACTIVITY_ROWS = 10;
+  const FEED_ROWS = 3; // House shows the latest few; the room pages hold the rest
 
   // ── Safe readers ─────────────────────────────────────────────────────────────────────────────
   const num = (v) => {
@@ -394,7 +395,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     pres_labels: [], heat_labels: [], humidity: null, hvac_action: null, heating_active: '',
     heating_source: '', lights_on: 0, lights_total: 0, scene: '', lights_enabled: true,
     heating_enabled: null, override: false, ext_open: false, holds: [], reason_text: '',
-    override_text: '', labels: [], manual: null, verdict: '',
+    override_text: '', labels: [], manual: null,
   };
 
   function roomEntry(hass, key) {
@@ -421,7 +422,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     for (const k of ['unavailable', 'pres_labels', 'heat_labels', 'labels']) m[k] = strList(e[k]);
     m.holds = parseList(e.holds);
     m.manual = isObj(e.manual) && e.manual.source ? { source: str(e.manual.source), ts: str(e.manual.ts), what: str(e.manual.what) } : null;
-    for (const k of ['target_reason', 'mode_name', 'heating_active', 'heating_source', 'scene', 'reason_text', 'override_text', 'verdict']) m[k] = str(m[k]);
+    for (const k of ['target_reason', 'mode_name', 'heating_active', 'heating_source', 'scene', 'reason_text', 'override_text']) m[k] = str(m[k]);
     m.lights_enabled = e.lights_enabled !== false;
     m.heating_enabled = typeof e.heating_enabled === 'boolean' ? e.heating_enabled : null;
     m.override = !!e.override;
@@ -494,46 +495,6 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return s.startsWith(`${key}_`) ? s.slice(key.length + 1) : s;
   }
   const sceneLabel = (id) => SCENE_LABELS[id] || id.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
-
-  // ── Feed ─────────────────────────────────────────────────────────────────────────────────────
-  // Stored entries from before the plumbing filter may still be present: drop them on read too.
-  // Entries that say nothing happened never reach the feed, whether stored before or after this check.
-  const NOOP_WORDS = /\b(no[_ ]?change|no[_ ]?action|maintain|maintained)\b/i;
-  function isPlumbing(e) {
-    return PLUMBING_DECISIONS.includes(str(e.decision)) || PLUMBING_AUTOS.some((p) => str(e.auto).includes(p))
-      || NOOP_WORDS.test(str(e.decision)) || NOOP_WORDS.test(str(e.reason)) || NOOP_WORDS.test(str(e.sentence));
-  }
-  // Plain wording for decisions whose stored sentence is jargon ("heating set mode"). Everything else
-  // keeps the sensor's sentence. Uses the loc/sub/decision/reason the feed stores with each entry.
-  const DECISION_WORDS = { set_mode: 'mode changed', blocked: 'blocked by its automation switch', suspend: 'suspended', restore: 'restored', sync_window_external: 'window state synced', set_sleep: 'house set to sleep' };
-  const REASON_WORDS = { safety_window_open: 'window open', safety_heating_disabled: 'heating switched off', manual_override: 'manual setting', schedule: 'schedule', schedule_occupied: 'schedule, room occupied', house_mode_away: 'house away', house_mode_sleep: 'house asleep', house_mode_vacation: 'house on holiday', house_mode_normal: 'house at home', automation_disabled: 'automation off' };
-  function entrySentence(e) {
-    const d = str(e.decision);
-    if (!DECISION_WORDS[d] || !e.loc) return str(e.sentence);
-    const place = str(e.loc).replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
-    const noun = { heating: 'heating', lighting: 'lights', occupied: 'occupancy' }[str(e.sub)] || str(e.sub).replace(/_/g, ' ');
-    const why = REASON_WORDS[str(e.reason)] || str(e.why) || str(e.reason).replace(/_/g, ' ');
-    return `${place} ${noun ? noun + ' ' : ''}${DECISION_WORDS[d]}${why ? ' · ' + why : ''}`;
-  }
-  function feedEntries(hass) {
-    return parseList(attr(hass, 'sensor.info_decision_feed', 'entries')).filter((e) => !isPlumbing(e));
-  }
-  // Consecutive identical sentences (a mashed button) become one row with a count. Entries are
-  // newest first, so the row carries the newest time.
-  function collapseFeed(entries) {
-    const out = [];
-    for (const e of entries) {
-      const last = out[out.length - 1];
-      const sentence = entrySentence(e);
-      if (last && last.sentence === sentence) last.count += 1;
-      else out.push({ ts: e.ts, sentence, count: 1 });
-    }
-    return out;
-  }
-  // The time column already says when; no second "just now".
-  function feedRows(entries, now, limit) {
-    return collapseFeed(entries).slice(0, limit).map((e) => `<div class="feed"><span class="a">${esc(hhmm(e.ts))}</span><span>${esc(e.sentence)}${e.count > 1 ? ` <b>x${e.count}</b>` : ''}</span></div>`).join('');
-  }
 
   // ── Wording: homerun history entries in plain words ──────────────────────────────────────────
   // homerun publishes only structured data (reason keys, outcomes, facts); every sentence on screen is
@@ -690,29 +651,53 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     'occupied:strong_hold_started': (f, c) => `Marked occupied · held by ${c.name(f.hold) || 'a hold'}`,
     'occupied:timer_expired': () => 'Marked empty · timer ran out',
   };
-  // Decisions homerun stores without a declaration (heating and other undeclared automations, decisions with
-  // actions only): worded from the decision verb and reason, as the feed sensor always did.
-  const LEGACY_DECISION = {
-    turn_on: 'turned on', turn_off: 'turned off', on: 'turned on', activate_scene: 'scene set', set_occupied: 'marked occupied',
-    clear_occupied: 'marked empty', notify: 'notification sent', join: 'joined the speaker group', unjoin: 'left the speaker group',
-    exit_sleep: 'left sleep mode', clear_recent_auto_off: 'reset after switching off', switch_theme: 'theme switched',
-    start_preview: 'preview started',
+  // Decisions homerun stores without a declaration (decisions with actions only, from automations that
+  // declare no reasons): worded from the decision verb and the reason slug, in this table so there is one
+  // place for wording besides REASON_TEXT. `verb` is the sentence tail, `note` is the short phrase a room
+  // tile shows for a recent action ("lights on 7 min ago"), per subsystem, and only where a tile may say it.
+  const UNDECLARED = {
+    decisions: {
+      turn_on: { verb: 'turned on', note: { lighting: 'lights on' } },
+      turn_off: { verb: 'turned off', note: { lighting: 'lights off' } },
+      on: { verb: 'turned on' },
+      activate_scene: { verb: 'scene set', note: { lighting: 'scene set' } },
+      set_occupied: { verb: 'marked occupied', note: { occupied: 'marked occupied' } },
+      clear_occupied: { verb: 'marked empty', note: { occupied: 'marked empty' } },
+      notify: { verb: 'notification sent' },
+      join: { verb: 'joined the speaker group' },
+      unjoin: { verb: 'left the speaker group' },
+      exit_sleep: { verb: 'left sleep mode' },
+      clear_recent_auto_off: { verb: 'reset after switching off' },
+      switch_theme: { verb: 'theme switched' },
+      start_preview: { verb: 'preview started' },
+      set_mode: { verb: 'mode changed', note: { heating: 'heating changed' } },
+      blocked: { verb: 'blocked by its automation switch' },
+      suspend: { verb: 'suspended', note: { heating: 'heating suspended' } },
+      restore: { verb: 'restored', note: { heating: 'heating restored' } },
+      sync_window_external: { verb: 'window state synced' },
+      set_sleep: { verb: 'house set to sleep' },
+    },
+    reasons: {
+      occupancy_on: 'room occupied', kitchen_motion_detected: 'kitchen motion', end_of_day: 'end of day',
+      already_in_sleep_mode: 'already asleep', not_in_sleep_mode: 'not asleep', house_away: 'house away', house_not_away: 'someone home',
+      guest_mode_active: 'guest mode', away_but_guest_present: 'away but guest present', bed_occupied: 'bed occupied',
+      bed_not_occupied: 'bed empty', button_pressed: 'button pressed', button_double_press: 'button double press',
+      door_open_heating_on: 'door open while heating', door_closed_was_suspended: 'door closed, heating resumed',
+      open_door: 'door opened', close_door: 'door closed', outside_morning_window: 'outside the morning window',
+      parlour_active: 'parlour in use', overtemp_heater_on: 'too hot',
+      safety_window_open: 'window open', safety_heating_disabled: 'heating switched off', manual_override: 'manual setting',
+      schedule: 'schedule', schedule_occupied: 'schedule, room occupied', house_mode_away: 'house away', house_mode_sleep: 'house asleep',
+      house_mode_vacation: 'house on holiday', house_mode_normal: 'house at home', automation_disabled: 'automation off',
+    },
+    nouns: { lighting: 'Lights', occupied: 'Occupancy', heating: 'Heating' },
   };
-  const LEGACY_REASON = {
-    occupancy_on: 'room occupied', kitchen_motion_detected: 'kitchen motion', end_of_day: 'end of day',
-    already_in_sleep_mode: 'already asleep', not_in_sleep_mode: 'not asleep', house_away: 'house away', house_not_away: 'someone home',
-    guest_mode_active: 'guest mode', away_but_guest_present: 'away but guest present', bed_occupied: 'bed occupied',
-    bed_not_occupied: 'bed empty', button_pressed: 'button pressed', button_double_press: 'button double press',
-    door_open_heating_on: 'door open while heating', door_closed_was_suspended: 'door closed, heating resumed',
-    open_door: 'door opened', close_door: 'door closed', outside_morning_window: 'outside the morning window',
-    parlour_active: 'parlour in use', overtemp_heater_on: 'too hot',
-  };
-  const NOUN = { lighting: 'Lights', occupied: 'Occupancy', heating: 'Heating' };
+  const own = (table, key) => (Object.prototype.hasOwnProperty.call(table, key) ? table[key] : undefined);
 
-  function legacySentence(e) {
-    const noun = NOUN[e.subsystem] || capFirst(pretty(e.subsystem));
-    const verb = DECISION_WORDS[e.decision] || LEGACY_DECISION[e.decision] || pretty(e.decision);
-    const why = REASON_WORDS[e.reason] || LEGACY_REASON[e.reason] || pretty(e.reason);
+  function undeclaredSentence(e) {
+    const noun = own(UNDECLARED.nouns, e.subsystem) || capFirst(pretty(e.subsystem));
+    const d = own(UNDECLARED.decisions, e.decision);
+    const verb = d ? d.verb : pretty(e.decision);
+    const why = own(UNDECLARED.reasons, e.reason) || pretty(e.reason);
     return `${noun}${verb ? ' ' + verb : ''}${why ? ' · ' + why : ''}`;
   }
   // What a failed run or action says. Devices are named by their friendly name, never "entity".
@@ -730,14 +715,14 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       default: return `Couldn't run: ${pretty(d.abort_kind) || 'unknown problem'}`;
     }
   }
-  // One entry in words, plus how to show it: `ok` for something done, `muted` for a rule that chose not
-  // to act, `warn` for a run that could not happen. A declared reason with no wording still renders (never
-  // blank) and is reported by unexplainedReasons.
-  function historySentence(e, hass) {
+  // The one place an entry becomes words, plus how to show it: `ok` for something done, `muted` for a rule that
+  // chose not to act, `warn` for a run that could not happen. A declared reason with no wording still renders
+  // (never blank) and is reported by unexplainedReasons.
+  function sentenceFor(e, hass) {
     if (e.kind !== 'decision') return { text: problemSentence(e, hass), tone: 'warn' };
     const tone = e.outcome === 'declined' ? 'muted' : 'ok';
-    if (e.outcome === undefined) return { text: legacySentence(e), tone };
-    const fn = REASON_TEXT[`${e.subsystem}:${e.reason}`];
+    if (e.outcome === undefined) return { text: undeclaredSentence(e), tone };
+    const fn = own(REASON_TEXT, `${e.subsystem}:${e.reason}`);
     const ctx = { name: (id) => entityName(hass, id) };
     return { text: fn ? fn(e.facts, ctx) : `${capFirst(pretty(e.subsystem))} ${pretty(e.reason)}`, tone };
   }
@@ -782,7 +767,6 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     if (!s || s.state === 'unavailable') return { entries: [], note: 'History unavailable' };
     return parseHistory(s.attributes);
   }
-  const isPlumbingEntry = (e) => PLUMBING_DECISIONS.includes(e.decision) || PLUMBING_AUTOS.some((p) => e.automation_id.includes(p));
   // A decision that changed something: declared `acted`, or an undeclared decision (stored only with actions).
   const isActed = (e) => e.kind === 'decision' && e.outcome !== 'declined';
 
@@ -797,16 +781,29 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   }
 
   // Room "Recent activity": the room's history as rows, consecutive identical rows collapsed (a mashed button).
-  function roomActivity(hass, key) {
-    const h = readHistory(hass, `sensor.${key}_history`);
+  // Plumbing (a timer refresh, a startup sync) never reaches a history: homerun declares those reasons `ignored`
+  // and stores nothing for them, so there is nothing to filter here.
+  function activityOf(hass, history, withPlace) {
     const rows = [];
-    for (const e of h.entries.filter((x) => !isPlumbingEntry(x))) {
-      const { text, tone } = historySentence(e, hass);
+    for (const e of history.entries) {
+      const sentence = sentenceFor(e, hass);
+      const text = withPlace ? placed(e.location, sentence.text) : sentence.text;
       const last = rows[rows.length - 1];
-      if (last && last.text === text && last.tone === tone) last.count += 1;
-      else rows.push({ ts: e.ts, text, tone, count: 1 });
+      if (last && last.text === text && last.tone === sentence.tone) last.count += 1;
+      else rows.push({ ts: e.ts, text, tone: sentence.tone, count: 1 });
     }
-    return { rows, note: h.note };
+    return { rows, note: history.note };
+  }
+  // House-wide rows say where: "Kitchen · Lights off · room emptied". Whole-house automations have no room.
+  function placed(location, text) {
+    if (!location || location === 'house') return text;
+    return `${own(ROOMS, location) ? ROOMS[location].name : capFirst(pretty(location))} · ${text}`;
+  }
+  function roomActivity(hass, key) {
+    return activityOf(hass, readHistory(hass, `sensor.${key}_history`), false);
+  }
+  function houseActivity(hass) {
+    return activityOf(hass, readHistory(hass, 'sensor.house_history'), true);
   }
   const DIDNT_GLYPH = 'M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16zM6.3 6.3l11.4 11.4';
   function activityRows(rows, limit) {
@@ -852,22 +849,29 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   const SCENE_ICON = { off: 'power', lamps: 'lamp', low: 'moon', full: 'sun', all_full: 'sun', daylight: 'sun' };
 
   // ── Wording ──────────────────────────────────────────────────────────────────────────────────
-  function lightsPhrase(m, scene) {
-    if (m.lights_on > 0) return scene && scene !== 'off' ? `${sceneLabel(scene)} scene` : 'Lights on';
-    return 'Off';
+  // The only place lights are put into words. `badge` is the short form for tiles and chips, `phrase` the
+  // headline of the Lights card, `clause` the lower-case fragment inside the banner's sentence.
+  function lightsState(m, scene) {
+    if (!(m.lights_on > 0)) return { on: false, badge: 'Off', phrase: 'Lights off', clause: 'lights off' };
+    if (scene && scene !== 'off') return { on: true, badge: sceneLabel(scene), phrase: `${sceneLabel(scene)} scene`, clause: 'lights on' };
+    return { on: true, badge: 'On', phrase: 'Lights on', clause: 'lights on' };
   }
 
-  // The sensor's verdict says "Occupied · lights on · held occupied by Sofa occupied"; fold the hold into the
-  // first clause so "occupied" is said once: "Occupied (Sofa occupied) · lights on".
-  const tidyVerdict = (v, labels = []) => {
-    const s = str(v);
-    const held = ` · held occupied by ${labels.join(' · ')}`;
-    if (!labels.length || !s.includes(held) || !/^Occupied/.test(s)) return s.replace(/held occupied by /gi, 'held occupied · ');
-    // A label that already says "occupied" (Bed occupied) adds nothing in brackets.
-    const extra = labels.filter((l) => !/occupied/i.test(l));
-    return s.replace(held, '').replace(/^Occupied/, extra.length ? `Occupied (${extra.join(' · ')})` : 'Occupied');
-  };
-  function bannerFor(m, items) {
+  // The room's one-line state, built here from facts rather than taken from a string the sensor made up.
+  // Holds that already say "occupied" (Bed occupied) add nothing in brackets; other holds fold into the first
+  // clause, so "occupied" is said once: "Occupied (Sofa) · lights on".
+  function verdictFor(m, scene) {
+    const holds = m.pres_labels;
+    const extra = holds.filter((l) => !/occupied/i.test(l));
+    const first = m.occupancy_unavailable ? 'Occupancy unavailable' : m.occupied ? `Occupied${extra.length ? ` (${extra.join(' · ')})` : ''}` : 'Empty';
+    const parts = [first, lightsState(m, scene).clause];
+    if (m.target_reason && m.target !== null) parts.push(`heating target ${fmt1(m.target)}° (${m.target_reason})`);
+    if (holds.length && !m.occupied) parts.push(`held occupied · ${holds.join(' · ')}`);
+    if (m.heat_labels.length && !m.target_reason) parts.push(`heating suspended: ${m.heat_labels.join(' · ').toLowerCase()}`);
+    if (m.override_text) parts.push(m.override_text);
+    return parts.join(' · ');
+  }
+  function bannerFor(m, items, scene) {
     const mine = items.filter((i) => i.key === m.key);
     // A heating hold (window or door open) suspends heating whether or not the sensor saw the target
     // diverge from the mode: a safety minimum can make the target equal the mode's own.
@@ -888,7 +892,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     if (m.cfg.report && !m.hasReport) return { warn: false, dim: true, title: 'No report yet', body: 'sensor.info_rooms has no entry for this room' };
     if (m.cfg.kind === 'garden') return { warn: false, title: 'Evening lighting', body: `Lights from sunset until ${m.window_off ? m.window_off + ' and bedtime' : 'bedtime'}` };
     if (!m.cfg.report) return { warn: false, title: 'Lights only', body: 'This area has scenes and a lights automation, no climate or presence report' };
-    return { warn: false, title: 'All good', body: tidyVerdict(m.verdict, m.pres_labels) || 'No reasons to show' };
+    return { warn: false, title: 'All good', body: verdictFor(m, scene) };
   }
 
   // ── Sections ─────────────────────────────────────────────────────────────────────────────────
@@ -1030,17 +1034,13 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   const shortHold = (l) => SHORT_HOLD[l] || l;
   // A recent real action (under 15 minutes) as a phrase with its verb ("lights off 7 min ago"). Without a
   // known verb there is no note: a bare "7 min" means nothing.
-  const ACTION_PHRASE = {
-    lighting: { turn_on: 'lights on', turn_off: 'lights off', activate_scene: 'scene set' },
-    heating: { set_mode: 'heating changed', suspend: 'heating suspended', restore: 'heating restored' },
-    occupied: { set_occupied: 'marked occupied', clear_occupied: 'marked empty' },
-  };
   function recentNote(hass, key, now) {
     // The newest thing the house did here; a rule that chose not to act is not an action.
-    const e = readHistory(hass, `sensor.${key}_history`).entries.find((x) => isActed(x) && !isPlumbingEntry(x));
+    const e = readHistory(hass, `sensor.${key}_history`).entries.find((x) => isActed(x));
     if (!e) return '';
     const t = parseTs(e.ts);
-    const phrase = ACTION_PHRASE[e.subsystem] && ACTION_PHRASE[e.subsystem][e.decision];
+    const decision = own(UNDECLARED.decisions, e.decision);
+    const phrase = decision && decision.note ? own(decision.note, e.subsystem) : undefined;
     if (t === null || !phrase) return '';
     const age = now - t;
     if (age >= RECENT_MS || age < -60000) return '';
@@ -1048,10 +1048,6 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   }
   const badge = (inner, style) => `<span class="badge"${style ? ` style="${style}"` : ''}>${inner}</span>`;
   const sizedIcon = (path, px, color) => `<svg class="ic" viewBox="0 0 24 24" width="${px}" height="${px}" fill="none" stroke="${color || 'currentColor'}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${path}"/></svg>`;
-  function lightsBadgeText(m, scene) {
-    if (m.lights_on > 0) return scene && scene !== 'off' ? sceneLabel(scene) : 'On';
-    return 'Off';
-  }
   function manualBadge(m, now, short) {
     if (!m.manual) return '';
     const a = short ? '' : ago(m.manual.ts, now);
@@ -1081,7 +1077,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const m = roomModel(hass, k);
     const scene = activeScene(hass, k);
     const recent = recentNote(hass, k, now).replace(/^lights /, '');
-    const lights = badge(`${sizedIcon(ICON.bulb, 13, m.lights_on > 0 ? TOKENS.sceneActive : undefined)}${esc(lightsBadgeText(m, scene))}`);
+    const lights = badge(`${sizedIcon(ICON.bulb, 13, m.lights_on > 0 ? TOKENS.sceneActive : undefined)}${esc(lightsState(m, scene).badge)}`);
     const holds = m.pres_labels.slice(0, 2).map((l) => badge(esc(l))).join('');
     return `<a class="card oc tap" data-act="nav" data-path="${roomPath(k)}">${occIcon(m, 20)}<div class="nm">${esc(m.cfg.short)}</div><div class="t">${tempBlock(m, 'font-size:20px;font-weight:700;letter-spacing:-.3px')}</div><div class="sub">${lights}${manualBadge(m, now)}${holdBadges(m)}${holds}${recent ? `<span>${esc(recent)}</span>` : ''}</div></a>`;
   }
@@ -1095,7 +1091,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const holds = m.hasReport ? holdBadges(m) : '';
     // One extra item at most, and the manual badge drops its age here: the tile must stay one line.
     const extra = m.hasReport ? (holds || manualBadge(m, now, true) || (recent ? `<span>${esc(recent)}</span>` : '')) : '';
-    const line = `${sizedIcon(ICON.bulb, 14)}<span>${m.hasReport ? esc(lightsBadgeText(m, scene)) : 'No report'}</span>${extra}`;
+    const line = `${sizedIcon(ICON.bulb, 14)}<span>${m.hasReport ? esc(lightsState(m, scene).badge) : 'No report'}</span>${extra}`;
     return `<a class="rt tap${wide ? ' wide' : ''}" data-act="nav" data-path="${roomPath(k)}"><div class="nm">${occIcon(m) || sizedIcon(ICON.person, 15, TOKENS.text3)}<span>${esc(m.cfg.short)}</span></div><div class="t">${tempBlock(m, `font-size:20px;font-weight:700;letter-spacing:-.3px;line-height:${TILE.tempLine}px`)}</div><div class="b">${line}</div></a>`;
   }
 
@@ -1608,8 +1604,9 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   }
 
   function sectionFeed(hass, now) {
-    const entries = feedEntries(hass);
-    const body = entries.length ? feedRows(entries, now, 3) : `<div class="feed"><span class="a"></span><span style="color:${TOKENS.text2}">No decisions seen since Home Assistant started</span></div>`;
+    const { rows, note } = houseActivity(hass);
+    const quiet = (msg) => `<div class="feed"><span class="a"></span><span style="color:${TOKENS.text2}">${esc(msg)}</span></div>`;
+    const body = (rows.length ? activityRows(rows, FEED_ROWS) : quiet('Nothing recorded yet')) + (note ? quiet(note) : '');
     return `<div class="lbl" style="margin:4px 4px -10px">What the house did</div><div class="card">${body}</div>`;
   }
 
@@ -1666,23 +1663,16 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return m.house_heating_off ? 'house heating off' : '';
   }
 
+  // Title and banner only. Each subsystem (lights, heating, presence) has its own section further down and
+  // explains itself next to its controls.
   function sectionRoomHead(hass, key) {
     const m = roomModel(hass, key);
-    const b = bannerFor(m, attentionItems(hass));
+    const b = bannerFor(m, attentionItems(hass), activeScene(hass, key));
     const banner = `<div class="card pad${b.warn ? ' warn' : ''}" style="display:flex;gap:10px;align-items:flex-start"><span class="dot${b.warn ? ' warn' : b.dim ? ' dim' : ''}" style="margin-top:5px"></span><div><div style="font-size:15px;font-weight:700;${b.warn ? 'color:' + TOKENS.amber : ''}">${esc(b.title)}</div><div style="font-size:13px;color:${b.warn ? TOKENS.text : TOKENS.text2};margin-top:3px;line-height:1.45">${esc(b.body)}</div></div></div>`;
-    let numbers = '';
-    if (m.cfg.climate) {
-      const differs = !!m.target_reason;
-      const sub2 = differs ? (m.mode_name && m.mode_target !== null ? `Mode ${m.mode_name} ${fmt1(m.mode_target)}°` : m.target_reason.replace(/^./, (c) => c.toUpperCase())) : [m.heating_active.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase()), m.heating_source ? 'from ' + m.heating_source.replace(/_/g, ' ') : ''].filter(Boolean).join(' ');
-      const hs = heatingStatus(m);
-      const status = hs ? `<div style="display:flex;align-items:center;gap:5px;font-size:12.5px;font-weight:600;margin-top:2px;color:${hs.on ? TOKENS.heat : TOKENS.text2}">${hs.on ? svg(ICON.flame, 14) : ''}${hs.text}</div>` : '';
-      numbers = `<div class="two"><div class="card pad"><div class="lbl">Room</div><div class="big">${m.temp === null ? '–' : fmt1(m.temp) + '°'}</div><div style="font-size:12px;color:${TOKENS.text2};margin-top:2px">${m.humidity === null ? 'no humidity' : Math.round(m.humidity) + '% humidity'}</div></div>
-<div class="card pad"><div class="lbl">Target</div><div class="big" style="${differs ? 'color:' + TOKENS.amber : ''}">${m.target === null ? '–' : fmt1(m.target) + '°'}</div>${status}<div style="font-size:12px;color:${TOKENS.text2};margin-top:2px">${esc(sub2)}</div></div></div>`;
-    }
-    return `<div style="display:flex;align-items:center;gap:4px"><a class="tap" data-act="nav" data-path="${HOUSE_PATH}" aria-label="Back to House" style="min-height:44px;min-width:44px;display:flex;align-items:center;color:${TOKENS.text2}">${svg(ICON.back, 22)}</a><div style="font-size:28px;font-weight:700;letter-spacing:-.4px">${esc(m.cfg.name)}</div></div>${banner}${numbers}`;
+    return `<div style="display:flex;align-items:center;gap:4px"><a class="tap" data-act="nav" data-path="${HOUSE_PATH}" aria-label="Back to House" style="min-height:44px;min-width:44px;display:flex;align-items:center;color:${TOKENS.text2}">${svg(ICON.back, 22)}</a><div style="font-size:28px;font-weight:700;letter-spacing:-.4px">${esc(m.cfg.name)}</div></div>${banner}`;
   }
 
-  // The lights row of the Why card: why the lights are as they are, including why they are NOT on. One
+  // The lights row of the Lights card: why the lights are as they are, including why they are NOT on. One
   // function, first matching rule wins (the order is the point: a switched-off automation outranks any
   // history, and a hand change outranks an older automated action):
   //   1 automation off · 2 manual change newer than the last automated action · 3 lights off and room empty
@@ -1698,7 +1688,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const out = (state, why, tone) => ({ state, why, tone, holds });
     if (!m.lights_enabled) return out('disabled', 'Lights automation is off · they change only by hand', 'muted');
     const h = readHistory(hass, `sensor.${key}_history`);
-    const lighting = h.entries.filter((e) => e.subsystem === 'lighting' && !isPlumbingEntry(e));
+    const lighting = h.entries.filter((e) => e.subsystem === 'lighting');
     const lastActed = lighting.find(isActed);
     if (m.manual) {
       const manualAt = parseTs(m.manual.ts);
@@ -1724,10 +1714,10 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const newest = lighting[0];
     const newer = newest && (!lastActed || parseTs(newest.ts) > parseTs(lastActed.ts));
     if (newer && !isActed(newest)) {
-      const { text, tone } = historySentence(newest, hass);
+      const { text, tone } = sentenceFor(newest, hass);
       return out(tone === 'warn' ? 'problem' : 'declined', `${text}${at(newest.ts)}${tail}`, tone);
     }
-    if (lastActed) return out('acted', `${historySentence(lastActed, hass).text}${at(lastActed.ts)}${tail}`, 'ok');
+    if (lastActed) return out('acted', `${sentenceFor(lastActed, hass).text}${at(lastActed.ts)}${tail}`, 'ok');
     return out('none', `${h.note ? `Lighting ${h.note.toLowerCase()}` : 'No lighting decision recorded yet'}${tail}`, h.note ? 'warn' : 'muted');
   }
 
@@ -1741,38 +1731,57 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     }
   }
 
-  function sectionWhy(hass, key, now) {
+  // Heating: the room and target numbers, then why the target is what it is. The 24 h chart is its own card
+  // directly under this one (info_templates.yaml), so the whole subsystem reads as one block.
+  function heatingNumbers(m) {
+    const differs = !!m.target_reason;
+    const sub2 = differs ? (m.mode_name && m.mode_target !== null ? `Mode ${m.mode_name} ${fmt1(m.mode_target)}°` : m.target_reason.replace(/^./, (c) => c.toUpperCase())) : [m.heating_active.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase()), m.heating_source ? 'from ' + m.heating_source.replace(/_/g, ' ') : ''].filter(Boolean).join(' ');
+    const hs = heatingStatus(m);
+    const status = hs ? `<div style="display:flex;align-items:center;gap:5px;font-size:12.5px;font-weight:600;margin-top:2px;color:${hs.on ? TOKENS.heat : TOKENS.text2}">${hs.on ? svg(ICON.flame, 14) : ''}${hs.text}</div>` : '';
+    return `<div class="two"><div class="card pad"><div class="lbl">Room</div><div class="big">${m.temp === null ? '–' : fmt1(m.temp) + '°'}</div><div style="font-size:12px;color:${TOKENS.text2};margin-top:2px">${m.humidity === null ? 'no humidity' : Math.round(m.humidity) + '% humidity'}</div></div>
+<div class="card pad"><div class="lbl">Target</div><div class="big" style="${differs ? 'color:' + TOKENS.amber : ''}">${m.target === null ? '–' : fmt1(m.target) + '°'}</div>${status}<div style="font-size:12px;color:${TOKENS.text2};margin-top:2px">${esc(sub2)}</div></div></div>`;
+  }
+  function heatingWhy(m) {
+    const differs = !!m.target_reason;
+    const h = m.target !== null ? `Heating target ${fmt1(m.target)}°` : 'Heating';
+    const s = differs ? `${esc(m.target_reason.replace(/^./, (c) => c.toUpperCase()))}${m.mode_name && m.mode_target !== null ? ` · normally ${esc(m.mode_name)} ${fmt1(m.mode_target)}°` : ''}` : [m.mode_name && m.mode_target !== null ? `${esc(m.mode_name.replace(/^./, (c) => c.toUpperCase()))} ${fmt1(m.mode_target)}°` : '', m.heating_source ? esc(m.heating_source.replace(/_/g, ' ')) : ''].filter(Boolean).join(' from ') || 'No mode reported';
+    const safety = !differs && m.heating_source === 'safety';
+    const held = !differs && m.heat_labels.length > 0;
+    const minT = m.mode_target !== null ? m.mode_target : m.target;
+    const cause = safetyCause(m);
+    const resumes = m.house_heating_off ? 'stays at minimum while house heating is off' : m.heat_labels.length ? 'normal heating resumes when it closes' : '';
+    const sub = safety ? `Held at ${esc(m.mode_name || 'minimum')}${minT !== null ? ' ' + fmt1(minT) + '°' : ''}${cause ? ' · ' + esc(cause) : ''}${resumes ? ' · ' + resumes : ''}` : held ? `${esc(m.heat_labels.join(' · '))} · ${s}` : s;
+    const tag = differs ? `<span class="tag">${esc(m.target_reason.replace(/^./, (c) => c.toUpperCase()))}</span>` : safety ? '<span class="tag">Suspended</span>' : held ? '<span class="tag">Pending</span>' : m.heating_enabled === false ? '<span class="tag">Automation off</span>' : m.hvac_action === 'heating' ? '<span class="tag heat">Heating</span>' : m.hvac_action === 'idle' ? '<span class="tag off">Idle</span>' : '';
+    return `<div class="item">${svg(ICON.flame, 18)}<div><div class="h">${esc(h)}</div><div class="s">${sub}</div></div>${tag}</div>`;
+  }
+  function sectionHeating(hass, key) {
+    const m = roomModel(hass, key);
+    if (!m.hasReport || !m.cfg.climate) return '';
+    return `<div class="lbl" style="margin:4px 4px -10px">Heating</div>${heatingNumbers(m)}<div class="card">${heatingWhy(m)}</div>`;
+  }
+
+  // Presence: occupied or empty, what holds the room occupied and what ends it. "Keep room occupied" is the
+  // override and stays in the Automations card for now.
+  function sectionPresence(hass, key) {
     const m = roomModel(hass, key);
     if (!m.hasReport) return '';
-    const scene = activeScene(hass, key);
-    const rows = [];
-    const story = lightsStory(hass, key, now);
-    const tint = story.tone === 'warn' ? ` style="color:${TOKENS.amber}"` : '';
-    rows.push(`<div class="item">${svg(ICON.bulb, 18)}<div><div class="h">${esc(m.lights_on > 0 ? lightsPhrase(m, scene) : 'Lights off')}</div><div class="s"${tint}>${esc(story.why)}</div></div>${lightsTag(story)}</div>`);
-    if (m.cfg.climate) {
-      const differs = !!m.target_reason;
-      const h = m.target !== null ? `Heating target ${fmt1(m.target)}°` : 'Heating';
-      const s = differs ? `${esc(m.target_reason.replace(/^./, (c) => c.toUpperCase()))}${m.mode_name && m.mode_target !== null ? ` · normally ${esc(m.mode_name)} ${fmt1(m.mode_target)}°` : ''}` : [m.mode_name && m.mode_target !== null ? `${esc(m.mode_name.replace(/^./, (c) => c.toUpperCase()))} ${fmt1(m.mode_target)}°` : '', m.heating_source ? esc(m.heating_source.replace(/_/g, ' ')) : ''].filter(Boolean).join(' from ') || 'No mode reported';
-      const safety = !differs && m.heating_source === 'safety';
-      const held = !differs && m.heat_labels.length > 0;
-      const minT = m.mode_target !== null ? m.mode_target : m.target;
-      const cause = safetyCause(m);
-      const resumes = m.house_heating_off ? 'stays at minimum while house heating is off' : m.heat_labels.length ? 'normal heating resumes when it closes' : '';
-      const sub = safety ? `Held at ${esc(m.mode_name || 'minimum')}${minT !== null ? ' ' + fmt1(minT) + '°' : ''}${cause ? ' · ' + esc(cause) : ''}${resumes ? ' · ' + resumes : ''}` : held ? `${esc(m.heat_labels.join(' · '))} · ${s}` : s;
-      const tag = differs ? `<span class="tag">${esc(m.target_reason.replace(/^./, (c) => c.toUpperCase()))}</span>` : safety ? '<span class="tag">Suspended</span>' : held ? '<span class="tag">Pending</span>' : m.heating_enabled === false ? '<span class="tag">Automation off</span>' : m.hvac_action === 'heating' ? '<span class="tag heat">Heating</span>' : m.hvac_action === 'idle' ? '<span class="tag off">Idle</span>' : '';
-      rows.push(`<div class="item">${svg(ICON.flame, 18)}<div><div class="h">${esc(h)}</div><div class="s">${sub}</div></div>${tag}</div>`);
-    }
-    // Presence holds belong to the occupancy row; heating holds (window, door) to the heating row.
     const holds = m.pres_labels;
     const occ = m.occupancy_unavailable ? 'Occupancy unavailable' : m.occupied ? 'Occupied' : 'Empty';
     const pres = holds.length ? `${esc(holds.join(' · '))} · empty a few minutes after ${holds.length > 1 ? 'the last one clears' : 'it clears'}` : m.occupied ? 'No holds · empty a few minutes after the last movement' : 'No holds';
     const ovr = m.override_text ? ` · ${esc(m.override_text)}` : '';
     const noMotion = state(hass, `input_boolean.${key}_sensor_motion_enabled`) === 'off' ? ' · Motion sensor off, so movement is ignored' : '';
-    rows.push(`<div class="item">${svg(ICON.person, 18)}<div><div class="h">${occ}</div><div class="s">${pres}${ovr}${noMotion}</div></div><span class="tag${m.override && !holds.length ? '' : ' off'}">${holds.length ? 'Held' : m.override ? 'Override' : 'Clear'}</span></div>`);
-    return `<div class="lbl" style="margin:4px 4px -10px">Why it's like this</div><div class="card">${rows.join('')}</div>`;
+    const row = `<div class="item">${svg(ICON.person, 18)}<div><div class="h">${occ}</div><div class="s">${pres}${ovr}${noMotion}</div></div><span class="tag${m.override && !holds.length ? '' : ' off'}">${holds.length ? 'Held' : m.override ? 'Override' : 'Clear'}</span></div>`;
+    return `<div class="lbl" style="margin:4px 4px -10px">Presence</div><div class="card">${row}</div>`;
   }
 
-  function sectionScenes(hass, key, now, ui) {
+  // Lights: what they are doing and why (including why they are not on), the scene tiles, and the individual
+  // lights expanding under a hairline, all in one card. The headline wording is lightsState, as everywhere.
+  function lightsStoryRow(hass, key, now, m, scene) {
+    const story = lightsStory(hass, key, now);
+    const tint = story.tone === 'warn' ? ` style="color:${TOKENS.amber}"` : '';
+    return `<div class="item">${svg(ICON.bulb, 18)}<div><div class="h">${esc(lightsState(m, scene).phrase)}</div><div class="s"${tint}>${esc(story.why)}</div></div>${lightsTag(story)}</div>`;
+  }
+  function sectionLights(hass, key, now, ui) {
     const m = roomModel(hass, key);
     const active = activeScene(hass, key);
     const cols = Math.min(4, Math.max(1, m.cfg.scenes.length));
@@ -1781,12 +1790,11 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       const ic = ICON[SCENE_ICON[id] || 'bulb'];
       return `<button class="tile${on ? ' on' : ''}" data-act="scene" data-entity="scene.${key}_${id}" aria-pressed="${on}">${svg(ic, 20)}<span>${esc(sceneLabel(id))}</span></button>`;
     }).join('');
-    // State only: the Why card explains who set the lights and what ends it.
-    const foot = m.manual ? '<div class="mrow"><span class="tag">Manual</span></div>' : '';
-    // Individual lights expand inside this card, under a hairline, rather than as a section of their own.
+    const story = m.hasReport ? lightsStoryRow(hass, key, now, m, active) : '';
     const exp = lightsExpander(hass, key, ui);
     const more = exp ? `<div style="margin:10px -12px -10px;border-top:1px solid ${TOKENS.divider}">${exp}</div>` : '';
-    return `<div class="lbl" style="margin:4px 4px -10px">Lighting</div><div class="card" style="padding:12px 12px 10px"><div class="tiles" style="grid-template-columns:repeat(${cols},minmax(0,1fr))">${tiles}</div>${foot}${more}</div>`;
+    const controls = `<div style="padding:12px 12px 10px${story ? `;border-top:1px solid ${TOKENS.divider}` : ''}"><div class="tiles" style="grid-template-columns:repeat(${cols},minmax(0,1fr))">${tiles}</div>${more}</div>`;
+    return `<div class="lbl" style="margin:4px 4px -10px">Lights</div><div class="card">${story}${controls}</div>`;
   }
 
   function lightCounts(hass, key) {
@@ -2229,24 +2237,21 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return { key: 'live', tag: person ? 'Live · person' : 'Live', live: true, offline: false, person };
   }
 
-  // A tap is a request, not a result: the switch can take seconds to report back, and a second tap in that
-  // gap flips the camera straight back. So a tap marks the camera pending until its state reaches what was
-  // asked for, and further taps are ignored until then or until PENDING_MS passes.
-  const PENDING_MS = 10000;
-  const camUi = (ui) => (ui && ui.cam ? ui.cam : { pending: {}, rec: {} });
-  function cameraPending(ui, k, status, now) {
-    const p = camUi(ui).pending[k];
-    if (!p || status.key === p.want) return null;
-    return { want: p.want, timedOut: now - p.at >= PENDING_MS };
+  // A camera toggle uses the shared pending mark (see Tap feedback), which also remembers which way it asked.
+  // A tap while the mark is still waiting is ignored, because a second tap would flip the camera straight back.
+  const camUi = (ui) => (ui && ui.cam ? ui.cam : { rec: {} });
+  const CAMERA_TOGGLE = (k) => ({ act: 'camera-toggle', camera: k });
+  function cameraPending(ui, hass, k, now) {
+    return pendingFor(ui, hass, CAMERA_TOGGLE(k), now);
   }
   function cameraToggle(hass, ui, k, now) {
     const c = CAMERAS.find((x) => x.k === k);
     if (!c) throw new Error(`pulse-card: unknown camera "${k}"`);
     const status = cameraStatus(hass, c, now);
     if (status.offline) return undefined;
-    const pend = cameraPending(ui, k, status, now);
-    if (pend && !pend.timedOut) return undefined;
-    ui.cam.pending[k] = { want: status.live ? 'private' : 'live', at: now };
+    const pend = cameraPending(ui, hass, k, now);
+    if (pend && pend.waiting) return undefined;
+    pendingStart(ui, hass, CAMERA_TOGGLE(k), now, status.live ? 'private' : 'live');
     return callService(hass, 'switch', status.live ? 'turn_on' : 'turn_off', { entity_id: cameraSwitch(k) });
   }
 
@@ -2313,17 +2318,17 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   function cameraParts(hass, camera, now, ui) {
     const c = CAMERAS.find((x) => x.k === camera);
     const st = cameraStatus(hass, c, now);
-    const pend = cameraPending(ui, c.k, st, now);
-    const waiting = !!pend && !pend.timedOut;
+    const pend = cameraPending(ui, hass, c.k, now);
+    const waiting = !!pend && pend.waiting;
     let tag = st.tag;
     let cls = st.key === 'live' ? 'tag ok' : st.key === 'private' ? 'tag off' : 'tag';
     if (waiting) { tag = pend.want === 'live' ? 'Turning on…' : 'Turning off…'; cls = 'tag off'; }
     else if (pend) { tag = 'No response'; cls = 'tag'; }
     const sub = st.offline ? `Offline${st.since ? ' · ' + st.since : ''}` : waiting ? 'Waiting for the camera' : pend ? 'It did not change · tap to try again' : st.live ? (st.person ? 'Person in view' : 'No one in view') : 'Camera is off';
     const head = `<div class="tog"><div style="display:flex;align-items:center;gap:10px">${svg(ICON.camera, 20)}<div><div class="h">${c.name}</div><div class="s">${esc(sub)}</div></div></div><span class="${cls}">${esc(tag)}</span></div>`;
-    const toggle = st.offline ? '' : `<button class="tog tap" data-act="camera-toggle" data-camera="${c.k}" aria-pressed="${st.live}"${waiting ? ' aria-busy="true"' : ''}><div><div class="h">Camera on</div><div class="s">${waiting ? 'Waiting for the camera' : st.live ? 'Tap to turn off' : 'Tap to turn on'}</div></div><span class="sw${st.live ? '' : ' off'}" style="${waiting ? 'opacity:.5' : ''}" role="img" aria-label="${st.live ? 'On' : 'Off'}"></span></button>`;
+    const toggle = st.offline ? '' : `<button class="tog tap" data-act="camera-toggle" data-camera="${c.k}" aria-pressed="${st.live}"><div><div class="h">Camera on</div><div class="s">${waiting ? 'Waiting for the camera' : st.live ? 'Tap to turn off' : 'Tap to turn on'}</div></div><span class="sw${st.live ? '' : ' off'}" role="img" aria-label="${st.live ? 'On' : 'Off'}"></span></button>`;
     const pad = st.live ? ptzPad(hass, c) : '';
-    return { live: st.live, rest: `${head}${toggle}${pad}${recordingsBlock(hass, c, now, ui)}` };
+    return { live: st.live, rest: markPending(`${head}${toggle}${pad}${recordingsBlock(hass, c, now, ui)}`, ui, hass, now) };
   }
 
   function sectionCamera(hass, camera, now, ui) {
@@ -2373,6 +2378,118 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return `<div class="lbl" style="margin:4px 4px -10px">Recent activity</div><div class="card">${body}</div>`;
   }
 
+  // ── Tap feedback ─────────────────────────────────────────────────────────────────────────────
+  // A tap is a request, not a result: a switch can take seconds to report back. So every write marks the tapped
+  // element pending (aria-busy, dimmed) at once. The mark clears when a target entity's state, last_changed or
+  // last_updated moves, or after PENDING_MS. If the service call is rejected the mark clears and the card shows a
+  // short error, so a failure is never swallowed. State lives in `ui` (per card element); the HTML only reads it.
+  const PENDING_MS = 8000;
+  const ERROR_MS = 6000;
+
+  // An element's identity is its data-* attributes (camelCase, as in el.dataset), sorted. A click and the HTML
+  // render() marked therefore agree on the key without any id being added to the markup.
+  const pendingKey = (ds) => Object.keys(ds).sort().map((k) => `${k}=${ds[k]}`).join('&');
+
+  // The entities a write will change, from the same fixed tables handleAction writes through. Empty when
+  // unknown, in which case there is nothing that could ever clear a mark, so none is set.
+  function writeTargets(hass, ds) {
+    const id = str(ds.entity);
+    const table = (t, k) => (own(t, k) ? [t[k].id] : []);
+    switch (ds.act) {
+      case 'scene': case 'toggle': case 'brightness': case 'media-play': case 'media-power': case 'volume': return id ? [id] : [];
+      case 'camera-toggle': return CAMERAS.some((c) => c.k === ds.camera) ? [cameraSwitch(ds.camera)] : [];
+      case 'camera-ptz': return CAMERAS.some((c) => c.k === ds.camera) ? [`button.${ds.camera}_move_${ds.dir}`] : [];
+      case 'cameras-all': return CAMERAS.map((c) => cameraSwitch(c.k));
+      case 'house-modifier': return [HOUSE_MODIFIER];
+      case 'house-threshold': return [HOUSE_VACATION_HOURS];
+      case 'house-number': return table(HOUSE_NUMBERS, ds.key);
+      case 'fan-number': return own(FAN_NUMBERS, id) ? table(FAN_NUMBERS[id], ds.key) : [];
+      case 'garden-power': case 'garden-theme': case 'use-calendar': {
+        // The garden model reads the page's own sensors; a garden it cannot read has no target.
+        try {
+          const g = gardenModel(hass, ds.garden, Date.now());
+          if (ds.act === 'garden-power') return [ds.want === 'on' ? g.onScene : g.offScene].filter(Boolean);
+          return g.helper ? [g.helper] : [];
+        } catch (err) { return []; }
+      }
+      default: return [];
+    }
+  }
+  const snapshot = (hass, id) => {
+    const s = stateObj(hass, id);
+    return s ? { id, state: s.state, changed: s.last_changed, updated: s.last_updated } : null;
+  };
+  const snapshotMoved = (hass, snap) => {
+    const s = stateObj(hass, snap.id);
+    return !s || s.state !== snap.state || s.last_changed !== snap.changed || s.last_updated !== snap.updated;
+  };
+
+  // Mark a write pending. `want` is optional context (the camera toggle says which way it asked).
+  function pendingStart(ui, hass, ds, now, want) {
+    if (!isObj(ui)) throw new Error('pulse-card: pendingStart needs the card ui state');
+    const snaps = writeTargets(hass, ds).map((id) => snapshot(hass, id)).filter(Boolean);
+    if (snaps.length === 0) return null;
+    if (!isObj(ui.pending)) ui.pending = {};
+    ui.pending[pendingKey(ds)] = { at: now, snaps, want };
+    return ui.pending[pendingKey(ds)];
+  }
+  function pendingClear(ui, ds) {
+    if (isObj(ui) && isObj(ui.pending)) delete ui.pending[pendingKey(ds)];
+  }
+  // null when nothing is pending or a target has moved; otherwise how long it has been waiting. A mark that
+  // outlived PENDING_MS stays visible to callers that want to say "no response" (cameras) but is not `waiting`.
+  function pendingFor(ui, hass, ds, now) {
+    const p = isObj(ui) && isObj(ui.pending) ? ui.pending[pendingKey(ds)] : undefined;
+    if (!p || p.snaps.some((snap) => snapshotMoved(hass, snap))) return null;
+    const age = Math.max(0, now - p.at); // a skewed clock must not make a mark immortal or negative
+    return { waiting: age < PENDING_MS, timedOut: age >= PENDING_MS, want: p.want };
+  }
+
+  const unesc = (t) => t.replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+  const camel = (k) => k.replace(/-([a-z0-9])/g, (m, c) => c.toUpperCase());
+  // Adds aria-busy to every control in `html` whose write is still pending. Runs on the finished HTML so each
+  // section stays unaware of tap feedback. A control that already says it is busy is left alone.
+  function markPending(html, ui, hass, now) {
+    if (!isObj(ui) || !isObj(ui.pending) || Object.keys(ui.pending).length === 0) return html;
+    return html.replace(/<[a-z][a-z0-9]*\b[^>]*\bdata-act="[^"]*"[^>]*>/g, (tag) => {
+      if (/\baria-busy=/.test(tag)) return tag;
+      const ds = {};
+      for (const m of tag.matchAll(/\bdata-([a-z][a-z0-9-]*)="([^"]*)"/g)) ds[camel(m[1])] = unesc(m[2]);
+      const p = pendingFor(ui, hass, ds, now);
+      return p && p.waiting ? tag.replace(/\/?>$/, (end) => ` aria-busy="true"${end}`) : tag;
+    });
+  }
+  // "Couldn't reach Kitchen ceiling": the device by its friendly name, else the object part of its id.
+  function reachName(hass, ds) {
+    const ids = writeTargets(hass, ds);
+    if (ids.length === 0) return 'that';
+    if (ids.length > 1) return 'the devices';
+    const named = entityName(hass, ids[0]);
+    return named === ids[0] ? capFirst(pretty(ids[0].split('.').pop())) : named;
+  }
+  // Runs one write with feedback. `run` starts the write (and marks it pending); a rejection, or a synchronous
+  // throw, clears the mark and sets the card's error. The real error goes to the console so a programming
+  // mistake (an unknown table key) is not hidden behind the friendly sentence.
+  async function guarded(hass, ui, ds, now, run) {
+    ui.error = null;
+    try {
+      await run();
+    } catch (err) {
+      pendingClear(ui, ds);
+      ui.error = { text: `Couldn't reach ${reachName(hass, ds)}`, at: now };
+      if (typeof console !== 'undefined') console.warn('pulse-card: write failed', err && err.message ? err.message : err);
+    }
+  }
+  const writeRun = (hass, ui, el, value, now) => () => {
+    pendingStart(ui, hass, { ...el.dataset }, now);
+    return handleAction(hass, el, value);
+  };
+  function perform(hass, ui, el, value, now) {
+    return guarded(hass, ui, { ...el.dataset }, now, writeRun(hass, ui, el, value, now));
+  }
+  const errorBanner = (ui, now) => (isObj(ui) && isObj(ui.error) && Math.max(0, now - ui.error.at) < ERROR_MS
+    ? `<div class="err" role="alert">${esc(ui.error.text)}</div>` : '');
+
   // ── Dispatcher ───────────────────────────────────────────────────────────────────────────────
   const MODES = {
     'now-header': (h) => sectionNowHeader(h),
@@ -2387,8 +2504,9 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     feed: (h, c, n) => sectionFeed(h, n),
     tabbar: (h, c, n, ui) => sectionTabbar(c, ui),
     'room-head': (h, c) => sectionRoomHead(h, c.room),
-    why: (h, c, n) => sectionWhy(h, c.room, n),
-    scenes: (h, c, n, ui) => sectionScenes(h, c.room, n, ui),
+    lights: (h, c, n, ui) => sectionLights(h, c.room, n, ui),
+    heating: (h, c) => sectionHeating(h, c.room),
+    presence: (h, c) => sectionPresence(h, c.room),
     media: (h, c) => sectionMedia(h, c.room),
     device: (h, c) => sectionDevice(h, c),
     automations: (h, c) => sectionAutomations(h, c.room),
@@ -2403,11 +2521,11 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     'cameras-head': (h, c, n) => sectionCamerasHead(h, n),
     camera: (h, c, n, ui) => sectionCamera(h, c.camera, n, ui),
   };
-  const ROOM_MODES = ['room-head', 'why', 'scenes', 'media', 'automations', 'room-feed', 'garden-lights', 'garden-theme'];
+  const ROOM_MODES = ['room-head', 'lights', 'heating', 'presence', 'media', 'automations', 'room-feed', 'garden-lights', 'garden-theme'];
   // Indoor rooms have scenes, a report and media; gardens have a lights row and a theme. The shared modes
   // (room-head, automations, room-feed) work for both.
   const GARDEN_MODES = ['garden-lights', 'garden-theme'];
-  const INDOOR_MODES = ['why', 'scenes', 'media'];
+  const INDOOR_MODES = ['lights', 'heating', 'presence', 'media'];
 
   function validate(config) {
     if (!isObj(config) || !MODES[config.mode]) throw new Error(`pulse-card: unknown mode "${config && config.mode}"`);
@@ -2426,8 +2544,9 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 
   function render(mode, config, hass, now, ui) {
     validate({ ...config, mode });
-    const html = MODES[mode](hass, config || {}, Number.isFinite(now) ? now : Date.now(), ui || {});
-    return html ? `<div class="p">${html}</div>` : '';
+    const at = Number.isFinite(now) ? now : Date.now();
+    const html = MODES[mode](hass, config || {}, at, ui || {});
+    return html ? `<div class="p">${errorBanner(ui, at)}${markPending(html, ui, hass, at)}</div>` : '';
   }
 
   // ── Service calls ────────────────────────────────────────────────────────────────────────────
@@ -2518,7 +2637,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     }
   }
 
-  const api = { lightsStory, parseHistory, readHistory, historySentence, roomActivity, unexplainedReasons, REASON_TEXT, TILE, TILE_H, TILE_WIDE_H, tileNeededHeight, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, entrySentence, tidyVerdict, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, SETTINGS_PATH, CAMERAS_PATH, PENDING_MS, cameraParts, cameraToggle, cameraPending, parseClips, frigateClipsId, roomGroups, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, GARDEN_ORDER, ALL_ROOM_KEYS, THEME_LABELS, THEME_ICON, ICON, gardenModel, gardenSub, themeSource, shortDate, ALLOWED, DEVICE_REASONS, FAN_NUMBERS, render, priceColour, PRICE_STOPS, PRICE_EXTREME_P, roomModel, attentionItems, handleAction, callService, num, parseList };
+  const api = { lightsStory, lightsState, verdictFor, houseActivity, parseHistory, readHistory, sentenceFor, roomActivity, unexplainedReasons, REASON_TEXT, TILE, TILE_H, TILE_WIDE_H, tileNeededHeight, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, SETTINGS_PATH, CAMERAS_PATH, PENDING_MS, cameraParts, cameraToggle, cameraPending, perform, pendingStart, pendingFor, pendingKey, markPending, ERROR_MS, parseClips, frigateClipsId, roomGroups, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, GARDEN_ORDER, ALL_ROOM_KEYS, THEME_LABELS, THEME_ICON, ICON, gardenModel, gardenSub, themeSource, shortDate, ALLOWED, DEVICE_REASONS, FAN_NUMBERS, render, priceColour, PRICE_STOPS, PRICE_EXTREME_P, roomModel, attentionItems, handleAction, callService, num, parseList };
   root.PulseLib = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 
@@ -2530,7 +2649,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         this._root = this.attachShadow({ mode: 'open' });
         this._html = null;
         this._busy = false;
-        this._ui = { tb: 'inflow', open: false, day: 'today', fuel: 'electricity', cam: { pending: {}, rec: {} }, hist: { electricity: { status: 'loading', days: [] }, gas: { status: 'loading', days: [] } } };
+        this._ui = { tb: 'inflow', open: false, day: 'today', fuel: 'electricity', cam: { rec: {} }, pending: {}, error: null, hist: { electricity: { status: 'loading', days: [] }, gas: { status: 'loading', days: [] } } };
         this._histBusy = false;
         this._histSeq = 0;
         this._histAt = 0;
@@ -2668,12 +2787,19 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         this._streamEl.hass = this._hass;
         this._streamEl.stateObj = this._hass.states[`camera.${this._config.camera}`];
       }
-      _cameraToggle(k) {
-        const res = cameraToggle(this._hass, this._ui, k, Date.now());
+      // Shows the pending mark at once, and again when the wait or the error message runs out, because
+      // nothing else would repaint a card whose entity never answered.
+      async _write(ds, run) {
+        const now = Date.now();
+        const done = guarded(this._hass, this._ui, ds, now, run);
         this._paint();
-        // Repaint once the wait is over so a camera that never answered says so.
         setTimeout(() => this._paint(), PENDING_MS + 100);
-        return res;
+        setTimeout(() => this._paint(), ERROR_MS + 100);
+        await done;
+        this._paint();
+      }
+      _cameraToggle(k) {
+        return this._write(CAMERA_TOGGLE(k), () => cameraToggle(this._hass, this._ui, k, Date.now()));
       }
       async _recOpen(k, refresh) {
         const cur = this._ui.cam.rec[k] || { open: false, status: '', items: [] };
@@ -2911,13 +3037,16 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
           return;
         }
         if (el.type === 'range') return;
-        handleAction(this._hass, el);
+        this._act(el);
       }
       _change(ev) {
         const el = ev.target;
         if (!el || el.type !== 'range' || !this._hass) return;
         this._busy = false;
-        handleAction(this._hass, el, el.value);
+        this._act(el, el.value);
+      }
+      _act(el, value) {
+        return this._write({ ...el.dataset }, writeRun(this._hass, this._ui, el, value, Date.now()));
       }
     }
     customElements.define('pulse-card', PulseCard);

@@ -2,7 +2,8 @@
 #
 # `sensor.info_rooms`      one entry per room in attribute `rooms`: occupancy, climate, lights,
 #                          heating, automation flags, `holds` (every reason currently true),
-#                          `reason_text`, last meaningful decision and a one-line `verdict`.
+#                          `reason_text` and the last meaningful decision. The Pulse card words the room's
+#                          one-line state itself from these facts.
 # `sensor.info_attention`  state = number of exceptions, attribute `items` = [{room, key, kind, text, nav}].
 #                          Each kind is flagged only after its state has held past a duration (thresholds at the top of
 #                          `info_attention_calc`; the stale limit in `info_stale_sensors`).
@@ -92,7 +93,6 @@ template:
               {% if c['cl'] and states(tsens) == 'unavailable' %}{% set un.items = un.items + ['temperature'] %}{% endif %}
               {% if states(occ) == 'unavailable' %}{% set un.items = un.items + ['occupancy'] %}{% endif %}
               {% set occupied = is_state(occ, 'on') %}
-              {% set lights_on = is_state('group.' ~ k ~ '_lights', 'on') %}
               {% set active = states('sensor.' ~ k ~ '_active_heating') if c['he'] else '' %}
               {% set hvac = state_attr(c['cl'], 'hvac_action') if c['cl'] else none %}
               {# Room sensor is the temperature everywhere on the dashboard; the TRV's own reading sits next to a hot radiator or a cold window and disagrees. #}
@@ -120,8 +120,6 @@ template:
               {% endfor %}
               {% set last = lasts.v %}
               {% set last_sentence = ((last.get('decision') or '') | replace('_', ' ')) ~ ((' · ' ~ (last.get('reason') | replace('_', ' '))) if last.get('reason') else '') if last else '' %}
-              {% set parts = [('Occupancy unavailable' if 'occupancy' in un.items else ('Occupied' if occupied else 'Empty'))] %}
-              {% set parts = parts + [('lights on' if lights_on else 'lights off')] %}
               {# Effective state: only said when the TRV target is not what the mode implies; otherwise the mode is noise. #}
               {% set mn = namespace(v=none) %}
               {% for m in manual_feed if mn.v is none and m.get('room') == k %}{% set mn.v = m %}{% endfor %}
@@ -131,14 +129,8 @@ template:
               {% for m in members %}{% if is_state(m, 'on') %}{% set lc.on = lc.on + 1 %}{% endif %}{% endfor %}
               {% set lw = namespace(v=none) %}
               {% for f in hist if lw.v is none and f.get('kind') == 'decision' and f.get('subsystem') == 'lighting' %}{% set lw.v = f %}{% endfor %}
-              {% if target_reason %}
-                {% set parts = parts + ['heating target ' ~ (target | float(0)) ~ '° (' ~ target_reason ~ ')'] %}
-              {% endif %}
               {% set pres_labels = hs.items | selectattr('s', 'eq', 'presence') | map(attribute='label') | list %}
               {% set heat_labels = hs.items | selectattr('s', 'eq', 'heating') | map(attribute='label') | list %}
-              {% if pres_labels %}{% set parts = parts + ['held occupied by ' ~ (pres_labels | join(' · '))] %}{% endif %}
-              {% if heat_labels and not target_reason %}{% set parts = parts + ['heating suspended: ' ~ (heat_labels | join(' · ') | lower)] %}{% endif %}
-              {% if ovr %}{% set parts = parts + [ovr] %}{% endif %}
               {% set out.items = out.items + [{
                 'k': k, 'n': c['n'], 'nav': c['nav'],
                 'occupied': occupied,
@@ -167,8 +159,7 @@ template:
                 'lights_why': (lw.v.get('reason') or '') | replace('_', ' ') if lw.v else '',
                 'lights_ts': (lw.v.get('ts') or '') if lw.v else '',
                 'last': last_sentence,
-                'last_ts': last.get('ts') if last else '',
-                'verdict': parts | join(' · ')
+                'last_ts': last.get('ts') if last else ''
               }] %}
             {% endfor %}
             {{ out.items | tojson }}
