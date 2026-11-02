@@ -270,7 +270,8 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     },
     front_garden: {
       name: 'Front garden', short: 'Front garden', report: false,
-      climate: '', temp: '', hum: '', scenes: ['all', 'autumn', 'halloween', 'off'], lights: [], media: [],
+      // Stopgap: 'bonfire' is listed by hand until the garden theme picker replaces this list.
+      climate: '', temp: '', hum: '', scenes: ['all', 'autumn', 'halloween', 'bonfire', 'off'], lights: [], media: [],
     },
   };
   const ROOM_ORDER = [
