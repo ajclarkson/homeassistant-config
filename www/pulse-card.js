@@ -556,6 +556,27 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return typeof f === 'string' && f.trim() ? f.trim() : s;
   };
   const luxText = (f) => `${fmtLux(f.lux)}, on below ${fmtThreshold(f.lux_threshold)}`;
+  // Heating modes by the words the settings page uses (HOUSE_NUMBERS titles). Anything else is shown
+  // as its own key so a new mode is readable rather than hidden.
+  const MODE_WORDS = { comfort: 'comfort', baseline_day: 'day baseline', baseline_night: 'night baseline', minimum: 'minimum', off: 'off' };
+  const modeWord = (v) => { const m = str(v).trim(); return m ? (MODE_WORDS[m] || pretty(m)) : ''; };
+  const setTo = (v) => (modeWord(v) ? `set to ${modeWord(v)}` : 'mode changed');
+  const TEMP_MAX = 50; // far above any room or boiler setpoint; keeps a corrupt reading short
+  const fmtDegrees = (v) => { const n = num(v); return n === null ? '' : `${Math.round(Math.min(TEMP_MAX, Math.max(-TEMP_MAX, n)) * 10) / 10}°`; };
+  const COUNT_MAX = 1000;
+  const fmtCount = (v) => { const n = num(v); return n === null ? null : clampInt(n, 0, COUNT_MAX); };
+  const POINTS_MAX = 100000000;
+  const fmtPoints = (v) => { const n = num(v); return n === null ? '' : String(clampInt(n, 0, POINTS_MAX)); };
+  // A room fact is a key ("home_office"), a comma-joined list of keys, or a name already in words.
+  const roomName = (v) => {
+    const t = str(v).trim();
+    if (!t) return '';
+    const key = t.toLowerCase().replace(/\s+/g, '_');
+    return ROOMS[key] ? ROOMS[key].name : capFirst(pretty(t));
+  };
+  const roomList = (v) => str(v).split(',').map(roomName).filter(Boolean).join(', ');
+  const lowerFirst = (t) => str(t).replace(/^./, (c) => c.toLowerCase());
+  const themeOr = (v, fallback) => { const t = str(v).trim(); return t ? lowerFirst(fmtTheme(t)) : fallback; };
 
   const REASON_TEXT = {
     'lighting:automation_disabled': () => 'Stayed off: lights automation is off',
@@ -582,6 +603,87 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     'lighting:theme_changed': (f) => `Lights restyled · lighting theme changed to ${fmtTheme(f.theme)}`,
     'lighting:theme_changed_by_hand_today': () => 'Theme left as it is: changed by hand today',
     'lighting:theme_scene_missing': (f) => `Lights on · no scene for this theme (${fmtTheme(f.theme)})`,
+    'lighting:automation_disabled_restore': () => 'Automation switched off · porch look restored',
+    'lighting:halloween_scene_activated': () => 'Halloween effects started · scene activated',
+    'lighting:hold_expired': () => 'Porch light back to its look · motion over',
+    'lighting:hold_expired_look_missing_garden_off': () => 'Porch light off · motion over, no saved look and garden off',
+    'lighting:look_unreadable': () => "Porch light not warmed: couldn't save its current look",
+    'lighting:motion_detected': () => 'Porch light warmed · motion detected',
+    'lighting:motion_during_fade_back': () => 'Porch light warmed again · motion while it faded back',
+    'lighting:no_feature_lights': () => 'Halloween effects not started: no feature lights',
+    'lighting:no_lights_in_theme_roles': (f) => `Effects not started: no lights set up for ${themeOr(f.theme, 'this theme')}`,
+    'lighting:restore_look_missing': () => 'Porch light left as it is: no saved look to restore',
+    'lighting:scene_changed_during_hold': () => 'Porch light warmed again · scene changed during motion',
+    'lighting:scene_without_effects_activated': () => 'Light effects stopped · scene has none',
+    'lighting:theme_opted_out': () => 'Porch light stayed as it is: this theme ignores motion',
+    'lighting:theme_scene_settled': (f) => `Light effects started · ${themeOr(f.theme, 'new')} theme scene`,
+    'heating:demand_ended': () => 'Boiler off · no room needs heat',
+    'heating:demand_started': (f) => `Boiler on · ${roomList(f.rooms) || 'a room'} calling for heat`,
+    'heating:door_closed_was_suspended': () => 'Heating restored · door closed, heating resumed',
+    'heating:door_open_heating_on': () => 'Heating suspended · door open while heating',
+    'heating:heating_disabled': () => 'Boiler off · heating switched off',
+    'heating:helper_unavailable': (f) => `Heating left as it is: no ${modeWord(f.mode) || 'mode'} temperature available`,
+    'heating:house_mode_away': (f) => `Heating ${setTo(f.mode)} · house away`,
+    'heating:house_mode_sleep': (f) => `Heating ${setTo(f.mode)} · house asleep`,
+    'heating:house_mode_vacation': (f) => `Heating ${setTo(f.mode)} · house on holiday`,
+    'heating:manual_override': (f) => `Heating ${setTo(f.mode)} · manual setting`,
+    'heating:overtemp_heater_on': (f) => `Heater off · too hot${fmtDegrees(f.temp) ? ` (${fmtDegrees(f.temp)})` : ''}`,
+    'heating:safety_heating_disabled': (f) => `Heating ${setTo(f.mode)} · heating switched off`,
+    'heating:safety_window_open': (f) => `Heating ${setTo(f.mode)} · window open`,
+    'heating:schedule': (f) => `Heating ${setTo(f.mode)} · schedule`,
+    'heating:schedule_occupied': (f) => `Heating ${setTo(f.mode)} · schedule, room occupied`,
+    'heating:temperature_set_arbitrage': (f) => `Heating ${setTo(f.mode)}${fmtDegrees(f.target) ? ` (${fmtDegrees(f.target)})` : ''} · cheap power${fmtDegrees(f.clamped_from) ? `, limited from ${fmtDegrees(f.clamped_from)}` : ''}`,
+    'heating:trvs_not_set': (f) => `Radiators left as they are: no temperature for the mode in ${roomList(f.skipped) || 'some rooms'}`,
+    'heating:unknown_mode': (f) => `Heating left as it is: unknown mode${modeWord(f.mode) ? ` (${modeWord(f.mode)})` : ''}`,
+    'heating:valve_characteristic_lost': (f) => `${roomName(f.room) || 'A'} radiator valve needs an adaptation run · notification sent`,
+    'house_mode:all_left_door_recently': () => 'House set to away · everyone left',
+    'house_mode:away_duration_exceeded': () => 'House set to holiday · away for a long time',
+    'house_mode:bed_not_occupied': () => 'Sleep mode not started: bed empty',
+    'house_mode:bed_occupied': () => 'Stayed in sleep mode: bed occupied',
+    'house_mode:button_hold_bed_occupied': () => 'House set to sleep · button held, bed occupied',
+    'house_mode:button_pressed': () => 'Left sleep mode · button pressed',
+    'house_mode:double_press_bypass': () => 'House set to sleep · button double press, bed sensor skipped',
+    'house_mode:guest_mode_active': () => 'Stayed in sleep mode: guest mode',
+    'house_mode:kitchen_motion_detected': () => 'Left sleep mode · kitchen motion',
+    'house_mode:parlour_active': () => 'Sleep mode not started: parlour in use',
+    'house_mode:sitter_mode_ended_house_empty': () => 'House set to away · sitter left, nobody home',
+    'house_mode:sitter_present': () => 'House set to at home · house sitter here',
+    'house_mode:someone_returned': () => 'House set to at home · someone came back',
+    'cameras:away_but_guest_present': () => 'Cameras left off: house away, guest staying',
+    'cameras:button_double_press': () => 'Camera privacy toggled · button double press',
+    'cameras:house_away': () => 'Cameras on · house away',
+    'cameras:house_not_away': () => 'Cameras off · house at home',
+    'cameras:sleep_kitchen_camera_on': () => 'Kitchen camera on for Mo · house asleep',
+    'energy:adam': () => 'Cheap power tip sent to Adam',
+    'energy:adam_and_sarah': () => 'Cheap power tip sent to Adam and Sarah',
+    'energy:cheap_windows': () => 'Heads-up sent · cheap power tomorrow',
+    'energy:negative_windows': () => 'Heads-up sent · free power tomorrow',
+    'energy:points_increased': (f) => `Octopus points credited${fmtPoints(f.credited) ? ` (+${fmtPoints(f.credited)})` : ''}${fmtPoints(f.balance) ? ` · balance ${fmtPoints(f.balance)}` : ''}`,
+    'energy:sarah': () => 'Cheap power tip sent to Sarah',
+    'energy:sessions_joined': (f) => { const n = fmtCount(f.count); return n === null ? 'Joined power down sessions' : `Joined ${n} power down ${plural(n, 'session', 'sessions')}`; },
+    'energy:wheels_spun': (f) => { const n = fmtCount(f.count); return n === null ? 'Spun the Octopus wheels' : `Spun ${n} Octopus ${plural(n, 'wheel', 'wheels')}`; },
+    'fan:automation_disabled': () => 'Fan stayed off: bathroom automation is off',
+    'fan:fan_not_auto_started': () => 'Fan left alone · turned on by hand',
+    'fan:fan_off_humidity_normal': () => 'Fan off · humidity back to normal',
+    'fan:fan_off_max_run': () => 'Fan off · ran its maximum time',
+    'fan:fan_on_shower_started': () => 'Fan on · shower started',
+    'mo:eating': (f) => `Mo eating${roomName(f.room) ? ` · ${roomName(f.room)}` : ''}`,
+    'mo:spotted': (f) => `Mo spotted${roomName(f.room) ? ` · ${roomName(f.room)}` : ''}`,
+    'modifier:guest_absent': () => 'Guest left · home office presence override off',
+    'modifier:guest_present': () => 'Guest staying · home office presence override on',
+    'shower:shower_ended': () => 'Shower ended',
+    'shower:shower_max_duration': () => 'Shower ended · ran past the longest it should',
+    'shower:shower_started': () => 'Shower started',
+    'sonos:automation_disabled': () => 'Speaker grouping switched off · left the speaker group',
+    'sonos:automation_enabled': () => 'Speaker grouping switched on · joined the speaker group',
+    'thermal:close_bedroom': () => 'Told to close the bedroom windows · sun building',
+    'thermal:close_both': () => 'Told to close bedroom and home office windows · sun building, outside warmer',
+    'thermal:close_door': (f) => `Told to close the door · outside ${fmtDegrees(f.outdoor) || 'warmer'}${fmtDegrees(f.indoor) ? `, inside ${fmtDegrees(f.indoor)}` : ''}`,
+    'thermal:close_home_office': () => 'Told to close the home office windows · outside warmer',
+    'thermal:open_both': () => 'Told to open the windows · cooler outside',
+    'thermal:open_door': (f) => `Told to open the door · inside ${fmtDegrees(f.indoor) || 'warm'}${fmtDegrees(f.outdoor) ? `, outside ${fmtDegrees(f.outdoor)}` : ''}`,
+    'wfh_inference:always_wfh_wed_fri': () => 'Marked as working from home · Wednesday to Friday',
+    'wfh_inference:home_at_inference_time': () => 'Marked as working from home · home first thing',
     'occupied:containment_failsafe_expired': () => 'Marked empty · closed-door timeout ended',
     'occupied:motion_detected': () => 'Marked occupied · motion detected',
     'occupied:strong_hold_active': (f, c) => `Stayed occupied: held by ${c.name(f.hold) || 'a hold'}`,
