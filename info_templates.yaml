@@ -3,21 +3,21 @@
 # individual lights, chart) hide themselves, so there is no per-room card list to copy.
 #
 # Variables (for rooms without climate pass the conventional ids anyway; the chart hides itself):
-# Variables:
 #   room     key used by custom:pulse-card (see ROOMS in www/pulse-card.js) and by helper ids
 #   climate  climate entity for the 24h chart target line
 #   temp     room temperature sensor for the 24h chart
 #   fan, fan_decision, fan_label  optional fan row under the scenes: its switch, the decision sensor
 #            whose reason explains it, and its title. Leave blank and the row hides itself.
+# streamline-card takes defaults only from `default` (a list of single-key maps); a template-level
+# `variables:` map is ignored, which left `[[fan]]` as literal text in rooms without a fan.
 pulse_room:
-  default: []
-  variables:
-    room: ''
-    climate: ''
-    temp: ''
-    fan: ''
-    fan_decision: ''
-    fan_label: ''
+  default:
+    - room: ''
+    - climate: ''
+    - temp: ''
+    - fan: ''
+    - fan_decision: ''
+    - fan_label: ''
   card:
     type: vertical-stack
     cards:
@@ -141,10 +141,10 @@ pulse_room:
 # theme picker (hidden when the garden has no theme helper) and why the garden is as it is.
 # Variables:
 #   room  garden key (front_garden or back_garden), see ROOMS in www/pulse-card.js
+# Defaults live in `default`, not `variables:`: streamline-card ignores the latter.
 pulse_garden:
-  default: []
-  variables:
-    room: ''
+  default:
+    - room: ''
   card:
     type: vertical-stack
     cards:
