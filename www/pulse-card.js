@@ -197,6 +197,14 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 .gbtn.quiet{background:${TOKENS.divider};color:${TOKENS.text}}
 .gbtn:disabled{opacity:.4;cursor:default}
 .gl{align-items:center}
+.lnk{display:block;min-height:44px;padding:0;margin-top:2px;border:0;background:none;color:${TOKENS.link};font:inherit;font-size:13px;font-weight:600;text-align:left;cursor:pointer}
+.ovl{position:fixed;inset:0;z-index:2147483000;display:flex;flex-direction:column;justify-content:flex-end}
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,.6)}
+.sheet{position:relative;max-height:88vh;display:flex;flex-direction:column;background:${TOKENS.ground};border-radius:20px 20px 0 0;border-top:1px solid ${TOKENS.divider};box-shadow:0 -8px 32px rgba(0,0,0,.5);animation:sheetup .22s ease-out;outline:none}
+.sh{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 16px 8px}
+.sb{overflow-y:auto;overscroll-behavior:contain;padding:0 14px calc(24px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:14px}
+@keyframes sheetup{from{transform:translateY(40px);opacity:0}to{transform:none;opacity:1}}
+@media (prefers-reduced-motion:reduce){.sheet{animation:none}}
 .rt.wide .t.gh{font-size:15px;font-weight:600;white-space:nowrap}
 .big{font-size:32px;font-weight:700;letter-spacing:-.6px;line-height:1.1;margin-top:4px}
 .two{display:flex;gap:10px}
@@ -1663,13 +1671,14 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return m.house_heating_off ? 'house heating off' : '';
   }
 
-  // Title and banner only. Each subsystem (lights, heating, presence) has its own section further down and
-  // explains itself next to its controls.
-  function sectionRoomHead(hass, key) {
+  // Title, the gear that opens the settings sheet, and the banner. Each subsystem (lights, heating, presence)
+  // has its own section further down and explains itself next to its controls. The sheet is part of this card
+  // (ui.settings), so it works the same on indoor rooms and gardens.
+  function sectionRoomHead(hass, key, ui) {
     const m = roomModel(hass, key);
     const b = bannerFor(m, attentionItems(hass), activeScene(hass, key));
     const banner = `<div class="card pad${b.warn ? ' warn' : ''}" style="display:flex;gap:10px;align-items:flex-start"><span class="dot${b.warn ? ' warn' : b.dim ? ' dim' : ''}" style="margin-top:5px"></span><div><div style="font-size:15px;font-weight:700;${b.warn ? 'color:' + TOKENS.amber : ''}">${esc(b.title)}</div><div style="font-size:13px;color:${b.warn ? TOKENS.text : TOKENS.text2};margin-top:3px;line-height:1.45">${esc(b.body)}</div></div></div>`;
-    return `<div style="display:flex;align-items:center;gap:4px"><a class="tap" data-act="nav" data-path="${HOUSE_PATH}" aria-label="Back to House" style="min-height:44px;min-width:44px;display:flex;align-items:center;color:${TOKENS.text2}">${svg(ICON.back, 22)}</a><div style="font-size:28px;font-weight:700;letter-spacing:-.4px">${esc(m.cfg.name)}</div></div>${banner}`;
+    return `<div style="display:flex;align-items:center;gap:4px"><a class="tap" data-act="nav" data-path="${HOUSE_PATH}" aria-label="Back to House" style="min-height:44px;min-width:44px;display:flex;align-items:center;color:${TOKENS.text2}">${svg(ICON.back, 22)}</a><div style="font-size:28px;font-weight:700;letter-spacing:-.4px;flex:1;min-width:0">${esc(m.cfg.name)}</div><button class="round quiet tap" data-act="settings-open" data-room="${key}" aria-haspopup="dialog" aria-label="${esc(m.cfg.name)} settings">${svg(ICON.gear, 22)}</button></div>${banner}${ui && ui.settings ? settingsSheet(hass, key) : ''}`;
   }
 
   // The lights row of the Lights card: why the lights are as they are, including why they are NOT on. One
@@ -1760,18 +1769,34 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return `<div class="lbl" style="margin:4px 4px -10px">Heating</div>${heatingNumbers(m)}<div class="card">${heatingWhy(m)}</div>`;
   }
 
-  // Presence: occupied or empty, what holds the room occupied and what ends it. "Keep room occupied" is the
-  // override and stays in the Automations card for now.
+  // Presence: occupied or empty, what holds the room occupied and what ends it, and "Keep room occupied" (acts now,
+  // so it lives here and not in settings). When the motion sensor is switched off the row says so and links to
+  // the settings sheet, where the switch is.
+  function keepOccupiedRow(hass, key) {
+    const id = `input_boolean.${key}_automation_presence_override`;
+    const s = state(hass, id);
+    if (!usable(s)) return '';
+    const on = s === 'on';
+    const guest = key === 'home_office' && state(hass, 'input_select.house_active_mode_modifier') === 'guest';
+    const sub = on ? (guest ? 'Set by guest mode · lights and heating treat the room as in use' : 'Room held occupied · lights and heating treat it as in use') : 'Holds the room occupied until switched off';
+    return `<button class="tog tap" data-act="toggle" data-entity="${id}" aria-pressed="${on}"><div><div class="h">Keep room occupied</div><div class="s">${sub}</div></div><span class="sw${on ? '' : ' off'}" role="img" aria-label="${on ? 'On' : 'Off'}"></span></button>`;
+  }
   function sectionPresence(hass, key) {
     const m = roomModel(hass, key);
-    if (!m.hasReport) return '';
-    const holds = m.pres_labels;
-    const occ = m.occupancy_unavailable ? 'Occupancy unavailable' : m.occupied ? 'Occupied' : 'Empty';
-    const pres = holds.length ? `${esc(holds.join(' · '))} · empty a few minutes after ${holds.length > 1 ? 'the last one clears' : 'it clears'}` : m.occupied ? 'No holds · empty a few minutes after the last movement' : 'No holds';
-    const ovr = m.override_text ? ` · ${esc(m.override_text)}` : '';
-    const noMotion = state(hass, `input_boolean.${key}_sensor_motion_enabled`) === 'off' ? ' · Motion sensor off, so movement is ignored' : '';
-    const row = `<div class="item">${svg(ICON.person, 18)}<div><div class="h">${occ}</div><div class="s">${pres}${ovr}${noMotion}</div></div><span class="tag${m.override && !holds.length ? '' : ' off'}">${holds.length ? 'Held' : m.override ? 'Override' : 'Clear'}</span></div>`;
-    return `<div class="lbl" style="margin:4px 4px -10px">Presence</div><div class="card">${row}</div>`;
+    const keep = keepOccupiedRow(hass, key);
+    if (!m.hasReport && !keep) return '';
+    let row = '';
+    if (m.hasReport) {
+      const holds = m.pres_labels;
+      const occ = m.occupancy_unavailable ? 'Occupancy unavailable' : m.occupied ? 'Occupied' : 'Empty';
+      const pres = holds.length ? `${esc(holds.join(' · '))} · empty a few minutes after ${holds.length > 1 ? 'the last one clears' : 'it clears'}` : m.occupied ? 'No holds · empty a few minutes after the last movement' : 'No holds';
+      const ovr = m.override_text ? ` · ${esc(m.override_text)}` : '';
+      const motionOff = state(hass, `input_boolean.${key}_sensor_motion_enabled`) === 'off';
+      const noMotion = motionOff ? ' · Motion sensor off, so movement is ignored' : '';
+      const link = motionOff ? `<button class="lnk tap" data-act="settings-open" data-room="${key}" aria-haspopup="dialog">Settings</button>` : '';
+      row = `<div class="item">${svg(ICON.person, 18)}<div><div class="h">${occ}</div><div class="s">${pres}${ovr}${noMotion}</div>${link}</div><span class="tag${m.override && !holds.length ? '' : ' off'}">${holds.length ? 'Held' : m.override ? 'Override' : 'Clear'}</span></div>`;
+    }
+    return `<div class="lbl" style="margin:4px 4px -10px">Presence</div><div class="card">${row}${keep}</div>`;
   }
 
   // Lights: what they are doing and why (including why they are not on), the scene tiles, and the individual
@@ -1850,25 +1875,150 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return hit[1] === 'any' || hit[1] === (isOn ? 'on' : 'off') ? hit[0] : '';
   }
 
-  // Fan run settings, keyed by the fan entity the device card shows. As with HOUSE_NUMBERS, the page
-  // names a key from this table and set_value can only reach these ids. The ranges match the fan
-  // controller's clamps (homerun-automations lib/bathroom/steam.ts), so the card never offers a value
-  // the controller would silently override. Shower detection thresholds are left out on purpose: they
-  // are calibration from recorded data, and a wrong value silently stops showers being detected.
-  const FAN_NUMBERS = {
-    'switch.bathroom_fan_extractor': {
-      min_run: { id: 'input_number.bathroom_automation_fan_min_run', title: 'Minimum run', sub: 'After the last shower ends', min: 5, max: 30, step: 5, unit: ' min' },
-      max_run: { id: 'input_number.bathroom_automation_fan_max_run', title: 'Maximum run', sub: 'Off by then, whatever the humidity', min: 15, max: 120, step: 15, unit: ' min' },
-      margin: { id: 'input_number.bathroom_automation_fan_humidity_margin', title: 'Stops within', sub: 'Humidity points above the room\'s normal level', min: 2, max: 30, step: 1, unit: '%' },
-    },
+  // ── Room settings ────────────────────────────────────────────────────────────────────────────
+  // The settings panel (a sheet opened from the gear in the room header) holds what means "this room should
+  // behave differently from now on": automation switches and their tuning, by subsystem. What a person changes
+  // because of something happening right now (scenes, lights, the fan on/off, keep-room-occupied) stays on the page.
+  //
+  // Rows are either a toggle or a stepper with a fixed min/max/step. A write names a room, group and key from
+  // this table, never an entity id, so turn_on/turn_off/set_value can only reach the helpers listed here. A row
+  // whose helper is missing or unusable is left out when rendering, and a group left empty is not shown.
+  //
+  // Stepper ranges equal the clamp in the automation that reads the helper (a test holds the numbers to a list of
+  // expected clamps, so a change on one side has to be made on both). Where the automation does not clamp, the
+  // range is the helper's own min/max/step in packages/helpers.yaml. Sources:
+  //   fan: homerun-automations lib/bathroom/steam.ts (MIN/MAX_FAN_MIN_RUN_MIN, MIN/MAX_FAN_MAX_RUN_MIN, MIN/MAX_FAN_MARGIN)
+  //   lux threshold, foreign office door ventilation: no clamp in the automation, so the helper's range.
+  // Not exposed on purpose: calibration that silently breaks a rule when wrong, such as the bathroom shower
+  // detection thresholds (shower_rise, above_baseline, end_drop, end_confirm). Those stay in HA settings.
+  const toggleRow = (key, id, title, sub) => ({ kind: 'toggle', key, id, title, sub });
+  const stepRow = (key, id, title, sub, min, max, step, unit) => ({ kind: 'number', key, id, title, sub, min, max, step, unit });
+  const luxRow = (k) => stepRow('lux_dark', `input_number.${k}_automation_lux_threshold_dark`, 'Dark below', 'Lux reading under which the room counts as dark', 0, 500, 1, ' lx');
+  const lightsGroup = (k, extra) => ({ key: 'lights', title: 'Lights', rows: [toggleRow('automation', `input_boolean.${k}_automation_lights_enabled`, 'Lights automation', 'Decides lights from presence and time of day'), luxRow(k), ...extra] });
+  const presenceGroup = (k) => ({ key: 'presence', title: 'Presence', rows: [toggleRow('motion', `input_boolean.${k}_sensor_motion_enabled`, 'Motion sensor', 'Off means movement is ignored and the room relies on holds')] });
+  const heatingGroup = (k, extra) => ({ key: 'heating', title: 'Heating', rows: [toggleRow('automation', `input_boolean.${k}_automation_heating_enabled`, 'Heating automation', 'Sets the target from mode, windows and schedule'), ...extra] });
+  const sonosGroup = (k) => ({ key: 'media', title: 'Media', rows: [toggleRow('sonos', `input_boolean.${k}_automation_sonos_enabled`, 'Follow the speaker group', 'Joins the parlour speaker group when the room is occupied')] });
+  const indoor = (k, ...more) => [lightsGroup(k, []), heatingGroup(k, []), presenceGroup(k), ...more];
+  const DOOR = 'input_number.foreign_office_automation_door';
+  const ROOM_SETTINGS = {
+    parlour: indoor('parlour'),
+    kitchen: indoor('kitchen', sonosGroup('kitchen')),
+    hallway_downstairs: indoor('hallway_downstairs'),
+    hallway_upstairs: indoor('hallway_upstairs'),
+    bedroom: indoor('bedroom'),
+    bathroom: [
+      lightsGroup('bathroom', []), heatingGroup('bathroom', []), presenceGroup('bathroom'),
+      {
+        key: 'fan', title: 'Fan', rows: [
+          toggleRow('automation', 'input_boolean.bathroom_automation_fan_enabled', 'Fan automation', 'Runs the extractor fan after a shower until the steam clears'),
+          stepRow('min_run', 'input_number.bathroom_automation_fan_min_run', 'Minimum run', 'After the last shower ends', 5, 30, 5, ' min'),
+          stepRow('max_run', 'input_number.bathroom_automation_fan_max_run', 'Maximum run', 'Off by then, whatever the humidity', 15, 120, 15, ' min'),
+          stepRow('margin', 'input_number.bathroom_automation_fan_humidity_margin', 'Stops within', 'Humidity points above the room\'s normal level', 2, 30, 1, '%'),
+        ],
+      },
+    ],
+    home_office: indoor('home_office', sonosGroup('home_office')),
+    foreign_office: [
+      lightsGroup('foreign_office', []),
+      heatingGroup('foreign_office', [
+        stepRow('door_delta', `${DOOR}_open_delta`, 'Door open delta', 'Suggest opening the door when outside is this much cooler than the room', 0.5, 10, 0.5, '°'),
+        stepRow('door_min_outdoor', `${DOOR}_open_min_outdoor`, 'Door open minimum outdoors', 'No suggestion when outside is colder than this', 0, 20, 0.5, '°'),
+        stepRow('door_comfort', `${DOOR}_indoor_comfort_threshold`, 'Door indoor comfort', 'No suggestion until the room is at least this warm', 18, 28, 0.5, '°'),
+        stepRow('door_cooldown', `${DOOR}_notification_cooldown_mins`, 'Door alert cooldown', 'Minimum time between door alerts', 15, 240, 15, ' min'),
+      ]),
+      presenceGroup('foreign_office'),
+    ],
+    front_garden: [{
+      key: 'lights', title: 'Lights', rows: [
+        toggleRow('automation', 'input_boolean.front_garden_automation_lights_enabled', 'Lights automation', 'On from sunset; off when the house goes to sleep'),
+        toggleRow('calendar', 'input_boolean.front_garden_light_theme_calendar_enabled', 'Follow calendar', 'Switches theme on the days it changes'),
+      ],
+    }],
+    back_garden: [{
+      key: 'lights', title: 'Lights', rows: [toggleRow('automation', 'input_boolean.back_garden_automation_lights_enabled', 'Lights automation', 'On from sunset; off when the house goes to sleep')],
+    }],
   };
-  function fanSettingRows(hass, fanId) {
-    const table = Object.prototype.hasOwnProperty.call(FAN_NUMBERS, fanId) ? FAN_NUMBERS[fanId] : null;
-    if (!table) return '';
-    return Object.entries(table).map(([key, d]) => {
-      const v = num(state(hass, d.id));
-      return v === null ? '' : stepperRow(d, v, d.sub, 'fan-number', { entity: fanId, key });
+
+  // Fails at load, not at the first tap: every room has a table, each row's helper is in the domain its kind
+  // writes to, keys are unique within a group, and every stepper has a sane range.
+  function checkRoomSettings() {
+    for (const k of Object.keys(ROOMS)) if (!Array.isArray(ROOM_SETTINGS[k])) throw new Error(`pulse-card: no settings table for ${k}`);
+    for (const [room, groups] of Object.entries(ROOM_SETTINGS)) {
+      if (!Object.prototype.hasOwnProperty.call(ROOMS, room)) throw new Error(`pulse-card: settings for unknown room ${room}`);
+      const gkeys = new Set();
+      for (const g of groups) {
+        if (gkeys.has(g.key)) throw new Error(`pulse-card: duplicate settings group ${room}/${g.key}`);
+        gkeys.add(g.key);
+        const rkeys = new Set();
+        for (const r of g.rows) {
+          if (rkeys.has(r.key)) throw new Error(`pulse-card: duplicate setting ${room}/${g.key}/${r.key}`);
+          rkeys.add(r.key);
+          const domain = r.kind === 'toggle' ? 'input_boolean' : 'input_number';
+          if (!new RegExp(`^${domain}\\.[a-z0-9_]+$`).test(r.id)) throw new Error(`pulse-card: setting ${room}/${g.key}/${r.key} must be an ${domain}, got "${r.id}"`);
+          if (r.kind === 'number' && !(r.min < r.max && r.step > 0 && r.step <= r.max - r.min)) throw new Error(`pulse-card: setting ${room}/${g.key}/${r.key} has a bad range`);
+        }
+      }
+    }
+  }
+  checkRoomSettings();
+
+  // The one lookup for a write. Unknown room, group or key (and prototype keys such as __proto__) throw.
+  function settingFor(room, group, key) {
+    const groups = Object.prototype.hasOwnProperty.call(ROOM_SETTINGS, room) ? ROOM_SETTINGS[room] : null;
+    const g = groups ? groups.find((x) => x.key === group) : undefined;
+    const row = g ? g.rows.find((x) => x.key === key) : undefined;
+    if (!row) throw new Error(`pulse-card: unknown setting "${room}/${group}/${key}"`);
+    return row;
+  }
+
+  // Visible rows of one group, as {row, html}; rows whose helper cannot be read are dropped.
+  function settingRowHtml(hass, room, group, row) {
+    const ds = { room, group, key: row.key };
+    if (row.kind === 'toggle') {
+      const s = state(hass, row.id);
+      if (!usable(s)) return '';
+      const on = s === 'on';
+      return `<button class="tog tap" data-act="setting-toggle" data-room="${room}" data-group="${group}" data-key="${row.key}" aria-pressed="${on}"><div><div class="h">${esc(row.title)}</div><div class="s">${esc(row.sub)}</div></div><span class="sw${on ? '' : ' off'}" role="img" aria-label="${on ? 'On' : 'Off'}"></span></button>`;
+    }
+    const v = num(state(hass, row.id));
+    return v === null ? '' : stepperRow(row, v, row.sub, 'setting-number', ds);
+  }
+  function settingGroupsHtml(hass, room) {
+    return ROOM_SETTINGS[room].map((g) => {
+      const rows = g.rows.map((r) => settingRowHtml(hass, room, g.key, r)).filter(Boolean).join('');
+      return rows ? `<div class="lbl" style="margin:4px 4px -10px">${esc(g.title)}</div><div class="card">${rows}</div>` : '';
     }).join('');
+  }
+
+  // The sheet. It is inside the room-head card, fixed over the page, so the page underneath is untouched
+  // and keeps its scroll position. Escape, the Close button and the scrim all close it; focus handling is in
+  // the element (settingsOpen / settingsClose say where focus goes).
+  function settingsSheet(hass, room) {
+    const body = settingGroupsHtml(hass, room) || `<div class="card pad" style="color:${TOKENS.text2};font-size:13px">No settings available for this room</div>`;
+    const title = `${ROOMS[room].name} settings`;
+    return `<div class="ovl"><div class="scrim" data-act="settings-close" aria-hidden="true"></div><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title" tabindex="-1"><div class="sh"><div id="sheet-title" style="font-size:20px;font-weight:700;letter-spacing:-.2px">${esc(title)}</div><button class="round quiet" data-act="settings-close" aria-label="Close settings">${svg('M6 6l12 12M18 6L6 18', 20)}</button></div><div class="sb">${body}</div></div></div>`;
+  }
+
+  // Open/closed lives in ui.settings; ui.focus names the control that takes focus after the next paint
+  // (the element reads it): into the sheet on open, back to the gear on close.
+  function settingsOpen(ui, room) {
+    if (!isObj(ui)) throw new Error('pulse-card: settingsOpen needs the card ui state');
+    if (!Object.prototype.hasOwnProperty.call(ROOM_SETTINGS, room)) throw new Error(`pulse-card: no settings for "${room}"`);
+    ui.settings = true;
+    ui.focus = { act: 'settings-close' };
+    return ui;
+  }
+  function settingsClose(ui) {
+    if (!isObj(ui)) throw new Error('pulse-card: settingsClose needs the card ui state');
+    ui.settings = false;
+    ui.focus = { act: 'settings-open' };
+    return ui;
+  }
+  // Tab wraps inside the open sheet. index -1 (focus outside the list) enters at the first or last control.
+  function tabTarget(index, count, back) {
+    if (!(count > 0)) return -1;
+    if (index < 0 || index >= count) return back ? count - 1 : 0;
+    return (index + (back ? -1 : 1) + count) % count;
   }
 
   function sectionDevice(hass, config) {
@@ -1881,7 +2031,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const on = s.state === 'on';
     const why = deviceReason(attr(hass, config.decision, 'reason'), on);
     const text = [on ? 'On' : 'Off', why].filter(Boolean).join(' · ');
-    return `<div class="card"><button class="tog tap" data-act="toggle" data-entity="${esc(id)}" aria-pressed="${on}"><div><div class="h">${esc(label)}</div><div class="s">${esc(text)}</div></div><span class="sw${on ? '' : ' off'}" role="img" aria-label="${on ? 'On' : 'Off'}"></span></button>${fanSettingRows(hass, id)}</div>`;
+    return `<div class="card"><button class="tog tap" data-act="toggle" data-entity="${esc(id)}" aria-pressed="${on}"><div><div class="h">${esc(label)}</div><div class="s">${esc(text)}</div></div><span class="sw${on ? '' : ' off'}" role="img" aria-label="${on ? 'On' : 'Off'}"></span></button></div>`;
   }
 
   function sectionMedia(hass, key) {
@@ -1905,29 +2055,6 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       return `<div class="tog"><div><div class="h">${name}</div><div class="s">${esc(text)}</div></div><button class="round${playing ? '' : ' quiet'}" data-act="media-play" data-entity="${esc(id)}" aria-label="${playing ? 'Pause' : 'Play'}">${svg(playing ? ICON.pause : ICON.play, 20)}</button></div>${volRow}`;
     }).join('');
     return `<div class="lbl" style="margin:4px 4px -10px">Media</div><div class="card">${rows}</div>`;
-  }
-
-  function sectionAutomations(hass, key) {
-    const rows = [];
-    const toggle = (id, title, sub) => {
-      const s = state(hass, id);
-      if (!usable(s)) return;
-      const on = s === 'on';
-      rows.push(`<button class="tog tap" data-act="toggle" data-entity="${id}" aria-pressed="${on}"><div><div class="h">${title}</div><div class="s">${sub}</div></div><span class="sw${on ? '' : ' off'}" role="img" aria-label="${on ? 'On' : 'Off'}"></span></button>`);
-    };
-    const lightsSub = isGarden(key)
-      ? `${windowOff(hass, key) ? 'Sunset until ' + windowOff(hass, key) : 'From sunset'}; off when the house goes to sleep`
-      : 'Decides lights from presence and time of day';
-    toggle(`input_boolean.${key}_automation_lights_enabled`, 'Lights automation', lightsSub);
-    toggle(`input_boolean.${key}_automation_heating_enabled`, 'Heating automation', 'Sets the target from mode, windows and schedule');
-    toggle(`input_boolean.${key}_automation_fan_enabled`, 'Fan automation', 'Runs the extractor fan after a shower until the steam clears');
-    const motionOn = state(hass, `input_boolean.${key}_sensor_motion_enabled`) === 'on';
-    toggle(`input_boolean.${key}_sensor_motion_enabled`, 'Motion sensor', motionOn ? 'Detecting presence' : 'Motion ignored · the room relies on holds');
-    const guest = key === 'home_office' && state(hass, 'input_select.house_active_mode_modifier') === 'guest';
-    const heldOn = state(hass, `input_boolean.${key}_automation_presence_override`) === 'on';
-    toggle(`input_boolean.${key}_automation_presence_override`, 'Keep room occupied', heldOn ? (guest ? 'Set by guest mode · lights and heating treat the room as in use' : 'Room held occupied · lights and heating treat it as in use') : 'Holds the room occupied until switched off');
-    if (rows.length === 0) return '';
-    return `<div class="lbl" style="margin:4px 4px -10px">Automations</div><div class="card">${rows.join('')}</div>`;
   }
 
   // ── Gardens ──────────────────────────────────────────────────────────────────────────────────
@@ -2077,8 +2204,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     // Only when the calendar is not in charge: paused, or a theme picked by hand. Acting needs the toggle's state.
     const follow = !!g.calToday && !!g.calToggle && (g.calToggle === 'off' || g.theme !== g.calToday);
     const use = follow ? `<button class="tog tap" data-act="use-calendar" data-garden="${key}"><div><div class="h">Use calendar</div><div class="s">Back to ${esc(themeLabel(g.calToday))}, then follow the calendar</div></div></button>` : '';
-    const toggle = g.calToggle ? `<button class="tog tap" data-act="toggle" data-entity="${g.calToggleId}" aria-pressed="${g.calToggle === 'on'}"><div><div class="h">Follow calendar</div><div class="s">Switches theme on the days it changes</div></div><span class="sw${g.calToggle === 'on' ? '' : ' off'}" role="img" aria-label="${g.calToggle === 'on' ? 'On' : 'Off'}"></span></button>` : '';
-    return `<div class="lbl" style="margin:4px 4px -10px">Theme</div><div class="card" style="padding:12px 12px 10px"><div class="tiles" style="grid-template-columns:repeat(${cols},minmax(0,1fr))">${tiles}</div>${lines}</div>${use || toggle ? `<div class="card">${use}${toggle}</div>` : ''}`;
+    return `<div class="lbl" style="margin:4px 4px -10px">Theme</div><div class="card" style="padding:12px 12px 10px"><div class="tiles" style="grid-template-columns:repeat(${cols},minmax(0,1fr))">${tiles}</div>${lines}</div>${use ? `<div class="card">${use}</div>` : ''}`;
   }
 
   // Now: one wide tile per garden, below the indoor groups. Gardens stay out of the indoor attention,
@@ -2215,6 +2341,22 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       return `<button class="tog tap" data-act="toggle" data-entity="${id}" aria-pressed="${on}"><div><div class="h">${name} working from home</div><div class="s">${[where, 'Set automatically from the weekly pattern, tap to override'].filter(Boolean).join(' · ')}</div></div><span class="sw${on ? '' : ' off'}" role="img" aria-label="${on ? 'On' : 'Off'}"></span></button>`;
     }).join('');
     return rows ? `<div class="lbl" style="margin:4px 4px -10px">People</div><div class="card">${rows}</div>` : '';
+  }
+
+  // Mo's phone alerts. Same approach as HOUSE_NUMBERS: the page names a key, so turn_on/turn_off through this path
+  // can only reach these two helpers.
+  const MO_TOGGLES = {
+    spotted: { id: 'input_boolean.mo_notifications_spotted_enabled', title: 'Spotted notifications', sub: 'A phone alert when Mo is seen on a camera' },
+    eating: { id: 'input_boolean.mo_notifications_eating_enabled', title: 'Eating notifications', sub: 'A phone alert when Mo is at the feeder' },
+  };
+  function sectionHouseMo(hass) {
+    const rows = Object.entries(MO_TOGGLES).map(([key, d]) => {
+      const st = state(hass, d.id);
+      if (!usable(st)) return '';
+      const on = st === 'on';
+      return `<button class="tog tap" data-act="mo-toggle" data-key="${key}" aria-pressed="${on}"><div><div class="h">${d.title}</div><div class="s">${d.sub}</div></div><span class="sw${on ? '' : ' off'}" role="img" aria-label="${on ? 'On' : 'Off'}"></span></button>`;
+    }).join('');
+    return rows ? `<div class="lbl" style="margin:4px 4px -10px">Mo</div><div class="card">${rows}</div>` : '';
   }
 
   // ── Cameras ──────────────────────────────────────────────────────────────────────────────────
@@ -2403,7 +2545,10 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       case 'house-modifier': return [HOUSE_MODIFIER];
       case 'house-threshold': return [HOUSE_VACATION_HOURS];
       case 'house-number': return table(HOUSE_NUMBERS, ds.key);
-      case 'fan-number': return own(FAN_NUMBERS, id) ? table(FAN_NUMBERS[id], ds.key) : [];
+      case 'mo-toggle': return table(MO_TOGGLES, ds.key);
+      case 'setting-toggle': case 'setting-number': {
+        try { return [settingFor(ds.room, ds.group, ds.key).id]; } catch (err) { return []; }
+      }
       case 'garden-power': case 'garden-theme': case 'use-calendar': {
         // The garden model reads the page's own sensors; a garden it cannot read has no target.
         try {
@@ -2503,13 +2648,12 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     'energy-usage': (h) => sectionEnergyUsage(h),
     feed: (h, c, n) => sectionFeed(h, n),
     tabbar: (h, c, n, ui) => sectionTabbar(c, ui),
-    'room-head': (h, c) => sectionRoomHead(h, c.room),
+    'room-head': (h, c, n, ui) => sectionRoomHead(h, c.room, ui),
     lights: (h, c, n, ui) => sectionLights(h, c.room, n, ui),
     heating: (h, c) => sectionHeating(h, c.room),
     presence: (h, c) => sectionPresence(h, c.room),
     media: (h, c) => sectionMedia(h, c.room),
     device: (h, c) => sectionDevice(h, c),
-    automations: (h, c) => sectionAutomations(h, c.room),
     'room-feed': (h, c, n) => sectionRoomFeed(h, c.room, n),
     'garden-lights': (h, c, n) => sectionGardenLights(h, c.room, n),
     'garden-theme': (h, c, n) => sectionGardenTheme(h, c.room, n),
@@ -2517,13 +2661,14 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     'house-mode': (h, c, n) => sectionHouseMode(h, n),
     'house-people': (h) => sectionHousePeople(h),
     'house-heating': (h) => sectionHouseHeating(h),
+    'house-mo': (h) => sectionHouseMo(h),
     'cameras-card': (h, c, n) => sectionCamerasCard(h, n),
     'cameras-head': (h, c, n) => sectionCamerasHead(h, n),
     camera: (h, c, n, ui) => sectionCamera(h, c.camera, n, ui),
   };
-  const ROOM_MODES = ['room-head', 'lights', 'heating', 'presence', 'media', 'automations', 'room-feed', 'garden-lights', 'garden-theme'];
+  const ROOM_MODES = ['room-head', 'lights', 'heating', 'presence', 'media', 'room-feed', 'garden-lights', 'garden-theme'];
   // Indoor rooms have scenes, a report and media; gardens have a lights row and a theme. The shared modes
-  // (room-head, automations, room-feed) work for both.
+  // (room-head, room-feed) work for both.
   const GARDEN_MODES = ['garden-lights', 'garden-theme'];
   const INDOOR_MODES = ['lights', 'heating', 'presence', 'media'];
 
@@ -2621,11 +2766,20 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         if (!d) throw new Error(`pulse-card: unknown house setting "${el.dataset.key}"`);
         return stepNumber(hass, d, el.dataset.delta);
       }
-      case 'fan-number': {
-        const table = Object.prototype.hasOwnProperty.call(FAN_NUMBERS, id) ? FAN_NUMBERS[id] : null;
-        const d = table && Object.prototype.hasOwnProperty.call(table, el.dataset.key) ? table[el.dataset.key] : null;
-        if (!d) throw new Error(`pulse-card: unknown fan setting "${id}/${el.dataset.key}"`);
-        return stepNumber(hass, d, el.dataset.delta);
+      case 'setting-toggle': {
+        const row = settingFor(el.dataset.room, el.dataset.group, el.dataset.key);
+        if (row.kind !== 'toggle') throw new Error(`pulse-card: setting "${el.dataset.key}" is not a toggle`);
+        return callService(hass, 'input_boolean', state(hass, row.id) === 'on' ? 'turn_off' : 'turn_on', { entity_id: row.id });
+      }
+      case 'setting-number': {
+        const row = settingFor(el.dataset.room, el.dataset.group, el.dataset.key);
+        if (row.kind !== 'number') throw new Error(`pulse-card: setting "${el.dataset.key}" is not a number`);
+        return stepNumber(hass, row, el.dataset.delta);
+      }
+      case 'mo-toggle': {
+        const d = Object.prototype.hasOwnProperty.call(MO_TOGGLES, el.dataset.key) ? MO_TOGGLES[el.dataset.key] : null;
+        if (!d) throw new Error(`pulse-card: unknown Mo setting "${el.dataset.key}"`);
+        return callService(hass, 'input_boolean', state(hass, d.id) === 'on' ? 'turn_off' : 'turn_on', { entity_id: d.id });
       }
       case 'garden-power': return gardenPower(hass, el.dataset.garden, el.dataset.want);
       case 'garden-theme': return gardenTheme(hass, el.dataset.garden, el.dataset.option);
@@ -2637,11 +2791,12 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     }
   }
 
-  const api = { lightsStory, lightsState, verdictFor, houseActivity, parseHistory, readHistory, sentenceFor, roomActivity, unexplainedReasons, REASON_TEXT, TILE, TILE_H, TILE_WIDE_H, tileNeededHeight, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, SETTINGS_PATH, CAMERAS_PATH, PENDING_MS, cameraParts, cameraToggle, cameraPending, perform, pendingStart, pendingFor, pendingKey, markPending, ERROR_MS, parseClips, frigateClipsId, roomGroups, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, GARDEN_ORDER, ALL_ROOM_KEYS, THEME_LABELS, THEME_ICON, ICON, gardenModel, gardenSub, themeSource, shortDate, ALLOWED, DEVICE_REASONS, FAN_NUMBERS, render, priceColour, PRICE_STOPS, PRICE_EXTREME_P, roomModel, attentionItems, handleAction, callService, num, parseList };
+  const api = { lightsStory, lightsState, verdictFor, houseActivity, parseHistory, readHistory, sentenceFor, roomActivity, unexplainedReasons, REASON_TEXT, TILE, TILE_H, TILE_WIDE_H, tileNeededHeight, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, SETTINGS_PATH, CAMERAS_PATH, PENDING_MS, cameraParts, cameraToggle, cameraPending, perform, pendingStart, pendingFor, pendingKey, markPending, ERROR_MS, parseClips, frigateClipsId, roomGroups, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, GARDEN_ORDER, ALL_ROOM_KEYS, THEME_LABELS, THEME_ICON, ICON, gardenModel, gardenSub, themeSource, shortDate, ALLOWED, DEVICE_REASONS, ROOM_SETTINGS, MO_TOGGLES, settingFor, settingsOpen, settingsClose, tabTarget, render, priceColour, PRICE_STOPS, PRICE_EXTREME_P, roomModel, attentionItems, handleAction, callService, num, parseList };
   root.PulseLib = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 
   // ── Custom element (browser only) ────────────────────────────────────────────────────────────
+  const hasWindowEvents = () => typeof window !== 'undefined' && typeof window.addEventListener === 'function' && typeof window.removeEventListener === 'function';
   if (typeof customElements !== 'undefined' && typeof HTMLElement !== 'undefined' && !customElements.get('pulse-card')) {
     class PulseCard extends HTMLElement {
       constructor() {
@@ -2649,7 +2804,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         this._root = this.attachShadow({ mode: 'open' });
         this._html = null;
         this._busy = false;
-        this._ui = { tb: 'inflow', open: false, day: 'today', fuel: 'electricity', cam: { rec: {} }, pending: {}, error: null, hist: { electricity: { status: 'loading', days: [] }, gas: { status: 'loading', days: [] } } };
+        this._ui = { tb: 'inflow', open: false, settings: false, focus: null, day: 'today', fuel: 'electricity', cam: { rec: {} }, pending: {}, error: null, hist: { electricity: { status: 'loading', days: [] }, gas: { status: 'loading', days: [] } } };
         this._histBusy = false;
         this._histSeq = 0;
         this._histAt = 0;
@@ -2668,6 +2823,9 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         this._root.addEventListener('pointerup', (ev) => this._chartUp(ev));
         this._root.addEventListener('pointercancel', () => this._chartCancel());
         this._root.addEventListener('keydown', (ev) => this._chartKey(ev));
+        this._opener = null; // the control (maybe in another card) that opened the settings sheet
+        this._onOpenRequest = (ev) => this._settingsRequest(ev);
+        this._onWindowKey = (ev) => this._settingsKey(ev);
         this._root.addEventListener('focusout', (ev) => { if (ev.target && ev.target.closest && ev.target.closest('[data-chart]') && !this._scrub.active) this._chartClear(); });
       }
       setConfig(config) {
@@ -2681,10 +2839,19 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         this._syncStream();
       }
       connectedCallback() {
+        // Any card on the page (the gear, the Presence link) asks for the sheet by event; only the room-head card has one.
+        if (hasWindowEvents()) {
+          window.addEventListener('pulse-card:settings', this._onOpenRequest);
+          window.addEventListener('keydown', this._onWindowKey);
+        }
         this._histEnsure();
         this._tabbarProbeLater();
       }
       disconnectedCallback() {
+        if (hasWindowEvents()) {
+          window.removeEventListener('pulse-card:settings', this._onOpenRequest);
+          window.removeEventListener('keydown', this._onWindowKey);
+        }
         this._histSeq += 1;
         this._histBusy = false;
         for (const t of this._tbTimers || []) clearTimeout(t);
@@ -2739,10 +2906,67 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         if (html === this._html) return;
         this._html = html;
         this.style.display = html ? '' : 'none';
+        const kept = this._captureFocus();
         this._root.innerHTML = `<style>${STYLE}</style>${html}`;
+        this._restoreFocus(kept);
         if (this._config.mode === 'tabbar' && !this._tbProbed) this._tabbarProbeLater();
         // The repaint replaced the chart nodes: put a live readout back instead of flickering it away.
         if (this._scrub.idx !== null) this._chartShow(this._scrub.idx, false);
+      }
+      // ── settings sheet ──
+      // A repaint replaces the DOM, which would drop focus and the sheet's scroll position on every stepper tap.
+      // So both are captured before and put back after. A pending focus request (ui.focus: into the sheet on open,
+      // back to the gear on close) wins over the captured one.
+      _captureFocus() {
+        const sheet = this._root.querySelector ? this._root.querySelector('.sb') : null;
+        const active = this._root.activeElement;
+        return {
+          scroll: sheet ? sheet.scrollTop : 0,
+          key: sheet && active && active.dataset && active.dataset.act ? pendingKey(active.dataset) : null,
+        };
+      }
+      // Controls only: the scrim shares the Close button's data-act but is not focusable.
+      _focusables() {
+        return [...this._root.querySelectorAll('button[data-act], a[data-act]')];
+      }
+      _restoreFocus(kept) {
+        const sheet = this._root.querySelector('.sb');
+        if (sheet && kept.scroll) sheet.scrollTop = kept.scroll;
+        const req = this._ui.focus;
+        this._ui.focus = null; // one-shot: a request that finds nothing must not steal focus on a later paint
+        const list = this._focusables();
+        const el = req ? list.find((x) => x.dataset.act === req.act) : kept.key ? list.find((x) => pendingKey(x.dataset) === kept.key) : null;
+        if (el) el.focus({ preventScroll: true });
+      }
+      _sheetControls() {
+        return [...this._root.querySelectorAll('.sheet button:not([disabled])')];
+      }
+      _settingsRequest(ev) {
+        const room = ev && ev.detail ? ev.detail.room : '';
+        if (!this._config || this._config.mode !== 'room-head' || this._config.room !== room) return;
+        this._opener = ev.detail.opener || null;
+        settingsOpen(this._ui, room);
+        this._paint();
+      }
+      _settingsClose() {
+        if (!this._ui.settings) return;
+        const opener = this._opener;
+        this._opener = null;
+        settingsClose(this._ui);
+        this._paint();
+        // Back to whatever opened it, if it is still on the page (the Presence link); else the gear, via ui.focus.
+        if (opener && opener.isConnected && typeof opener.focus === 'function') { opener.focus(); this._ui.focus = null; }
+      }
+      _settingsKey(ev) {
+        if (!this._ui.settings || !ev) return;
+        if (ev.key === 'Escape') { ev.preventDefault(); this._settingsClose(); return; }
+        if (ev.key !== 'Tab') return;
+        const list = this._sheetControls();
+        const at = list.indexOf(this._root.activeElement);
+        const to = tabTarget(at, list.length, ev.shiftKey);
+        if (to < 0) return;
+        ev.preventDefault();
+        list[to].focus();
       }
       // ── cameras ──
       // The live stream is a real element, and moving or re-creating it restarts the video. So a camera card is
@@ -3031,6 +3255,11 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         if (el.dataset.act === 'camera-rec') { this._recOpen(el.dataset.camera, false); return; }
         if (el.dataset.act === 'camera-rec-refresh') { this._recOpen(el.dataset.camera, true); return; }
         if (el.dataset.act === 'camera-clip') { this._playClip(el.dataset.camera, el.dataset.clip); return; }
+        if (el.dataset.act === 'settings-open') {
+          window.dispatchEvent(new CustomEvent('pulse-card:settings', { detail: { room: el.dataset.room, opener: el } }));
+          return;
+        }
+        if (el.dataset.act === 'settings-close') { this._settingsClose(); return; }
         if (el.dataset.act === 'lights-toggle') {
           this._ui.open = !this._ui.open;
           this._paint();
