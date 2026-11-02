@@ -1,7 +1,7 @@
 title: Back garden
 path: room-back_garden
 subview: true
-back_path: /pulse-dashboard/now
+back_path: /pulse-dashboard/house
 type: sections
 max_columns: 1
 background: '#12151a'
@@ -13,4 +13,4 @@ sections:
         variables:
           room: back_garden
       # Bottom tab bar: fixed when HA's ancestors allow it, otherwise an in-flow bar (see pulse-card.js).
-      - {type: custom:pulse-card, mode: tabbar, active: now}
+      - {type: custom:pulse-card, mode: tabbar, active: house}

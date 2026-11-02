@@ -315,7 +315,7 @@ ok('expander-card is gone; Now no longer uses apexcharts', () => {
   for (const f of ['info_templates.yaml', 'info-dashboard.yaml', ...readdirSync(root + 'views').filter((x) => x.startsWith('info-')).map((x) => 'views/' + x)]) {
     assert.doesNotMatch(readFileSync(root + f, 'utf8'), /expander-card|lights-title/, f);
   }
-  assert.doesNotMatch(readFileSync(root + 'views/info-now.yaml', 'utf8'), /apexcharts-card/, 'Now has no apexcharts: energy block is drawn by pulse-card');
+  assert.doesNotMatch(readFileSync(root + 'views/info-house.yaml', 'utf8'), /apexcharts-card/, 'House has no apexcharts: energy block is drawn by pulse-card');
 });
 
 ok('device mode: fan row shows state and reason, taps toggle, hides when blank, fails loudly when misconfigured', () => {
@@ -498,7 +498,7 @@ ok('unknown room and unknown mode fail loudly', () => {
 
 ok('every nav path targets the registered dashboard (/pulse-dashboard) or Mobile, and each Pulse path is a real view', () => {
   assert.equal(P.DASH, '/pulse-dashboard');
-  const viewPaths = new Set(['now']);
+  const viewPaths = new Set();
   for (const f of readdirSync(root + 'views').filter((x) => x.startsWith('info-'))) {
     const v = yaml.load(readFileSync(root + 'views/' + f, 'utf8'));
     viewPaths.add(v.path);
@@ -978,7 +978,7 @@ ok('Now v2 feed limited to 3 rows, collapse kept', () => {
 });
 
 ok('Now v2 view layout: one status card first, groups, prices, bins/heating, feed; no old modes', () => {
-  const v = yaml.load(readFileSync(root + 'views/info-now.yaml', 'utf8'));
+  const v = yaml.load(readFileSync(root + 'views/info-house.yaml', 'utf8'));
   const modes = v.sections[0].cards.map((c) => c.mode);
   assert.deepEqual(modes, ['now-header', 'status', 'rooms', 'bins-heating', 'cameras-card', 'feed', 'tabbar']);
   for (const m of modes) assert.ok(P.render(m, {}, mk(), NOW) !== undefined);
@@ -1118,7 +1118,7 @@ ok('windowRange: a window spanning the repeated hour is never printed zero-lengt
 
 ok('energy page: head has back link, Now/Next/Usage', () => {
   const html = P.render('energy-head', {}, energyHass({ 'sensor.glow_electricity_power': { state: '0.44', attributes: { unit_of_measurement: 'kW' }, last_updated: '2026-10-25T18:41:50+00:00' } }), NOW);
-  assert.match(html, /data-path="\/pulse-dashboard\/now" aria-label="Back to Now"/);
+  assert.match(html, /data-path="\/pulse-dashboard\/house" aria-label="Back to House"/);
   assert.match(html, />Energy</);
   assert.ok(html.includes(`color:${P.priceColour(34.8, { text: true })}`));
   assert.match(html, />Usage<\/div><div[^>]*>440 W/);
@@ -1247,7 +1247,7 @@ ok('energy view is registered and adds no write paths', () => {
   const v = yaml.load(readFileSync(root + 'views/info-energy.yaml', 'utf8'));
   assert.equal(v.path, 'energy');
   assert.equal(v.subview, true);
-  assert.equal(v.back_path, '/pulse-dashboard/now');
+  assert.equal(v.back_path, '/pulse-dashboard/house');
   assert.deepEqual(v.sections[0].cards.map((c) => c.mode), ['energy-head', 'energy-day', 'energy-cost', 'energy-history', 'energy-usage', 'tabbar']);
   assert.match(readFileSync(root + 'info-dashboard.yaml', 'utf8'), /views\/info-energy\.yaml/);
   assert.deepEqual(Object.keys(P.ALLOWED).sort(), ['button', 'input_boolean', 'input_number', 'input_select', 'light', 'media_player', 'scene', 'switch']);
@@ -1587,8 +1587,8 @@ ok('Now v3 header is the title and mode pill only; no "Updated" text anywhere on
   assert.doesNotMatch(hdr, /sliders/, 'no icon in the title row');
   for (const hass of [mk(), withRooms(calmRooms(), []), withRooms(P.ROOM_ORDER.map((k) => quietRoom(k, { occupied: true })), [attn('Bedroom', 'bedroom', 'automation_disabled', 't')]), { states: {} }]) assert.doesNotMatch(nowPage(hass), /Updated/);
   assert.equal(count(nowPage(mk()), /data-path="\/mobile-dashboard"/g), 0);
-  assert.doesNotMatch(P.render('tabbar', { active: 'now' }, mk(), NOW, {}), /mobile-dashboard|Controls/);
-  const view = yaml.load(readFileSync(root + 'views/info-now.yaml', 'utf8'));
+  assert.doesNotMatch(P.render('tabbar', { active: 'house' }, mk(), NOW, {}), /mobile-dashboard|Controls/);
+  const view = yaml.load(readFileSync(root + 'views/info-house.yaml', 'utf8'));
   assert.deepEqual(view.sections[0].cards.map((c) => c.mode), ['now-header', 'status', 'rooms', 'bins-heating', 'cameras-card', 'feed', 'tabbar']);
 });
 
@@ -1741,17 +1741,17 @@ ok('Now v3 sparse and missing data: every Now mode renders cleanly', () => {
 const SNAP = (over = {}) => ({ name: 'div', transform: 'none', filter: 'none', perspective: 'none', contain: 'none', willChange: 'auto', backdropFilter: 'none', ...over });
 
 ok('tab bar renders four tabs, one per id, with aria-current on the active one only', () => {
-  for (const [active, label] of [['now', 'Now'], ['energy', 'Energy'], ['cameras', 'Cameras'], ['house', 'House']]) {
+  for (const [active, label] of [['house', 'House'], ['energy', 'Energy'], ['cameras', 'Cameras'], ['settings', 'Settings']]) {
     const html = P.render('tabbar', { active }, mk(), NOW, {});
     assert.match(html, /<nav class="tabs" aria-label="Pulse">/);
     assert.equal(count(html, /<button type="button" class="tab"/g), 4);
     assert.equal(count(html, /aria-current="page"/g), 1);
     assert.match(html, new RegExp(`aria-current="page">[\\s\\S]*?<span>${label}</span>`));
-    for (const t of ['Now', 'Energy', 'Cameras', 'House']) assert.match(html, new RegExp(`<span>${t}</span>`));
+    for (const t of ['House', 'Energy', 'Cameras', 'Settings']) assert.match(html, new RegExp(`<span>${t}</span>`));
     assert.equal(count(html, /<svg /g), 4, 'inline SVG icons');
     noNoise({ html }, 'tabbar');
   }
-  assert.match(P.render('tabbar', { active: 'bogus' }, mk(), NOW, {}), /aria-current="page">[\s\S]*?<span>Now<\/span>/, 'unknown active falls back to Now');
+  assert.match(P.render('tabbar', { active: 'bogus' }, mk(), NOW, {}), /aria-current="page">[\s\S]*?<span>House<\/span>/, 'unknown active falls back to House');
   for (const cfg of [undefined, null, {}, { active: 5 }]) assert.doesNotMatch(P.render('tabbar', cfg, mk(), NOW, undefined), NOISE);
   const css = readFileSync(root + 'www/pulse-card.js', 'utf8');
   assert.match(css, /\.tab\{[^\n]*font-size:10\.5px[^\n]*min-height:44px/);
@@ -1762,9 +1762,9 @@ ok('tab bar renders four tabs, one per id, with aria-current on the active one o
 });
 
 ok('tab bar nav paths use the DASH constant and match real views', () => {
-  const html = P.render('tabbar', { active: 'now' }, mk(), NOW, {});
+  const html = P.render('tabbar', { active: 'house' }, mk(), NOW, {});
   const paths = [...html.matchAll(/data-path="([^"]*)"/g)].map((m) => m[1]);
-  assert.deepEqual(paths, ['/pulse-dashboard/now', '/pulse-dashboard/energy', '/pulse-dashboard/cameras', '/pulse-dashboard/house']);
+  assert.deepEqual(paths, ['/pulse-dashboard/house', '/pulse-dashboard/energy', '/pulse-dashboard/cameras', '/pulse-dashboard/settings']);
   const viewPaths = readdirSync(root + 'views').filter((x) => x.startsWith('info-')).map((f) => yaml.load(readFileSync(root + 'views/' + f, 'utf8')).path);
   for (const p of paths) { assert.ok(p.startsWith(P.DASH + '/'), p); assert.ok(viewPaths.includes(p.slice(P.DASH.length + 1)), p); }
   assert.ok(P.TABS.every((t) => t.path.startsWith(P.DASH)));
@@ -1797,11 +1797,11 @@ ok('placement: fixed in-flow decision from ancestor snapshots, naming the offend
 });
 
 ok('tab bar markup: in-flow by default (fail safe), fixed + spacer of the same height only when the probe says fixed', () => {
-  const inflow = P.render('tabbar', { active: 'now' }, mk(), NOW, {});
-  const inflow2 = P.render('tabbar', { active: 'now' }, mk(), NOW, { tb: 'inflow' });
+  const inflow = P.render('tabbar', { active: 'house' }, mk(), NOW, {});
+  const inflow2 = P.render('tabbar', { active: 'house' }, mk(), NOW, { tb: 'inflow' });
   assert.equal(inflow, inflow2);
   assert.doesNotMatch(inflow, /tabbar-spacer|class="tabs fixed"/);
-  const fixed = P.render('tabbar', { active: 'now' }, mk(), NOW, { tb: 'fixed' });
+  const fixed = P.render('tabbar', { active: 'house' }, mk(), NOW, { tb: 'fixed' });
   assert.match(fixed, /<div class="tabbar-spacer" style="--tbh:calc\(58px \+ max\(10px, env\(safe-area-inset-bottom, 0px\)\)\)" aria-hidden="true"><\/div>/);
   assert.match(fixed, /<nav class="tabs fixed" aria-label="Pulse">/);
   const src = readFileSync(root + 'www/pulse-card.js', 'utf8');
@@ -1824,16 +1824,16 @@ ok('TABBAR_ENABLED=false renders nothing (one-line switch)', () => {
   try {
     const Off = require(tmp);
     assert.equal(Off.TABBAR_ENABLED, false);
-    assert.equal(Off.render('tabbar', { active: 'now' }, mk(), NOW, { tb: 'fixed' }), '');
+    assert.equal(Off.render('tabbar', { active: 'house' }, mk(), NOW, { tb: 'fixed' }), '');
   } finally { unlinkSync(tmp); }
 });
 
 ok('every Pulse view has exactly one tabbar card, last in its section, with its own active tab', () => {
   const files = readdirSync(root + 'views').filter((x) => x.startsWith('info-'));
-  assert.equal(files.length, 14); // now, energy, house, cameras, 10 rooms (no classic views)
+  assert.equal(files.length, 14); // house, energy, settings, cameras, 10 rooms (no classic views)
   const modes = (node, out = []) => { if (Array.isArray(node)) node.forEach((x) => modes(x, out)); else if (node && typeof node === 'object') { if (node.mode === 'tabbar') out.push(node); Object.values(node).forEach((x) => modes(x, out)); } return out; };
-  // Rooms and gardens are reached from the Now page's room list, so they sit under Now.
-  const own = { 'info-energy.yaml': 'energy', 'info-cameras.yaml': 'cameras', 'info-house.yaml': 'house' };
+  // Rooms and gardens are reached from the House page's room list, so they sit under House.
+  const own = { 'info-energy.yaml': 'energy', 'info-cameras.yaml': 'cameras', 'info-settings.yaml': 'settings' };
   const seen = new Set();
   for (const f of files) {
     const v = yaml.load(readFileSync(root + 'views/' + f, 'utf8'));
@@ -1841,16 +1841,18 @@ ok('every Pulse view has exactly one tabbar card, last in its section, with its 
     assert.equal(bars.length, 1, f);
     const cards = v.sections[0].cards;
     assert.equal(cards[cards.length - 1].mode, 'tabbar', `${f}: last card`);
-    assert.equal(bars[0].active, own[f] || 'now', f);
+    assert.equal(bars[0].active, own[f] || 'house', f);
     assert.ok(P.TABS.some((t) => t.id === bars[0].active), `${f}: active names a tab`);
     seen.add(bars[0].active);
     assert.equal(bars[0].type, 'custom:pulse-card');
   }
-  assert.deepEqual([...seen].sort(), ['cameras', 'energy', 'house', 'now']);
+  assert.deepEqual([...seen].sort(), ['cameras', 'energy', 'house', 'settings']);
 });
 
-ok('tab bar: exactly Now, Energy, Cameras, House, each a real Pulse view, each activatable', () => {
-  assert.deepEqual(P.TABS.map((t) => t.id), ['now', 'energy', 'cameras', 'house']);
+ok('tab bar: exactly House, Energy, Cameras, Settings, each a real Pulse view, each activatable', () => {
+  assert.deepEqual(P.TABS.map((t) => t.id), ['house', 'energy', 'cameras', 'settings']);
+  assert.deepEqual(P.TABS.map((t) => t.label), ['House', 'Energy', 'Cameras', 'Settings']);
+  assert.deepEqual(P.TABS.map((t) => t.path), ['/pulse-dashboard/house', '/pulse-dashboard/energy', '/pulse-dashboard/cameras', '/pulse-dashboard/settings']);
   const paths = new Set(readdirSync(root + 'views').filter((x) => x.startsWith('info-')).map((f) => yaml.load(readFileSync(root + 'views/' + f, 'utf8')).path));
   for (const t of P.TABS) assert.ok(paths.has(t.path.slice(P.DASH.length + 1)), t.path);
   for (const t of P.TABS) {
@@ -1864,7 +1866,7 @@ ok('no Pulse page renders a Mobile dashboard link (every mode, rooms with attent
   const hass = withRooms(P.ROOM_ORDER.map(FULL), items);
   for (const [k, html] of Object.entries(renderAll(hass))) assert.doesNotMatch(html, /mobile-dashboard/, k);
   assert.match(P.render('status', {}, hass, NOW), /class="chip"[^>]*>Mo/);
-  assert.doesNotMatch(readFileSync(root + 'views/info-now.yaml', 'utf8'), /footer/);
+  assert.doesNotMatch(readFileSync(root + 'views/info-house.yaml', 'utf8'), /footer/);
 });
 
 ok('status card: each attention row links to its own room; +N more opens the first room not already shown', () => {
@@ -1888,7 +1890,7 @@ ok('status card: +N more skips rooms already shown and falls back to Now for roo
   const s2 = P.render('status', {}, withRooms(P.ROOM_ORDER.map(FULL), same), NOW);
   assert.match(s2, /data-path="\/pulse-dashboard\/room-kitchen"[^>]*>\+1 more/);
   const none = [attn('a', 'kitchen', 'k1', 't'), attn('b', 'kitchen', 'k2', 't'), attn('c', 'kitchen', 'k3', 't'), { room: 'House', key: '', kind: 'unexplained_reason', text: 'x', nav: '' }];
-  assert.match(P.render('status', {}, withRooms(P.ROOM_ORDER.map(FULL), none), NOW), /data-path="\/pulse-dashboard\/now"[^>]*>\+1 more/);
+  assert.match(P.render('status', {}, withRooms(P.ROOM_ORDER.map(FULL), none), NOW), /data-path="\/pulse-dashboard\/house"[^>]*>\+1 more/);
 });
 
 ok('info_rooms cfg: every nav is /pulse-dashboard/room-<key> and names a real view; classic views and occupied/decision sensors are gone', () => {
@@ -2259,7 +2261,7 @@ ok('house page: mode banner, modifier picker and vacation threshold write only t
   });
   const at = Date.parse('2026-10-29T14:00:00+00:00');
   const head = P.render('house-head', {}, hass, at);
-  assert.match(head, />House</);
+  assert.match(head, />Settings</);
   assert.match(head, /Away/);
   assert.match(head, /vacation heating in 44 h/);
   assert.match(head, /Sitter modifier/);
@@ -2288,14 +2290,14 @@ ok('house page: mode banner, modifier picker and vacation threshold write only t
   assert.equal(calls[0][2].value, 168);
 });
 
-ok('house page is reachable from the Now header pill and the Heating card, and registered in the dashboard', () => {
+ok('settings page is reachable from the House header pill and the Heating card, and registered in the dashboard', () => {
   const hdr = P.render('now-header', {}, mk(), NOW);
-  assert.match(hdr, new RegExp(`data-act="nav" data-path="${P.HOUSE_PATH}"`));
-  assert.match(P.render('bins-heating', {}, mk(), NOW), new RegExp(`data-path="${P.HOUSE_PATH}"`));
-  assert.match(readFileSync(root + 'info-dashboard.yaml', 'utf8'), /views\/info-house\.yaml/);
-  const v = yaml.load(readFileSync(root + 'views/info-house.yaml', 'utf8'));
+  assert.match(hdr, new RegExp(`data-act="nav" data-path="${P.SETTINGS_PATH}"`));
+  assert.match(P.render('bins-heating', {}, mk(), NOW), new RegExp(`data-path="${P.SETTINGS_PATH}"`));
+  assert.match(readFileSync(root + 'info-dashboard.yaml', 'utf8'), /views\/info-settings\.yaml/);
+  const v = yaml.load(readFileSync(root + 'views/info-settings.yaml', 'utf8'));
   assert.deepEqual(v.sections[0].cards.map((c) => c.mode), ['house-head', 'house-mode', 'house-people', 'house-heating', 'tabbar']);
-  assert.equal(v.path, 'house');
+  assert.equal(v.path, 'settings');
 });
 
 ok('house heating section: central heating toggle, temperature steppers and window grace write to fixed helpers within range', () => {
@@ -2891,7 +2893,7 @@ ok('unexplained_reason: a catalogue reason with no wording raises attention; the
   assert.match(status, /data-path="\/pulse-dashboard\/room-bedroom"/, 'the link goes to the real room first');
   const only = P.render('status', {}, withRooms(P.ROOM_ORDER.map(FULL), [], cat(['lighting:brand_new_reason'])), NOW);
   assert.match(only, /1 needs attention[\s\S]*Reason not worded/);
-  assert.match(only, /data-path="\/pulse-dashboard\/now"/);
+  assert.match(only, /data-path="\/pulse-dashboard\/house"/);
   for (const bad of ['nope', 7, [1, null, 'bad key', 'lighting:ok_but_unknown', '../etc:x']]) assert.deepEqual(P.unexplainedReasons(mk(cat(bad))).filter((k) => k !== 'lighting:ok_but_unknown'), [], 'only well-formed keys are reported');
   assert.deepEqual(P.unexplainedReasons(mk()), [], 'no catalogue sensor: an unknown is not a gap');
   const flood = P.unexplainedReasons(mk(cat(Array.from({ length: 500 }, (_, i) => `lighting:r${i}`))));
@@ -2933,3 +2935,24 @@ ok('this step adds no write paths', () => {
 });
 
 console.log(`\n${n} test groups passed`);
+
+ok('Pulse page paths: info-dashboard.yaml lists House first then Energy, Settings, Cameras; the old Now path is gone everywhere', () => {
+  const dash = readFileSync(root + 'info-dashboard.yaml', 'utf8');
+  const includes = [...dash.matchAll(/!include (views\/info-[a-z_-]+\.yaml)/g)].map((m) => m[1]);
+  const viewPaths = includes.map((f) => yaml.load(readFileSync(root + f, 'utf8')).path);
+  assert.deepEqual(viewPaths.slice(0, 4), ['house', 'energy', 'settings', 'cameras']);
+  assert.equal(new Set(viewPaths).size, viewPaths.length, 'view paths are unique');
+  assert.equal(yaml.load(readFileSync(root + 'views/info-house.yaml', 'utf8')).title, 'House');
+  assert.equal(yaml.load(readFileSync(root + 'views/info-settings.yaml', 'utf8')).title, 'Settings');
+  assert.ok(P.ICON.gear && P.ICON.home);
+  const files = [...includes, 'info-dashboard.yaml', 'info_templates.yaml', 'www/pulse-card.js', 'wallboard.yaml', 'dashboard.yaml', 'views/home.yaml', 'views/wallboard.yaml', 'views/mo.yaml']
+    .concat(readdirSync(root + 'packages').map((f) => 'packages/' + f));
+  const known = new Set(viewPaths);
+  for (const f of files) {
+    const text = readFileSync(root + f, 'utf8');
+    assert.doesNotMatch(text, /pulse-dashboard\/now\b/, `${f} references the old Now path`);
+    for (const m of text.matchAll(/pulse-dashboard\/([a-z_-]+)/g)) assert.ok(known.has(m[1]), `${f}: /pulse-dashboard/${m[1]} is not a view path`);
+  }
+  const everyMode = Object.entries(renderAll(withRooms(P.ROOM_ORDER.map(FULL), []))).map(([, html]) => html).join('');
+  assert.doesNotMatch(everyMode, /pulse-dashboard\/now\b|Back to Now/);
+});

@@ -10,7 +10,7 @@
 #
 # Per-room activity and the lights explanation no longer come from here: they read
 # `sensor.<location>_history` (mqtt.yaml, homerun's retained history). This sensor stays only for
-# Now's "What the house did" until that switches to `sensor.house_history`.
+# House's "What the house did" until that switches to `sensor.house_history`.
 #
 # Aborts live in their own list so a burst of them can never push decisions out of the feed.
 # Noisy automations (see `noisy` below) are dropped before they are stored.
