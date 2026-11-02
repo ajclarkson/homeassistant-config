@@ -3035,7 +3035,7 @@ ok('room page order: banner, Lights, Heating, Presence, Media, Recent activity',
   const html = cards.filter((m) => m !== 'chart').map((m) => P.render(m, { room: 'parlour' }, hass, NOW)).join('');
   const heads = [...html.matchAll(/class="lbl" style="margin:4px 4px -10px">([^<]+)</g)].map((m) => m[1]);
   assert.deepEqual(heads, ['Lights', 'Heating', 'Presence', 'Media', 'Recent activity']);
-  assert.match(html.slice(0, html.indexOf('>Lights<')), /Parlour[\s\S]*All good/, 'the banner comes first');
+  assert.match(html.slice(0, html.indexOf('>Lights<')), /^<div class="p"><div class="card pad[\s\S]*All good[\s\S]*settings-open/, 'the banner (with the gear) comes first, no name row');
   assert.doesNotMatch(html, /Why it/, 'no separate explanation card');
   // The bathroom puts the fan row beside Media, so the order of the named sections is unchanged.
   const bath = loadYaml('info_templates.yaml').pulse_room.card.cards.map((c) => (c.type === 'conditional' ? 'chart' : c.mode));
@@ -3091,6 +3091,20 @@ ok('settings: the gear is in every room header and the sheet is a labelled dialo
     assert.doesNotMatch(open, NOISE, k);
   }
   assert.equal(P.render('room-head', { room: 'bedroom' }, sheetHass(), NOW), P.render('room-head', { room: 'bedroom' }, sheetHass(), NOW, {}), 'no ui is the same as closed');
+});
+
+ok('room head: no back link or name row (HA subview header has them); the gear sits inside the banner card', () => {
+  for (const k of P.ALL_ROOM_KEYS) {
+    const html = P.render('room-head', { room: k }, sheetHass(), NOW, {});
+    assert.ok(!html.includes(P.HOUSE_PATH), `${k}: no link to the house`);
+    assert.doesNotMatch(html, /Back to House|font-size:28px/, k);
+    assert.ok(html.startsWith('<div class="p"><div class="card pad'), `${k}: the banner card is the first element`);
+    const card = html.slice(0, html.indexOf('</svg></button></div>') + 21);
+    assert.equal((html.match(/data-act="settings-open"/g) || []).length, 1, k);
+    assert.ok(card.includes('data-act="settings-open"'), `${k}: gear inside the banner`);
+    assert.ok(card.indexOf('class="dot') < card.indexOf('settings-open'), `${k}: dot, text, then gear`);
+    assert.match(card, /class="round quiet tap"[^>]*align-self:flex-start/, k);
+  }
 });
 
 ok('settings: open and close are state in ui, focus goes into the sheet then back to the gear, and the page underneath is unchanged', () => {
