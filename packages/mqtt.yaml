@@ -204,6 +204,25 @@ mqtt:
       device_class: energy
       state_class: total_increasing
 
+    # Garden lighting (published retained by homerun, so they survive an HA restart)
+    # The off time ("00:00") is the state; preview_min is null when the garden has no preview limit.
+    - name: "Front Garden Lighting Window"
+      unique_id: front_garden_lighting_window
+      state_topic: "front_garden/lighting/window"
+      value_template: "{{ value_json.off }}"
+      json_attributes_topic: "front_garden/lighting/window"
+    - name: "Back Garden Lighting Window"
+      unique_id: back_garden_lighting_window
+      state_topic: "back_garden/lighting/window"
+      value_template: "{{ value_json.off }}"
+      json_attributes_topic: "back_garden/lighting/window"
+    # Today's calendar theme is the state; attributes are next ({date, theme} or null) and unknown_themes.
+    - name: "Front Garden Light Theme Calendar"
+      unique_id: front_garden_light_theme_calendar
+      state_topic: "front_garden/lighting/theme_calendar"
+      value_template: "{{ value_json.today }}"
+      json_attributes_topic: "front_garden/lighting/theme_calendar"
+
   binary_sensor:
     # Occupancy Topics
     - name: "Parlour Occupied"

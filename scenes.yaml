@@ -3111,7 +3111,7 @@
       state: 'off'
   metadata: {}
 - id: '1792000000002'
-  name: Front Garden All
+  name: Front Garden Normal
   entities:
     light.front_garden_light_birch:
       friendly_name: front_garden_light_birch
@@ -3249,5 +3249,39 @@
       - 255
       - 70
       - 0
+      brightness: 90
+  metadata: {}
+- id: '1792000000006'
+  name: Front Garden Christmas
+  entities:
+    light.front_garden_light_birch:
+      friendly_name: front_garden_light_birch
+      state: 'on'
+      color_mode: color_temp
+      color_temp_kelvin: 2700
+      brightness: 220
+    light.front_garden_light_maple:
+      friendly_name: front_garden_light_maple
+      state: 'on'
+      color_mode: rgb
+      rgb_color:
+      - 255
+      - 20
+      - 20
+      brightness: 230
+    light.front_garden_light_accent:
+      friendly_name: front_garden_light_accent
+      state: 'on'
+      color_mode: rgb
+      rgb_color:
+      - 255
+      - 20
+      - 20
+      brightness: 230
+    light.front_garden_light_porch:
+      friendly_name: front_garden_light_porch
+      state: 'on'
+      color_mode: color_temp
+      color_temp_kelvin: 2700
       brightness: 90
   metadata: {}

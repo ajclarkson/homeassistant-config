@@ -64,11 +64,16 @@ const withRooms = (rooms, attention, extra = {}) => mk({
 });
 const NOISE = /undefined|NaN|\[object|null/;
 const ALL_MODES = ['now-header', 'status', 'rooms', 'bins-heating', 'feed', 'footer', 'tabbar', 'energy-head', 'energy-day', 'energy-cost', 'energy-history', 'energy-usage'];
-const ROOM_MODES = ['room-head', 'why', 'scenes', 'media', 'automations', 'room-feed'];
+const SHARED_MODES = ['room-head', 'automations', 'room-feed'];
+const INDOOR_MODES = ['why', 'scenes', 'media'];
+const GARDEN_MODES = ['garden-lights', 'garden-theme'];
+const GARDENS = ['front_garden', 'back_garden'];
+const INDOOR_KEYS = P.ALL_ROOM_KEYS.filter((k) => !GARDENS.includes(k));
+const modesFor = (k) => SHARED_MODES.concat(GARDENS.includes(k) ? GARDEN_MODES : INDOOR_MODES);
 const renderAll = (hass) => {
   const out = {};
   for (const m of ALL_MODES) out[m] = P.render(m, {}, hass, NOW);
-  for (const k of P.ALL_ROOM_KEYS) for (const m of ROOM_MODES) out[`${m}:${k}`] = P.render(m, { room: k }, hass, NOW);
+  for (const k of P.ALL_ROOM_KEYS) for (const m of modesFor(k)) out[`${m}:${k}`] = P.render(m, { room: k }, hass, NOW);
   return out;
 };
 const noNoise = (out, label) => { for (const [k, v] of Object.entries(out)) assert.ok(!NOISE.test(v), `${label} ${k} contains noise: ${(v.match(NOISE) || [])[0]} in ${v.slice(0, 200)}`); };
@@ -128,10 +133,10 @@ ok('no-climate rooms: no numbers card, "no climate" in row', () => {
   const upTile = quiet.match(/<a class="rt tap[^"]*"[^>]*room-hallway_upstairs"[\s\S]*?<\/a>/)[0];
   assert.doesNotMatch(upTile, /–/, 'no bare dash for a room without climate');
   assert.doesNotMatch(out['why:hallway_upstairs'], /Heating target/);
-  for (const g of ['back_garden', 'front_garden']) {
-    assert.match(out[`room-head:${g}`], /Lights only/);
-    assert.doesNotMatch(out[`scenes:${g}`], /lights-toggle/);
-    assert.equal(out[`why:${g}`], '');
+  for (const g of GARDENS) {
+    assert.match(out[`room-head:${g}`], /Lights from sunset until bedtime/);
+    assert.doesNotMatch(out[`room-head:${g}`], /Lights only|Target|Room</);
+    assert.equal(out[`garden-theme:${g}`], '', 'no theme helper data in this fixture');
   }
 });
 
@@ -169,8 +174,9 @@ ok('manual marker: the Lighting card shows state only; the Why card explains who
 });
 
 ok('scene tiles use the spike scene map and highlight the active scene', () => {
-  const want = { parlour: ['all', 'lamps', 'dining', 'off'], kitchen: ['all', 'cabinets', 'off'], hallway_downstairs: ['daylight', 'low', 'off'], hallway_upstairs: ['daylight', 'low', 'off'], bedroom: ['all', 'all_full', 'lamps', 'off'], bathroom: ['full', 'low', 'off'], home_office: ['all', 'lamps', 'off'], foreign_office: ['all', 'off'], back_garden: ['all', 'off'], front_garden: ['all', 'autumn', 'halloween', 'bonfire', 'off'] };
+  const want = { parlour: ['all', 'lamps', 'dining', 'off'], kitchen: ['all', 'cabinets', 'off'], hallway_downstairs: ['daylight', 'low', 'off'], hallway_upstairs: ['daylight', 'low', 'off'], bedroom: ['all', 'all_full', 'lamps', 'off'], bathroom: ['full', 'low', 'off'], home_office: ['all', 'lamps', 'off'], foreign_office: ['all', 'off'] };
   for (const [k, ids] of Object.entries(want)) assert.deepEqual([...P.ROOMS[k].scenes].sort(), [...ids].sort(), k);
+  for (const g of GARDENS) assert.equal(P.ROOMS[g].scenes, undefined, `${g} offers no scenes of its own`);
 });
 
 ok('individual lights: collapsed by default inside the Lighting card with one chevron, expanded shows sliders/toggles/missing honestly', () => {
@@ -188,7 +194,7 @@ ok('individual lights: collapsed by default inside the Lighting card with one ch
   assert.match(open, /data-act="toggle" data-entity="switch.parlour_plug_table_lamp"/);
   assert.match(open, /Not found/);
   assert.match(P.render('scenes', { room: 'parlour' }, withRooms([{ ...FULL('parlour'), lights_on: 3, lights_total: 5 }], []), NOW), /3 of 5 on/);
-  for (const k of P.ALL_ROOM_KEYS) {
+  for (const k of INDOOR_KEYS) {
     const want = P.ROOMS[k].lights.length === 0;
     assert.equal(P.render('scenes', { room: k }, mk(), NOW).includes('lights-toggle'), !want, `${k} collapsed`);
     assert.equal(P.render('scenes', { room: k }, mk(), NOW, { open: true }).includes('lights-toggle'), !want, `${k} open`);
@@ -283,14 +289,18 @@ ok('device row sits under the scenes and only the bathroom page fills it', () =>
   assert.ok(modes.indexOf('device') === modes.indexOf('scenes') + 1, 'device directly after scenes');
   assert.equal(tpl.variables.fan, '');
   for (const f of readdirSync(root + 'views').filter((x) => /^info-room-/.test(x))) {
-    const v = yaml.load(readFileSync(root + 'views/' + f, 'utf8')).sections[0].cards.find((c) => c.template === 'pulse_room').variables;
+    const cards = yaml.load(readFileSync(root + 'views/' + f, 'utf8')).sections[0].cards;
+    const garden = GARDENS.some((g) => f === `info-room-${g}.yaml`);
+    assert.equal(cards.some((c) => c.template === 'pulse_garden'), garden, `${f} uses the garden template only for gardens`);
+    if (garden) continue;
+    const v = cards.find((c) => c.template === 'pulse_room').variables;
     assert.equal(!!v.fan, f === 'info-room-bathroom.yaml', f);
     if (v.fan) assert.deepEqual([v.fan, v.fan_decision], ['switch.bathroom_fan_extractor', 'sensor.bathroom_fan_decision']);
   }
 });
 
 ok('media only for rooms with players', () => {
-  for (const k of P.ALL_ROOM_KEYS) {
+  for (const k of INDOOR_KEYS) {
     const html = P.render('media', { room: k }, mk(), NOW);
     assert.equal(html === '', P.ROOMS[k].media.length === 0, k);
   }
@@ -2251,6 +2261,324 @@ ok('camera recordings: Frigate clips are parsed defensively and rendered as load
   assert.match(list, /Person · patio/);
   assert.match(list, /snapshot\.jpg/);
   assert.doesNotMatch(list, /<script/i);
+});
+
+
+// ── Gardens: lights row, theme picker, Now "Outside" group ───────────────────────────────────────
+const b = (state, attributes = {}, last_changed) => ({ state, attributes, ...(last_changed ? { last_changed } : {}) });
+const DAY = Date.parse('2026-11-02T12:00:00Z');
+const EVENING = Date.parse('2026-11-02T19:00:00Z');
+const NIGHT = Date.parse('2026-11-03T02:00:00Z');
+const FG = 'front_garden';
+const OPTIONS = ['normal', 'autumn', 'halloween', 'bonfire', 'christmas'];
+const FG_THEME = (theme, last_changed) => ({ 'input_select.front_garden_light_theme': b(theme, { options: OPTIONS }, last_changed) });
+// A front garden as the live registry describes it (Spike A): lights off, autumn picked, calendar following.
+const frontGarden = (over = {}) => mk({
+  'sensor.front_garden_lighting_scenes': b('scene.front_garden_autumn', { theme: 'autumn', off_scene: 'scene.front_garden_off', missing_themes: [], lights: ['light.a', 'light.b', 'light.c', 'light.d'], lights_on: 0 }),
+  'sensor.front_garden_lighting_window': b('00:00', { off: '00:00', preview_min: 10 }),
+  ...FG_THEME('autumn', '2026-11-01T08:00:00+00:00'),
+  'input_boolean.front_garden_light_theme_calendar_enabled': b('on'),
+  'sensor.front_garden_light_theme_calendar': b('autumn', { next: { date: '2026-11-05', theme: 'bonfire' }, unknown_themes: [] }),
+  'input_boolean.front_garden_automation_lights_enabled': b('on'),
+  'sun.sun': b('above_horizon'),
+  'sensor.sun_next_setting': b('2026-11-02T16:30:00+00:00'),
+  'scene.front_garden_off': b('2026-11-01T23:59:00+00:00'),
+  'scene.front_garden_autumn': b('2026-11-01T17:00:00+00:00'),
+  ...over,
+});
+const backGarden = (over = {}) => mk({
+  'sensor.back_garden_lighting_scenes': b('scene.back_garden_all', { theme: 'normal', off_scene: 'scene.back_garden_off', missing_themes: [], lights: ['switch.back_garden_plug_fence_lights'], lights_on: 0 }),
+  'sensor.back_garden_lighting_window': b('22:00', { off: '22:00', preview_min: null }),
+  'input_boolean.back_garden_automation_lights_enabled': b('on'),
+  'sun.sun': b('above_horizon'),
+  'sensor.sun_next_setting': b('2026-11-02T16:30:00+00:00'),
+  ...over,
+});
+const litScenes = (off = 2) => ({ 'sensor.front_garden_lighting_scenes': b('scene.front_garden_autumn', { theme: 'autumn', off_scene: 'scene.front_garden_off', missing_themes: [], lights: ['light.a', 'light.b'], lights_on: off }) });
+const dark = { 'sun.sun': b('below_horizon'), 'sensor.sun_next_setting': b('2026-11-03T16:28:00+00:00') };
+const gr = (hass, mode = 'garden-lights', t = DAY, room = FG) => P.render(mode, { room }, hass, t);
+const rowText = (html) => ({ h: (html.match(/class="h">([^<]*)</) || [])[1], s: (html.match(/class="s">([^<]*)</) || [])[1], btn: (html.match(/<button class="gbtn[^>]*>([^<]*)</) || [])[1], disabled: /<button class="gbtn[^>]*disabled/.test(html) });
+const optionsOf = (html) => [...html.matchAll(/data-option="([^"]*)"/g)].map((m) => m[1]);
+
+ok('garden config: two gardens with a theme or none, no scenes, climate or lights of their own', () => {
+  assert.deepEqual(P.GARDEN_ORDER, ['front_garden', 'back_garden']);
+  for (const g of GARDENS) {
+    assert.equal(P.ROOMS[g].kind, 'garden');
+    for (const k of ['scenes', 'climate', 'temp', 'hum', 'lights', 'media']) assert.equal(P.ROOMS[g][k], undefined, `${g}.${k}`);
+  }
+  assert.equal(P.ROOMS.front_garden.theme, 'input_select.front_garden_light_theme');
+  assert.equal(P.ROOMS.back_garden.theme, '');
+});
+
+ok('garden lights row: off by day says when it comes on, and the button turns the theme on', () => {
+  assert.deepEqual(rowText(gr(frontGarden())), { h: 'Off', s: 'On at sunset · 16:30', btn: 'Turn on', disabled: false });
+});
+
+ok('garden lights row: on in the evening window says until when, with the theme in the headline', () => {
+  const r = rowText(gr(frontGarden({ ...litScenes(), ...dark }), 'garden-lights', EVENING));
+  assert.deepEqual(r, { h: 'Autumn · on', s: 'Until 00:00 or bedtime', btn: 'Turn off', disabled: false });
+});
+
+ok('garden lights row: on by day is a preview ending preview_min after the latest activation', () => {
+  const at = (extra) => rowText(gr(frontGarden({ ...litScenes(), ...extra }))).s;
+  assert.equal(at({ 'scene.front_garden_autumn': b('2026-11-02T11:58:00+00:00') }), 'Preview · off by 12:08');
+  assert.equal(at({ 'scene.front_garden_autumn': b('2026-11-02T11:00:00+00:00') }), 'Preview · ending');
+  assert.equal(at({ 'scene.front_garden_autumn': b('unavailable') }), 'Preview · off within 10 min');
+  assert.equal(at({ 'scene.front_garden_autumn': b('2026-11-02T11:00:00+00:00'), 'scene.front_garden_bonfire': b('2026-11-02T11:59:00+00:00') }), 'Preview · off by 12:09', 'the latest garden scene counts');
+  assert.equal(at({ 'scene.front_garden_autumn': b('2026-11-01T11:00:00+00:00'), 'scene.front_garden_off': b('2026-11-02T11:59:00+00:00') }), 'Preview · ending', 'the off scene is not an activation');
+});
+
+ok('garden lights row: no preview limit says until the off time; an unknown window drops the time', () => {
+  const backOn = { 'sensor.back_garden_lighting_scenes': b('scene.back_garden_all', { off_scene: 'scene.back_garden_off', lights: ['switch.back_garden_plug_fence_lights'], lights_on: 1 }) };
+  assert.deepEqual(rowText(gr(backGarden(backOn), 'garden-lights', DAY, 'back_garden')), { h: 'On', s: 'Until 22:00', btn: 'Turn off', disabled: false });
+  const noWindow = { 'sensor.back_garden_lighting_window': b('unknown') };
+  assert.equal(rowText(gr(backGarden({ ...backOn, ...noWindow }), 'garden-lights', DAY, 'back_garden')).s, 'Until bedtime');
+  assert.equal(rowText(gr(frontGarden({ ...litScenes(), ...dark, 'sensor.front_garden_lighting_window': b('unknown') }), 'garden-lights', EVENING)).s, 'Until bedtime');
+  assert.equal(rowText(gr(backGarden(noWindow), 'garden-lights', DAY, 'back_garden')).s, 'On at sunset · 16:30');
+});
+
+ok('garden lights row: an off time after midnight keeps the window open; past it the lights are a preview again', () => {
+  const window = { 'sensor.front_garden_lighting_window': b('01:30', { off: '01:30', preview_min: 10 }) };
+  assert.equal(rowText(gr(frontGarden({ ...litScenes(), ...dark, ...window }), 'garden-lights', Date.parse('2026-11-03T00:30:00Z'))).s, 'Until 01:30 or bedtime');
+  const late = { ...litScenes(), ...dark, 'scene.front_garden_autumn': b('2026-11-03T01:58:00+00:00') };
+  assert.equal(rowText(gr(frontGarden(late), 'garden-lights', NIGHT)).s, 'Preview · off by 02:08');
+});
+
+ok('garden lights row: asleep, tomorrow, automation off, missing scene and no report', () => {
+  assert.equal(rowText(gr(frontGarden({ 'sensor.house_active_mode': b('sleep') }), 'garden-lights', EVENING)).s, 'House asleep · back at sunset');
+  assert.equal(rowText(gr(frontGarden(dark), 'garden-lights', EVENING)).s, 'On at sunset tomorrow');
+  assert.equal(rowText(gr(frontGarden({ 'sensor.sun_next_setting': b('unknown') }))).s, 'On at sunset tomorrow', 'no sunset time is invented');
+  const manual = rowText(gr(frontGarden({ 'input_boolean.front_garden_automation_lights_enabled': b('off') })));
+  assert.deepEqual([manual.s, manual.btn], ['Lights automation is off · they change only by hand', 'Turn on']);
+  const noScene = { 'sensor.front_garden_lighting_scenes': b('missing', { theme: 'christmas', off_scene: 'scene.front_garden_off', missing_themes: ['christmas'], lights: [], lights_on: 0 }), ...FG_THEME('christmas') };
+  assert.deepEqual(rowText(gr(frontGarden(noScene))), { h: 'Off', s: 'No scene for Christmas', btn: 'Turn on', disabled: true });
+  assert.deepEqual(rowText(gr(mk())), { h: 'Lights unknown', s: 'No lighting report from Home Assistant', btn: 'Turn on', disabled: true });
+});
+
+ok('garden lights row: a lit garden whose theme scene went missing can still be turned off', () => {
+  const r = rowText(gr(frontGarden({ 'sensor.front_garden_lighting_scenes': b('missing', { theme: 'christmas', off_scene: 'scene.front_garden_off', missing_themes: ['christmas'], lights: ['light.a'], lights_on: 1 }) })));
+  assert.deepEqual([r.btn, r.disabled], ['Turn off', false]);
+});
+
+ok('garden lights: count whatever the off scene lists (switches too), clamped to the list', () => {
+  const scenes = (lights, lights_on) => ({ 'sensor.back_garden_lighting_scenes': b('scene.back_garden_all', { off_scene: 'scene.back_garden_off', lights, lights_on }) });
+  const model = (lights, n) => P.gardenModel(backGarden(scenes(lights, n)), 'back_garden', DAY);
+  const one = model(['switch.back_garden_plug_fence_lights'], 1);
+  assert.deepEqual([one.lights.length, one.lightsOn, one.on], [1, 1, true]);
+  assert.equal(model(['switch.x'], 9).lightsOn, 1);
+  assert.equal(model([], 3).on, false, 'no listed lights means nothing can be on');
+});
+
+ok('garden scene targets outside the garden are refused', () => {
+  const g = P.gardenModel(frontGarden({ 'sensor.front_garden_lighting_scenes': b('scene.parlour_all', { off_scene: 'light.front_garden_off', lights: [], lights_on: 0 }) }), FG, DAY);
+  assert.deepEqual([g.onScene, g.offScene], ['', '']);
+});
+
+ok('garden theme tiles come from the helper options, with the helper state active', () => {
+  const html = gr(frontGarden(), 'garden-theme');
+  assert.deepEqual(optionsOf(html), OPTIONS);
+  assert.match(html, /class="tile on" data-act="garden-theme" data-garden="front_garden" data-option="autumn" aria-pressed="true"/);
+  const custom = gr(frontGarden({ 'input_select.front_garden_light_theme': b('spring', { options: ['spring', 'summer_party'] }) }), 'garden-theme');
+  assert.deepEqual(optionsOf(custom), ['spring', 'summer_party']);
+  assert.match(custom, /Summer party/, 'unknown options get a prettified label');
+  assert.equal(gr(backGarden(), 'garden-theme', DAY, 'back_garden'), '', 'a garden without a theme helper renders nothing');
+  assert.equal(gr(mk(), 'garden-theme'), '', 'no helper data renders nothing');
+});
+
+ok('every theme option in helpers.yaml has an icon and a label', () => {
+  const helpers = yaml.load(readFileSync(root + 'packages/helpers.yaml', 'utf8'));
+  const themes = Object.entries(helpers.input_select).filter(([id]) => id.endsWith('_light_theme'));
+  assert.ok(themes.length > 0);
+  for (const [id, h] of themes) {
+    for (const o of h.options) {
+      assert.ok(P.THEME_ICON[o] && P.ICON[P.THEME_ICON[o]], `${id}: option "${o}" has no icon`);
+      assert.ok(P.THEME_LABELS[o], `${id}: option "${o}" has no label`);
+    }
+  }
+});
+
+ok('theme source line: paused, from calendar, picked by hand, and no next date', () => {
+  const src = (over) => P.themeSource(P.gardenModel(frontGarden(over), FG, DAY));
+  assert.equal(src({}), 'From calendar · Bonfire from Thu 5 Nov');
+  assert.equal(src({ 'input_boolean.front_garden_light_theme_calendar_enabled': b('off') }), 'Calendar paused · stays until you change it');
+  assert.equal(src(FG_THEME('halloween')), 'Picked by hand · calendar resumes Thu 5 Nov with Bonfire');
+  const never = { 'sensor.front_garden_light_theme_calendar': b('autumn', { next: null, unknown_themes: [] }) };
+  assert.equal(src(never), 'From calendar');
+  assert.equal(src({ ...never, ...FG_THEME('halloween') }), 'Picked by hand');
+  assert.equal(src({ 'sensor.front_garden_light_theme_calendar': b('unknown') }), '', 'no calendar report, no claim');
+  assert.equal(src({ 'sensor.front_garden_light_theme_calendar': b('autumn', { next: '{"date":"2026-11-05","theme":"bonfire"}' }) }), 'From calendar · Bonfire from Thu 5 Nov');
+  assert.equal(src({ 'sensor.front_garden_light_theme_calendar': b('autumn', { next: { date: '2026-13-45', theme: 'bonfire' } }) }), 'From calendar');
+});
+
+ok('theme card: applies at sunset only when the garden is off and the pick has not been seen yet', () => {
+  const picked = FG_THEME('bonfire', '2026-11-02T11:00:00+00:00');
+  assert.match(gr(frontGarden(picked), 'garden-theme'), /Applies at sunset · 16:30/);
+  assert.doesNotMatch(gr(frontGarden(), 'garden-theme'), /Applies at sunset/, 'the autumn look was seen after the pick');
+  assert.doesNotMatch(gr(frontGarden({ ...litScenes(), ...picked }), 'garden-theme'), /Applies at sunset/, 'on now');
+  assert.doesNotMatch(gr(frontGarden({ ...picked, 'input_boolean.front_garden_automation_lights_enabled': b('off') }), 'garden-theme'), /Applies at sunset/, 'automation off');
+});
+
+ok('theme card: Use calendar only when the calendar is not in charge; the follow toggle is always there', () => {
+  assert.doesNotMatch(gr(frontGarden(), 'garden-theme'), /Use calendar/);
+  assert.match(gr(frontGarden(), 'garden-theme'), /data-act="toggle" data-entity="input_boolean.front_garden_light_theme_calendar_enabled"/);
+  const paused = gr(frontGarden({ 'input_boolean.front_garden_light_theme_calendar_enabled': b('off') }), 'garden-theme');
+  assert.match(paused, /data-act="use-calendar" data-garden="front_garden"/);
+  assert.match(paused, /Back to Autumn/);
+  assert.match(gr(frontGarden(FG_THEME('halloween')), 'garden-theme'), /data-act="use-calendar"/);
+});
+
+ok('garden writes: power uses the sensor scenes, themes use the helper, Use calendar toggles then selects', async () => {
+  const calls = [];
+  const wrap = (h) => ({ ...h, callService: (d, s, data) => { calls.push([d, s, data]); return Promise.resolve(); } });
+  const el = (dataset) => ({ dataset });
+  const h = wrap(frontGarden());
+  await P.handleAction(h, el({ act: 'garden-power', garden: FG, want: 'on' }));
+  await P.handleAction(h, el({ act: 'garden-power', garden: FG, want: 'off' }));
+  await P.handleAction(h, el({ act: 'garden-theme', garden: FG, option: 'bonfire' }));
+  assert.deepEqual(calls, [
+    ['scene', 'turn_on', { entity_id: 'scene.front_garden_autumn' }],
+    ['scene', 'turn_on', { entity_id: 'scene.front_garden_off' }],
+    ['input_select', 'select_option', { entity_id: 'input_select.front_garden_light_theme', option: 'bonfire' }],
+  ]);
+  calls.length = 0;
+  await P.handleAction(wrap(frontGarden({ 'input_boolean.front_garden_light_theme_calendar_enabled': b('off'), ...FG_THEME('halloween') })), el({ act: 'use-calendar', garden: FG }));
+  assert.deepEqual(calls, [
+    ['input_boolean', 'turn_on', { entity_id: 'input_boolean.front_garden_light_theme_calendar_enabled' }],
+    ['input_select', 'select_option', { entity_id: 'input_select.front_garden_light_theme', option: 'autumn' }],
+  ]);
+  calls.length = 0;
+  await P.handleAction(wrap(frontGarden(FG_THEME('halloween'))), el({ act: 'use-calendar', garden: FG }));
+  assert.deepEqual(calls, [['input_select', 'select_option', { entity_id: 'input_select.front_garden_light_theme', option: 'autumn' }]], 'the toggle is already on');
+});
+
+ok('garden writes fail loudly: bad option, no theme, not a garden, no scene, calendar theme not an option', async () => {
+  const noop = (h) => ({ ...h, callService: () => assert.fail('must not call') });
+  const el = (dataset) => ({ dataset });
+  const fg = noop(frontGarden());
+  assert.throws(() => P.handleAction(fg, el({ act: 'garden-theme', garden: FG, option: 'diwali' })), /not a theme/);
+  assert.throws(() => P.handleAction(fg, el({ act: 'garden-theme', garden: 'back_garden', option: 'normal' })), /no theme/);
+  assert.throws(() => P.handleAction(fg, el({ act: 'garden-power', garden: 'parlour', want: 'on' })), /unknown garden/);
+  assert.throws(() => P.handleAction(fg, el({ act: 'garden-power', garden: FG, want: 'maybe' })), /unknown garden power/);
+  const missing = noop(frontGarden({ 'sensor.front_garden_lighting_scenes': b('missing', { off_scene: 'scene.front_garden_off', lights: [], lights_on: 0 }) }));
+  assert.throws(() => P.handleAction(missing, el({ act: 'garden-power', garden: FG, want: 'on' })), /no scene to turn on/);
+  const odd = noop(frontGarden({ 'input_boolean.front_garden_light_theme_calendar_enabled': b('off'), 'sensor.front_garden_light_theme_calendar': b('diwali') }));
+  await assert.rejects(async () => P.handleAction(odd, el({ act: 'use-calendar', garden: FG })), /not an option/);
+});
+
+ok('validate: garden modes need a garden, indoor modes need a room, shared modes take either', () => {
+  for (const m of GARDEN_MODES) {
+    assert.throws(() => P.render(m, { room: 'parlour' }, mk(), NOW), /for gardens/, m);
+    assert.throws(() => P.render(m, {}, mk(), NOW), /known room/, m);
+    for (const g of GARDENS) assert.doesNotThrow(() => P.render(m, { room: g }, mk(), NOW), `${m} ${g}`);
+  }
+  for (const m of INDOOR_MODES) {
+    for (const g of GARDENS) assert.throws(() => P.render(m, { room: g }, mk(), NOW), /for indoor rooms/, `${m} ${g}`);
+    assert.doesNotThrow(() => P.render(m, { room: 'parlour' }, mk(), NOW), m);
+  }
+  for (const m of SHARED_MODES) for (const k of P.ALL_ROOM_KEYS) assert.doesNotThrow(() => P.render(m, { room: k }, mk(), NOW), `${m} ${k}`);
+});
+
+ok('garden page: banner describes the garden, the automation row names the window, attention has its own label', () => {
+  const head = gr(frontGarden(), 'room-head');
+  assert.match(head, /Evening lighting/);
+  assert.match(head, /Lights from sunset until 00:00 and bedtime/);
+  assert.match(gr(frontGarden({ 'sensor.front_garden_lighting_window': b('unknown') }), 'room-head'), /Lights from sunset until bedtime/);
+  const auto = gr(frontGarden(), 'automations');
+  assert.match(auto, /Sunset until 00:00; off when the house goes to sleep/);
+  assert.doesNotMatch(auto, /presence and time of day/);
+  assert.match(gr(frontGarden({ 'sensor.front_garden_lighting_window': b('unknown') }), 'automations'), /From sunset; off when/);
+  assert.match(P.render('automations', { room: 'bedroom' }, mk(), NOW), /Decides lights from presence and time of day/);
+  const item = { room: 'Front garden', key: FG, kind: 'garden_theme_config', text: 'No scene for Christmas', nav: '/pulse-dashboard/room-front_garden' };
+  const warn = gr(frontGarden({ 'sensor.info_attention': b('1', { items: JSON.stringify([item]) }) }), 'room-head');
+  assert.match(warn, /Theme setup/);
+  assert.match(warn, /No scene for Christmas/);
+});
+
+ok('Now page: an Outside group with both gardens linking to their Pulse pages, apart from the indoor groups', () => {
+  const states = { ...frontGarden().states, ...backGarden().states };
+  const calm = withRooms(calmRooms(), [], states);
+  const rooms = P.render('rooms', {}, calm, DAY);
+  assert.match(rooms, />Outside</);
+  assert.equal(count(rooms, /class="rt gt tap wide"/g), 2);
+  assert.match(rooms, /data-path="\/pulse-dashboard\/room-front_garden"/);
+  assert.match(rooms, /data-path="\/pulse-dashboard\/room-back_garden"/);
+  assert.match(rooms, /Front garden<\/span><\/div><div class="t gh">Off<\/div><div class="b"><span>On at sunset · 16:30</);
+  assert.ok(rooms.indexOf('>Outside<') > rooms.indexOf('>Rooms<'), 'after the indoor groups');
+  assert.equal(count(rooms, /class="rt tap[" ]/g), 8, 'gardens are not indoor tiles');
+  assert.doesNotMatch(rooms, /class="dot warn"/);
+  const flagged = withRooms(calmRooms(), [attn('Front garden', FG, 'garden_theme_config', 'No scene for Christmas')], states);
+  const withDot = P.render('rooms', {}, flagged, DAY);
+  assert.equal(count(withDot, /class="dot warn"/g), 1);
+  assert.match(withDot.match(/<a class="rt gt[\s\S]*?<\/a>/)[0], /class="dot warn"/, 'on the front garden tile');
+  assert.doesNotMatch(withDot, /Needs attention/, 'gardens never join the indoor attention group');
+  const status = P.render('status', {}, flagged, DAY);
+  assert.match(status, /1 needs attention[\s\S]*Front garden<\/b> · Theme setup/);
+  assert.match(status, /data-path="\/pulse-dashboard\/room-front_garden"/);
+  noNoise({ rooms, withDot, status }, 'outside');
+});
+
+ok('the daily calendar publish is plumbing and stays out of the feed', () => {
+  const entries = [
+    { loc: FG, ts: '2026-11-02T00:05:00+00:00', decision: 'publish_calendar', auto: 'front_garden:lighting:theme_calendar', reason: 'not_a_calendar_boundary', sentence: 'CALPLUMB' },
+    { loc: FG, ts: '2026-11-02T00:06:00+00:00', decision: 'switch_theme', auto: 'front_garden:lighting:theme_calendar', reason: 'calendar_boundary', sentence: 'Front garden theme switched · calendar' },
+  ];
+  const html = gr(frontGarden({ 'sensor.info_decision_feed': b('ok', { entries: JSON.stringify(entries), by_room: JSON.stringify([]) }) }), 'room-feed');
+  assert.doesNotMatch(html, /CALPLUMB/);
+  assert.match(html, /Front garden theme switched · calendar/);
+});
+
+ok('garden YAML: views use the garden template, Mobile links to Pulse, feed and attention wording are in place', () => {
+  const tpl = yaml.load(readFileSync(root + 'info_templates.yaml', 'utf8'));
+  assert.deepEqual(tpl.pulse_garden.card.cards.map((c) => c.mode), ['room-head', 'garden-lights', 'garden-theme', 'automations', 'room-feed']);
+  for (const c of tpl.pulse_garden.card.cards) assert.doesNotThrow(() => P.render(c.mode, { room: FG }, mk(), NOW), c.mode);
+  for (const g of GARDENS) {
+    const v = yaml.load(readFileSync(root + `views/info-room-${g}.yaml`, 'utf8'));
+    assert.deepEqual(v.sections[0].cards.find((c) => c.template === 'pulse_garden').variables, { room: g });
+  }
+  const mobile = readFileSync(root + 'views/front-garden.yaml', 'utf8');
+  assert.match(mobile, /name: Lights and themes[\s\S]*navigation_path: \/pulse-dashboard\/room-front_garden/);
+  assert.doesNotMatch(mobile, /scene_card|light_theme_option|Follow calendar|title: Theme/);
+  assert.match(mobile, /lighting_automation_section_sleep_hold/);
+  assert.match(readFileSync(root + 'views/back-garden.yaml', 'utf8'), /scene\.back_garden_all/, 'back garden Mobile unchanged');
+  const feedYaml = readFileSync(root + 'packages/info_surface_feed.yaml', 'utf8');
+  for (const w of ["'switch_theme': 'theme switched'", "'start_preview': 'preview started'", "'calendar_boundary': 'calendar'", "'calendar_boundary_catch_up': 'calendar, after a restart'", "'on_outside_evening_window': 'turned on outside the evening'", "'preview_ended': 'preview over'", "'theme_scene_missing': 'no scene for this theme'"]) assert.ok(feedYaml.includes(w), w);
+  const rooms = readFileSync(root + 'packages/info_surface_rooms.yaml', 'utf8');
+  assert.ok(!/\/mobile-dashboard\/(front|back)-garden'\]/.test(rooms), 'garden attention no longer links to Mobile');
+  assert.ok(rooms.includes("'kind': 'garden_theme_config'"));
+});
+
+ok('garden sensors: MQTT topics and the lighting scenes template per garden', () => {
+  const mqtt = yaml.load(readFileSync(root + 'packages/mqtt.yaml', 'utf8')).mqtt.sensor;
+  const by = (id) => mqtt.find((x) => x.unique_id === id);
+  for (const g of GARDENS) {
+    const w = by(`${g}_lighting_window`);
+    assert.deepEqual([w.state_topic, w.json_attributes_topic, w.value_template], [`${g}/lighting/window`, `${g}/lighting/window`, '{{ value_json.off }}']);
+  }
+  const c = by('front_garden_light_theme_calendar');
+  assert.deepEqual([c.state_topic, c.json_attributes_topic, c.value_template], ['front_garden/lighting/theme_calendar', 'front_garden/lighting/theme_calendar', '{{ value_json.today }}']);
+  assert.equal(by('back_garden_light_theme_calendar'), undefined);
+  const templates = yaml.load(readFileSync(root + 'packages/templates.yaml', 'utf8')).template.flatMap((t) => t.sensor || []);
+  for (const g of GARDENS) {
+    const t = templates.find((x) => x.unique_id === `${g}_lighting_scenes`);
+    assert.ok(t, g);
+    assert.deepEqual(Object.keys(t.attributes), ['theme', 'off_scene', 'missing_themes', 'lights', 'lights_on']);
+    assert.match(t.state, new RegExp(`area_entities\\('${g}'\\)`));
+    assert.match(t.state, /'missing'/);
+    assert.match(t.attributes.off_scene, /scene_control_off/);
+    assert.doesNotMatch(JSON.stringify(t), /scene\.(front|back)_garden/, 'no scene id is written in the template');
+    assert.doesNotMatch(t.attributes.lights, /light\./, 'lights are whatever the off scene lists, not only light.*');
+  }
+  assert.match(templates.find((x) => x.unique_id === 'front_garden_lighting_scenes').state, /input_select\.front_garden_light_theme/);
+  assert.doesNotMatch(templates.find((x) => x.unique_id === 'back_garden_lighting_scenes').state, /light_theme/);
+});
+
+ok('Christmas scene exists, Normal keeps its entity id, scene ids stay unique', () => {
+  const scenes = yaml.load(readFileSync(root + 'scenes.yaml', 'utf8'));
+  const byId = Object.fromEntries(scenes.map((x) => [x.id, x]));
+  assert.equal(byId['1792000000002'].name, 'Front Garden Normal');
+  assert.equal(byId['1792000000006'].name, 'Front Garden Christmas');
+  assert.deepEqual(Object.keys(byId['1792000000006'].entities).sort(), Object.keys(byId['1792000000003'].entities).sort());
+  assert.equal(new Set(scenes.map((x) => x.id)).size, scenes.length);
 });
 
 console.log(`\n${n} test groups passed`);
