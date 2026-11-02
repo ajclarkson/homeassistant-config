@@ -21,7 +21,7 @@
 (function (root) {
   'use strict';
 
-  // Switch the bottom tab bar off in one line (renders nothing; the Now footer link comes back).
+  // Switch the bottom tab bar off in one line (renders nothing).
   const TABBAR_ENABLED = true;
 
   // ── Style tokens (single definition) ─────────────────────────────────────────────────────────
@@ -289,6 +289,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   // Where the dashboard is registered (url_path in configuration.yaml). Defined once: an unknown
   // path silently falls back to the default dashboard, which is exactly the bug this avoids.
   const DASH = '/pulse-dashboard';
+  // Mobile is reachable from the Controls tab (and the Mo chip) only; nothing else links out of Pulse.
   const MOBILE = '/mobile-dashboard';
   // The separate energy page. The Details link only renders when a card names this path in
   // `details_path`, and only when that view exists in info-dashboard.yaml (tests enforce both).
@@ -828,6 +829,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     bed: 'M4 20v-8a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8M4 16h16M7 10V7a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v3',
     back: 'M15 5l-7 7 7 7',
     chev: 'M6 9l6 6 6-6',
+    house: 'M4 21V8l8-5 8 5v13M9 21v-6h6v6',
     camera: 'M3 7h11a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1zM15 10.5l6-3v9l-6-3',
     sliders: 'M4 12h10M18 12h2M4 6h4M12 6h8M4 18h12M20 18h0M16 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM10 4a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM18 16a2 2 0 1 0 0 4 2 2 0 0 0 0-4z',
     play: 'M8 5v14l11-7z',
@@ -982,6 +984,17 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 
   const occupiedRooms = (hass) => ROOM_ORDER.filter((k) => { const m = roomModel(hass, k); return m.hasReport && m.occupied; });
 
+  const STATUS_ROWS = 3;
+  const attentionPath = (item) => (ROOMS[item.key] ? roomPath(item.key) : `${DASH}/now`);
+  // "+N more" opens the first room not already listed above it; if every hidden item is in a listed room
+  // (or has none), the first hidden item's own target is the honest answer.
+  function moreAttentionPath(items) {
+    const listed = new Set(items.slice(0, STATUS_ROWS).map(keyFromItem).filter(Boolean));
+    const hidden = items.slice(STATUS_ROWS);
+    const next = hidden.find((i) => keyFromItem(i) && !listed.has(i.key)) || hidden[0];
+    return attentionPath(next);
+  }
+
   // One status card: dot + verdict (amber with the attention summary when there are items), the
   // occupancy/heating sentence, people and Mo chips, and the price strip.
   function sectionStatus(hass, at) {
@@ -995,12 +1008,12 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     if (items.length === 0) {
       head = `<div style="display:flex;align-items:center;gap:10px"><span class="dot${hasData ? '' : ' dim'}"></span><div style="font-size:15px;font-weight:700">${hasData ? 'All good' : 'No attention report'}</div><div style="flex:1"></div>${side}</div>`;
     } else {
-      const first = items[0];
-      const path = ROOMS[first.key] ? roomPath(first.key) : first.kind === 'unexplained_reason' ? `${DASH}/now` : MOBILE;
+      const shownItems = items.slice(0, STATUS_ROWS);
+      // Each row opens its own room; an item with no room (an unexplained reason) opens Now.
       // The summary is room and what; the room card below carries the sentence.
-      const shown = items.slice(0, 3).map((i) => `<div style="font-size:13px;margin-top:6px;line-height:1.4"><b>${esc(i.room)}</b> · ${esc(itemLabel(i, ROOMS[i.key] ? roomModel(hass, i.key) : null))}</div>`).join('');
-      const more = items.length > 3 ? `<div style="font-size:12px;color:${TOKENS.text2};margin-top:4px">+${items.length - 3} more</div>` : '';
-      head = `<a class="tap" data-act="nav" data-path="${esc(path)}" style="display:block"><div style="display:flex;align-items:center;gap:10px"><span class="dot warn"></span><span style="font-size:15px;font-weight:700;color:${TOKENS.amber}">${items.length} ${plural(items.length, 'needs', 'need')} attention</span><div style="flex:1"></div>${side}</div>${shown}${more}</a>`;
+      const shown = shownItems.map((i) => `<a class="tap" data-act="nav" data-path="${esc(attentionPath(i))}" style="display:block;font-size:13px;margin-top:6px;line-height:1.4"><b>${esc(i.room)}</b> · ${esc(itemLabel(i, ROOMS[i.key] ? roomModel(hass, i.key) : null))}</a>`).join('');
+      const more = items.length > STATUS_ROWS ? `<a class="tap" data-act="nav" data-path="${esc(moreAttentionPath(items))}" style="display:block;font-size:12px;color:${TOKENS.text2};margin-top:4px">+${items.length - STATUS_ROWS} more</a>` : '';
+      head = `<div style="display:flex;align-items:center;gap:10px"><span class="dot warn"></span><span style="font-size:15px;font-weight:700;color:${TOKENS.amber}">${items.length} ${plural(items.length, 'needs', 'need')} attention</span><div style="flex:1"></div>${side}</div>${shown}${more}`;
     }
     return `<div class="card pad${items.length ? ' warn' : ''}">${head}<div style="margin-top:10px">${peopleChips(hass, at)}</div><div style="margin-top:12px;padding-top:4px;border-top:1px solid ${TOKENS.divider}">${statusPriceLink(hass, at)}</div></div>`;
   }
@@ -1602,12 +1615,6 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return `<div class="lbl" style="margin:4px 4px -10px">What the house did</div><div class="card">${body}</div>`;
   }
 
-  // The Mobile link lives in the tab bar's Controls tab; the text link is the fallback when the bar is off.
-  function sectionFooter() {
-    if (TABBAR_ENABLED) return '';
-    return `<div style="padding:4px 4px 24px"><a class="link tap" data-act="nav" data-path="${MOBILE}">Open Mobile controls ›</a></div>`;
-  }
-
   // ── Bottom tab bar ─────────────────────────────────────────────────────────────────────────────
   // position:fixed only works if no ancestor creates a containing block for fixed descendants (transform,
   // filter, perspective, contain, will-change, backdrop-filter). tabbarPlacement decides from computed-style
@@ -1617,6 +1624,8 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   const TABS = [
     { id: 'now', label: 'Now', path: `${DASH}/now`, icon: 'home' },
     { id: 'energy', label: 'Energy', path: ENERGY_PATH, icon: 'bolt' },
+    { id: 'cameras', label: 'Cameras', path: CAMERAS_PATH, icon: 'camera' },
+    { id: 'house', label: 'House', path: HOUSE_PATH, icon: 'house' },
     { id: 'controls', label: 'Controls', path: MOBILE, icon: 'sliders' },
   ];
   function tabbarPlacement(ancestors) {
@@ -1637,7 +1646,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   }
   function sectionTabbar(cfg, ui) {
     if (!TABBAR_ENABLED) return '';
-    const active = cfg && cfg.active === 'energy' ? 'energy' : 'now';
+    const active = cfg && TABS.some((t) => t.id === cfg.active) ? cfg.active : 'now';
     const fixed = ui && ui.tb === 'fixed';
     const tabs = TABS.map((t) => `<button type="button" class="tab" data-act="nav" data-path="${t.path}"${t.id === active ? ' aria-current="page"' : ''}>${svg(ICON[t.icon], 24)}<span>${t.label}</span></button>`).join('');
     return `${fixed ? '<div class="tabbar-spacer" style="--tbh:calc(58px + max(10px, env(safe-area-inset-bottom, 0px)))" aria-hidden="true"></div>' : ''}<nav class="tabs${fixed ? ' fixed' : ''}" aria-label="Pulse">${tabs}</nav>`;
@@ -2379,7 +2388,6 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     'energy-history': (h, c, n, ui) => sectionEnergyHistory(h, n, ui),
     'energy-usage': (h) => sectionEnergyUsage(h),
     feed: (h, c, n) => sectionFeed(h, n),
-    footer: () => sectionFooter(),
     tabbar: (h, c, n, ui) => sectionTabbar(c, ui),
     'room-head': (h, c) => sectionRoomHead(h, c.room),
     why: (h, c, n) => sectionWhy(h, c.room, n),

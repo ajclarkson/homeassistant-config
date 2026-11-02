@@ -7,7 +7,7 @@
 # www/pulse-card.js (ALLOWED); anything else throws.
 # The Cameras page also uses button.press (pan/tilt, to that camera's four move buttons only) and the
 # media_source websocket calls browse_media / resolve_media (Frigate clips).
-# Mobile (/mobile-dashboard) and the wallboard are untouched and linked from Now.
+# Mobile (/mobile-dashboard) is linked only from the Controls tab; the wallboard is untouched.
 streamline_templates: !include info_templates.yaml
 
 views:
@@ -25,6 +25,3 @@ views:
   - !include views/info-room-foreign_office.yaml
   - !include views/info-room-back_garden.yaml
   - !include views/info-room-front_garden.yaml
-  # The phase 1 markdown views stay reachable until the owner removes them.
-  - !include views/info-classic-now.yaml
-  - !include views/info-classic-house.yaml

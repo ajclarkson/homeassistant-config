@@ -50,55 +50,6 @@ mqtt:
       unique_id: foreign_office_heating_source
       state_topic: "foreign_office/heating/source"
 
-    # Occupied Decision Helpers (per room)
-    - name: "Parlour Occupied Decision"
-      unique_id: parlour_occupied_decision
-      state_topic: "parlour/occupied/decision"
-      value_template: "{{ value_json.decision }}"
-      json_attributes_topic: "parlour/occupied/decision"
-
-    - name: "Kitchen Occupied Decision"
-      unique_id: kitchen_occupied_decision
-      state_topic: "kitchen/occupied/decision"
-      value_template: "{{ value_json.decision }}"
-      json_attributes_topic: "kitchen/occupied/decision"
-
-    - name: "Hallway Downstairs Occupied Decision"
-      unique_id: hallway_downstairs_occupied_decision
-      state_topic: "hallway_downstairs/occupied/decision"
-      value_template: "{{ value_json.decision }}"
-      json_attributes_topic: "hallway_downstairs/occupied/decision"
-
-    - name: "Hallway Upstairs Occupied Decision"
-      unique_id: hallway_upstairs_occupied_decision
-      state_topic: "hallway_upstairs/occupied/decision"
-      value_template: "{{ value_json.decision }}"
-      json_attributes_topic: "hallway_upstairs/occupied/decision"
-
-    - name: "Bedroom Occupied Decision"
-      unique_id: bedroom_occupied_decision
-      state_topic: "bedroom/occupied/decision"
-      value_template: "{{ value_json.decision }}"
-      json_attributes_topic: "bedroom/occupied/decision"
-
-    - name: "Bathroom Occupied Decision"
-      unique_id: bathroom_occupied_decision
-      state_topic: "bathroom/occupied/decision"
-      value_template: "{{ value_json.decision }}"
-      json_attributes_topic: "bathroom/occupied/decision"
-
-    - name: "Home Office Occupied Decision"
-      unique_id: home_office_occupied_decision
-      state_topic: "home_office/occupied/decision"
-      value_template: "{{ value_json.decision }}"
-      json_attributes_topic: "home_office/occupied/decision"
-
-    - name: "Foreign Office Occupied Decision"
-      unique_id: foreign_office_occupied_decision
-      state_topic: "foreign_office/occupied/decision"
-      value_template: "{{ value_json.decision }}"
-      json_attributes_topic: "foreign_office/occupied/decision"
-
     # Lighting Decision Helpers (per room)
     - name: "Parlour Lighting Decision"
       unique_id: parlour_lighting_decision

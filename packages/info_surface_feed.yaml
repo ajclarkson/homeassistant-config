@@ -3,8 +3,6 @@
 # Source is the homerun live events stream, `homerun/events` (not retained;
 # publisher: homerun/src/framework/event-publisher.ts, namespace `homerun`, dry runs
 # go to `homerun/dev/events` and are never subscribed here).
-# The per-room `<room>/occupied/decision` sensors in mqtt.yaml are NOT used: they subscribe
-# to a legacy topic that no longer receives data.
 #
 # One trigger-based sensor keeps:
 #   entries  last 8 meaningful decisions (not no_action / no_change), newest first
