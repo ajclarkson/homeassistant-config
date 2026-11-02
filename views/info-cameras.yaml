@@ -1,7 +1,5 @@
 title: Cameras
 path: cameras
-subview: true
-back_path: /pulse-dashboard/house
 type: sections
 max_columns: 1
 background: '#12151a'

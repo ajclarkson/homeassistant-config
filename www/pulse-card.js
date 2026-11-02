@@ -1392,8 +1392,15 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return `<div class="card u"><div class="lbl" style="margin:0">${esc(label)}</div><div class="v">${usable(state(hass, costId)) ? money(state(hass, costId), a.unit_of_measurement) : '–'}</div><div style="font-size:11.5px;color:${TOKENS.text2};margin-top:2px">${esc(day)} · ${esc(kwh)}${note ? ' · ' + esc(note) : ''}</div></div>`;
   }
 
+  // The heading of a tab page (Energy, Settings, Cameras). Those pages are normal views, so HA's header shows
+  // the tab strip (or Material You's bottom bar), not the view title, and there is nowhere to go "back" to: the
+  // card draws the title and no back link.
+  function pageTitle(name) {
+    return `<div style="min-height:44px;display:flex;align-items:center;font-size:28px;font-weight:700;letter-spacing:-.4px">${esc(name)}</div>`;
+  }
+
   function sectionEnergyHead(hass, at) {
-    return `<div style="display:flex;align-items:center;gap:4px"><a class="tap" data-act="nav" data-path="${HOUSE_PATH}" aria-label="Back to House" style="min-height:44px;min-width:44px;display:flex;align-items:center;color:${TOKENS.text2}">${svg(ICON.back, 22)}</a><div style="font-size:28px;font-weight:700;letter-spacing:-.4px">Energy</div></div>
+    return `${pageTitle('Energy')}
 <div class="card pad">${priceStrip(hass, at, true)}</div>`;
   }
 
@@ -1669,6 +1676,23 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   function safetyCause(m) {
     if (m.heat_labels.length) return m.heat_labels.join(' · ').toLowerCase();
     return m.house_heating_off ? 'house heating off' : '';
+  }
+
+  // How far HA's fixed top bar covers the start of the page, so the first card can start below it. Material You
+  // restyles the bar and the view container, and on a subview on the phone the first ~50-60 px of content was
+  // laid out under the bar (no documented theme variable or option moves it; the card cannot know the bar's
+  // height, so it measures at run time). Inputs are two viewport y-coordinates in px: the bar's bottom edge and
+  // the top of this card's content box. Anything that is not a finite number, or a bar that is not covering
+  // the card, gives 0 (fail safe: no extra padding). Clamped so a bad measurement can never push the page off screen.
+  const MAX_HEADER_OVERLAP = 160;
+  function headerOverlap(barBottom, contentTop) {
+    if (typeof barBottom !== 'number' || typeof contentTop !== 'number' || !Number.isFinite(barBottom) || !Number.isFinite(contentTop)) return 0;
+    const gap = Math.round(barBottom - contentTop);
+    return Math.max(0, Math.min(MAX_HEADER_OVERLAP, gap));
+  }
+  // The padding style for the room-head wrapper: empty unless a positive, sane overlap was measured.
+  function headPadStyle(px) {
+    return typeof px === 'number' && Number.isFinite(px) && px > 0 ? ` style="padding-top:${Math.min(MAX_HEADER_OVERLAP, Math.round(px))}px"` : '';
   }
 
   // The banner, with the gear that opens the settings sheet at its top right. HA's subview header already
@@ -2265,7 +2289,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const mod = state(hass, HOUSE_MODIFIER);
     const modText = usable(mod) && mod !== 'none' && MODIFIERS[mod] ? ` · ${MODIFIERS[mod].label} modifier` : '';
     const banner = `<div class="card pad" style="display:flex;gap:10px;align-items:flex-start"><span class="dot${usable(mode) ? '' : ' dim'}" style="margin-top:5px"></span><div><div style="font-size:15px;font-weight:700">${esc(t.title)}</div><div style="font-size:13px;color:${TOKENS.text2};margin-top:3px;line-height:1.45">${esc(t.body)}${esc(when)}${esc(modText)}</div></div></div>`;
-    return `<div style="display:flex;align-items:center;gap:4px"><a class="tap" data-act="nav" data-path="${HOUSE_PATH}" aria-label="Back to House" style="min-height:44px;min-width:44px;display:flex;align-items:center;color:${TOKENS.text2}">${svg(ICON.back, 22)}</a><div style="font-size:28px;font-weight:700;letter-spacing:-.4px">Settings</div></div>${banner}`;
+    return `${pageTitle('Settings')}${banner}`;
   }
 
   function sectionHouseMode(hass, now) {
@@ -2455,7 +2479,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const banner = `<div class="card pad${warn ? ' warn' : ''}" style="display:flex;gap:10px;align-items:flex-start"><span class="dot${warn ? ' warn' : sum.live.length ? '' : ' dim'}" style="margin-top:5px"></span><div><div style="font-size:15px;font-weight:700">${esc(sum.title)}</div><div style="font-size:13px;color:${TOKENS.text2};margin-top:3px;line-height:1.45">${esc(notes.join(' · '))}</div></div></div>`;
     const usableCams = sum.st.filter((x) => !x.s.offline).length;
     const master = usableCams ? `<div class="card"><button class="tog tap" data-act="cameras-all" aria-pressed="${sum.live.length > 0}"><div><div class="h">Cameras</div><div class="s">${sum.live.length ? 'Tap to turn all off' : 'Tap to turn all on'}</div></div><span class="sw${sum.live.length ? '' : ' off'}" role="img" aria-label="${sum.live.length ? 'On' : 'Off'}"></span></button></div>` : '';
-    return `<div style="display:flex;align-items:center;gap:4px"><a class="tap" data-act="nav" data-path="${HOUSE_PATH}" aria-label="Back to House" style="min-height:44px;min-width:44px;display:flex;align-items:center;color:${TOKENS.text2}">${svg(ICON.back, 22)}</a><div style="font-size:28px;font-weight:700;letter-spacing:-.4px">Cameras</div></div>${banner}${master}`;
+    return `${pageTitle('Cameras')}${banner}${master}`;
   }
 
   // `live` says whether a stream belongs above `rest`. The element draws the stream in a slot of its own that
@@ -2694,7 +2718,8 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     validate({ ...config, mode });
     const at = Number.isFinite(now) ? now : Date.now();
     const html = MODES[mode](hass, config || {}, at, ui || {});
-    return html ? `<div class="p">${errorBanner(ui, at)}${markPending(html, ui, hass, at)}</div>` : '';
+    const pad = mode === 'room-head' ? headPadStyle(ui && ui.headPad) : '';
+    return html ? `<div class="p"${pad}>${errorBanner(ui, at)}${markPending(html, ui, hass, at)}</div>` : '';
   }
 
   // ── Service calls ────────────────────────────────────────────────────────────────────────────
@@ -2794,7 +2819,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     }
   }
 
-  const api = { lightsStory, lightsState, verdictFor, houseActivity, parseHistory, readHistory, sentenceFor, roomActivity, unexplainedReasons, REASON_TEXT, TILE, TILE_H, TILE_WIDE_H, tileNeededHeight, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, SETTINGS_PATH, CAMERAS_PATH, PENDING_MS, cameraParts, cameraToggle, cameraPending, perform, pendingStart, pendingFor, pendingKey, markPending, ERROR_MS, parseClips, frigateClipsId, roomGroups, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, GARDEN_ORDER, ALL_ROOM_KEYS, THEME_LABELS, THEME_ICON, ICON, gardenModel, gardenSub, themeSource, shortDate, ALLOWED, DEVICE_REASONS, ROOM_SETTINGS, MO_TOGGLES, settingFor, settingsOpen, settingsClose, tabTarget, render, priceColour, PRICE_STOPS, PRICE_EXTREME_P, roomModel, attentionItems, handleAction, callService, num, parseList };
+  const api = { lightsStory, lightsState, verdictFor, houseActivity, parseHistory, readHistory, sentenceFor, roomActivity, unexplainedReasons, REASON_TEXT, TILE, TILE_H, TILE_WIDE_H, tileNeededHeight, STYLE, TABBAR_ENABLED, tabbarPlacement, headerOverlap, headPadStyle, MAX_HEADER_OVERLAP, TABS, cheapestWindow, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, SETTINGS_PATH, CAMERAS_PATH, PENDING_MS, cameraParts, cameraToggle, cameraPending, perform, pendingStart, pendingFor, pendingKey, markPending, ERROR_MS, parseClips, frigateClipsId, roomGroups, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, GARDEN_ORDER, ALL_ROOM_KEYS, THEME_LABELS, THEME_ICON, ICON, gardenModel, gardenSub, themeSource, shortDate, ALLOWED, DEVICE_REASONS, ROOM_SETTINGS, MO_TOGGLES, settingFor, settingsOpen, settingsClose, tabTarget, render, priceColour, PRICE_STOPS, PRICE_EXTREME_P, roomModel, attentionItems, handleAction, callService, num, parseList };
   root.PulseLib = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 
@@ -2807,7 +2832,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         this._root = this.attachShadow({ mode: 'open' });
         this._html = null;
         this._busy = false;
-        this._ui = { tb: 'inflow', open: false, settings: false, focus: null, day: 'today', fuel: 'electricity', cam: { rec: {} }, pending: {}, error: null, hist: { electricity: { status: 'loading', days: [] }, gas: { status: 'loading', days: [] } } };
+        this._ui = { tb: 'inflow', headPad: 0, open: false, settings: false, focus: null, day: 'today', fuel: 'electricity', cam: { rec: {} }, pending: {}, error: null, hist: { electricity: { status: 'loading', days: [] }, gas: { status: 'loading', days: [] } } };
         this._histBusy = false;
         this._histSeq = 0;
         this._histAt = 0;
@@ -2859,6 +2884,8 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         this._histBusy = false;
         for (const t of this._tbTimers || []) clearTimeout(t);
         this._tbTimers = null;
+        for (const t of this._hpTimers || []) clearTimeout(t);
+        this._hpTimers = null;
       }
       // Daily cost history: one read-only WS call when the Energy view mounts, then at most every 30
       // minutes (a failure retries after 5), never per hass update, never overlapping, and a response
@@ -2913,6 +2940,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         this._root.innerHTML = `<style>${STYLE}</style>${html}`;
         this._restoreFocus(kept);
         if (this._config.mode === 'tabbar' && !this._tbProbed) this._tabbarProbeLater();
+        if (this._config.mode === 'room-head') this._headerProbeLater();
         // The repaint replaced the chart nodes: put a live readout back instead of flickering it away.
         if (this._scrub.idx !== null) this._chartShow(this._scrub.idx, false);
       }
@@ -3114,6 +3142,37 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         }
         if (res.mode !== this._ui.tb) {
           this._ui.tb = res.mode;
+          this._paint();
+        }
+      }
+      // ── header overlap (room and garden pages) ──
+      // Probes after the first paint and again later (HA and Material You style the bar asynchronously), so the
+      // banner and gear end up fully below the bar. Fail safe: any missing piece leaves the padding as it was.
+      _headerProbeLater() {
+        if (this._hpTimers || !this.isConnected) return;
+        this._hpTimers = [0, 400, 1500].map((ms) => setTimeout(() => this._headerProbe(), ms));
+      }
+      // The enclosing hui-root, found through shadow roots and slots (the same walk as the tab bar probe).
+      _huiRoot() {
+        let node = this;
+        while (node) {
+          if (node.nodeType === 1 && node.tagName === 'HUI-ROOT') return node;
+          node = node.assignedSlot || node.parentNode || node.host || null;
+        }
+        return null;
+      }
+      _headerProbe() {
+        if (!this.isConnected) return;
+        const hui = this._huiRoot();
+        const bar = hui && hui.shadowRoot ? hui.shadowRoot.querySelector('.header') : null;
+        const box = this._root.querySelector('.p');
+        if (!bar || !box) return;
+        // Scrolled content has legitimately moved under the bar; only a measurement at the top says anything.
+        if (hui.hasAttribute('scrolled')) return;
+        // The .p box keeps its border-box top whatever padding it carries, so the reading does not feed back.
+        const px = headerOverlap(bar.getBoundingClientRect().bottom, box.getBoundingClientRect().top);
+        if (px !== this._ui.headPad) {
+          this._ui.headPad = px;
           this._paint();
         }
       }

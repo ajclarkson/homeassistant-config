@@ -1092,9 +1092,9 @@ ok('windowRange: a window spanning the repeated hour is never printed zero-lengt
   assert.notEqual(out.split(' → ')[0], out.split(' → ')[1]);
 });
 
-ok('energy page: head has back link, Now/Next/Usage', () => {
+ok('energy page: head has the title (no back link), Now/Next/Usage', () => {
   const html = P.render('energy-head', {}, energyHass({ 'sensor.glow_electricity_power': { state: '0.44', attributes: { unit_of_measurement: 'kW' }, last_updated: '2026-10-25T18:41:50+00:00' } }), NOW);
-  assert.match(html, /data-path="\/pulse-dashboard\/house" aria-label="Back to House"/);
+  assert.doesNotMatch(html, /Back to House/);
   assert.match(html, />Energy</);
   assert.ok(html.includes(`color:${P.priceColour(34.8, { text: true })}`));
   assert.match(html, />Usage<\/div><div[^>]*>440 W/);
@@ -1222,8 +1222,6 @@ ok('energy page: sparse / missing / garbage data never throws or leaks noise in 
 ok('energy view is registered and adds no write paths', () => {
   const v = yaml.load(readFileSync(root + 'views/info-energy.yaml', 'utf8'));
   assert.equal(v.path, 'energy');
-  assert.equal(v.subview, true);
-  assert.equal(v.back_path, '/pulse-dashboard/house');
   assert.deepEqual(v.sections[0].cards.map((c) => c.mode), ['energy-head', 'energy-day', 'energy-cost', 'energy-history', 'energy-usage', 'tabbar']);
   assert.match(readFileSync(root + 'info-dashboard.yaml', 'utf8'), /views\/info-energy\.yaml/);
   assert.deepEqual(Object.keys(P.ALLOWED).sort(), ['button', 'input_boolean', 'input_number', 'input_select', 'light', 'media_player', 'scene', 'switch']);
@@ -1737,6 +1735,42 @@ ok('tab bar nav paths use the DASH constant and match real views', () => {
   const viewPaths = readdirSync(root + 'views').filter((x) => x.startsWith('info-')).map((f) => yaml.load(readFileSync(root + 'views/' + f, 'utf8')).path);
   for (const p of paths) { assert.ok(p.startsWith(P.DASH + '/'), p); assert.ok(viewPaths.includes(p.slice(P.DASH.length + 1)), p); }
   assert.ok(P.TABS.every((t) => t.path.startsWith(P.DASH)));
+});
+
+ok('tab pages are normal views (no subview, no back_path); room and garden pages stay subviews that go back to House', () => {
+  const load = (f) => yaml.load(readFileSync(root + 'views/' + f, 'utf8'));
+  for (const f of ['info-house', 'info-energy', 'info-cameras', 'info-settings']) {
+    const v = load(f + '.yaml');
+    assert.ok(!('subview' in v), `${f} must not be a subview`);
+    assert.ok(!('back_path' in v), `${f} must not have a back_path`);
+  }
+  const rooms = readdirSync(root + 'views').filter((x) => x.startsWith('info-room-'));
+  assert.equal(rooms.length, P.ALL_ROOM_KEYS.length);
+  for (const f of rooms) {
+    const v = load(f);
+    assert.equal(v.subview, true, f);
+    assert.equal(v.back_path, '/pulse-dashboard/house', f);
+  }
+});
+
+ok('tab pages render a title and no back link; the heading is the only title (HA shows tabs, not a view title)', () => {
+  for (const [mode, name] of [['energy-head', 'Energy'], ['house-head', 'Settings'], ['cameras-head', 'Cameras']]) {
+    const html = P.render(mode, {}, mk(), NOW, {});
+    assert.doesNotMatch(html, /Back to House|data-act="nav"/, mode);
+    assert.equal(html.split(`>${name}</div>`).length - 1, 1, `${mode}: exactly one visible title`);
+  }
+});
+
+ok('headerOverlap: pure, clamped, fail-safe to zero', () => {
+  assert.equal(P.headerOverlap(100, 40), 60);
+  assert.equal(P.headerOverlap(100.4, 40.2), 60);
+  assert.equal(P.headerOverlap(100, 100), 0);
+  assert.equal(P.headerOverlap(100, 140), 0, 'content already below the bar');
+  assert.equal(P.headerOverlap(5000, 0), P.MAX_HEADER_OVERLAP, 'clamped');
+  for (const bad of [undefined, null, NaN, Infinity, -Infinity, '60', {}, []]) {
+    assert.equal(P.headerOverlap(bad, 0), 0, String(bad));
+    assert.equal(P.headerOverlap(100, bad), 0, String(bad));
+  }
 });
 
 ok('placement: fixed in-flow decision from ancestor snapshots, naming the offender', () => {
@@ -3105,6 +3139,16 @@ ok('room head: no back link or name row (HA subview header has them); the gear s
     assert.ok(card.indexOf('class="dot') < card.indexOf('settings-open'), `${k}: dot, text, then gear`);
     assert.match(card, /class="round quiet tap"[^>]*align-self:flex-start/, k);
   }
+});
+
+ok('room head pads its top by the measured overlap, only that mode, and only for a sane value', () => {
+  const plain = P.render('room-head', { room: 'bedroom' }, sheetHass(), NOW, {});
+  assert.ok(plain.startsWith('<div class="p"><div class="card pad'));
+  for (const bad of [0, -5, NaN, Infinity, '40', null, undefined]) assert.equal(P.render('room-head', { room: 'bedroom' }, sheetHass(), NOW, { headPad: bad }), plain, String(bad));
+  const padded = P.render('room-head', { room: 'bedroom' }, sheetHass(), NOW, { headPad: 57 });
+  assert.ok(padded.startsWith('<div class="p" style="padding-top:57px"><div class="card pad'));
+  assert.match(P.render('room-head', { room: 'bedroom' }, sheetHass(), NOW, { headPad: 99999 }), /padding-top:160px/);
+  assert.doesNotMatch(P.render('lights', { room: 'bedroom' }, sheetHass(), NOW, { headPad: 57 }), /padding-top:57px/);
 });
 
 ok('settings: open and close are state in ui, focus goes into the sheet then back to the gear, and the page underneath is unchanged', () => {

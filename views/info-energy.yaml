@@ -3,8 +3,6 @@
 # chart, stats and windows are one card (energy-day) so the selected day survives state updates.
 title: Energy
 path: energy
-subview: true
-back_path: /pulse-dashboard/house
 type: sections
 max_columns: 1
 background: '#12151a'
