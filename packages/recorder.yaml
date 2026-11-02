@@ -1,0 +1,13 @@
+# Recorder settings live here, in git, so exclusions ship as a normal PR.
+# A non-list key may be defined only once across configuration.yaml and all packages, so the PVC
+# configuration.yaml must not also set recorder.exclude. Recorder config is read at startup:
+# changes here need an HA restart, not a reload.
+recorder:
+  exclude:
+    entity_globs:
+      # homerun history and catalogue: live JSON for Pulse, rewritten on every homerun event.
+      # Pulse reads live state, so recording them only adds churn, and the house history can
+      # exceed the recorder's 16 KB attribute limit.
+      - sensor.*_history
+    entities:
+      - sensor.homerun_catalog
