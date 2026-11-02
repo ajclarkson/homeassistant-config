@@ -1671,14 +1671,17 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return m.house_heating_off ? 'house heating off' : '';
   }
 
-  // Title, the gear that opens the settings sheet, and the banner. Each subsystem (lights, heating, presence)
-  // has its own section further down and explains itself next to its controls. The sheet is part of this card
-  // (ui.settings), so it works the same on indoor rooms and gardens.
+  // The banner, with the gear that opens the settings sheet at its top right. HA's subview header already
+  // draws the back arrow and the room name and covers anything above the card, so the card adds neither
+  // (a gear in a row above the banner was hidden under that header). Each subsystem (lights, heating,
+  // presence) has its own section further down and explains itself next to its controls. The sheet is part
+  // of this card (ui.settings), so it works the same on indoor rooms and gardens.
   function sectionRoomHead(hass, key, ui) {
     const m = roomModel(hass, key);
     const b = bannerFor(m, attentionItems(hass), activeScene(hass, key));
-    const banner = `<div class="card pad${b.warn ? ' warn' : ''}" style="display:flex;gap:10px;align-items:flex-start"><span class="dot${b.warn ? ' warn' : b.dim ? ' dim' : ''}" style="margin-top:5px"></span><div><div style="font-size:15px;font-weight:700;${b.warn ? 'color:' + TOKENS.amber : ''}">${esc(b.title)}</div><div style="font-size:13px;color:${b.warn ? TOKENS.text : TOKENS.text2};margin-top:3px;line-height:1.45">${esc(b.body)}</div></div></div>`;
-    return `<div style="display:flex;align-items:center;gap:4px"><a class="tap" data-act="nav" data-path="${HOUSE_PATH}" aria-label="Back to House" style="min-height:44px;min-width:44px;display:flex;align-items:center;color:${TOKENS.text2}">${svg(ICON.back, 22)}</a><div style="font-size:28px;font-weight:700;letter-spacing:-.4px;flex:1;min-width:0">${esc(m.cfg.name)}</div><button class="round quiet tap" data-act="settings-open" data-room="${key}" aria-haspopup="dialog" aria-label="${esc(m.cfg.name)} settings">${svg(ICON.gear, 22)}</button></div>${banner}${ui && ui.settings ? settingsSheet(hass, key) : ''}`;
+    const gear = `<button class="round quiet tap" data-act="settings-open" data-room="${key}" aria-haspopup="dialog" aria-label="${esc(m.cfg.name)} settings" style="flex:none;align-self:flex-start;margin:-6px -8px 0 0">${svg(ICON.gear, 22)}</button>`;
+    const banner = `<div class="card pad${b.warn ? ' warn' : ''}" style="display:flex;gap:10px;align-items:flex-start"><span class="dot${b.warn ? ' warn' : b.dim ? ' dim' : ''}" style="margin-top:5px"></span><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:700;${b.warn ? 'color:' + TOKENS.amber : ''}">${esc(b.title)}</div><div style="font-size:13px;color:${b.warn ? TOKENS.text : TOKENS.text2};margin-top:3px;line-height:1.45">${esc(b.body)}</div></div>${gear}</div>`;
+    return `${banner}${ui && ui.settings ? settingsSheet(hass, key) : ''}`;
   }
 
   // The lights row of the Lights card: why the lights are as they are, including why they are NOT on. One
@@ -1876,7 +1879,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   }
 
   // ── Room settings ────────────────────────────────────────────────────────────────────────────
-  // The settings panel (a sheet opened from the gear in the room header) holds what means "this room should
+  // The settings panel (a sheet opened from the gear in the room banner) holds what means "this room should
   // behave differently from now on": automation switches and their tuning, by subsystem. What a person changes
   // because of something happening right now (scenes, lights, the fan on/off, keep-room-occupied) stays on the page.
   //
