@@ -223,6 +223,83 @@ mqtt:
       value_template: "{{ value_json.today }}"
       json_attributes_topic: "front_garden/lighting/theme_calendar"
 
+    # homerun history and catalogue (home.history.v1, home.catalog.v1; contract: homeOS docs/contracts/events.md).
+    # Published retained, so they survive an HA restart. The state is the newest entry's timestamp; "None"
+    # (an empty history) makes the sensor unknown rather than stale.
+    # These are large attributes (up to 20 entries a location, 30 house-wide): exclude every one from the
+    # recorder (see the PR for the recorder step). Entries are structured only; the Pulse card words them.
+    - name: "Parlour History"
+      unique_id: parlour_history
+      state_topic: "homerun/parlour/history"
+      value_template: "{{ value_json.entries[0].ts if value_json.entries else none }}"
+      json_attributes_topic: "homerun/parlour/history"
+    - name: "Kitchen History"
+      unique_id: kitchen_history
+      state_topic: "homerun/kitchen/history"
+      value_template: "{{ value_json.entries[0].ts if value_json.entries else none }}"
+      json_attributes_topic: "homerun/kitchen/history"
+    - name: "Hallway Downstairs History"
+      unique_id: hallway_downstairs_history
+      state_topic: "homerun/hallway_downstairs/history"
+      value_template: "{{ value_json.entries[0].ts if value_json.entries else none }}"
+      json_attributes_topic: "homerun/hallway_downstairs/history"
+    - name: "Hallway Upstairs History"
+      unique_id: hallway_upstairs_history
+      state_topic: "homerun/hallway_upstairs/history"
+      value_template: "{{ value_json.entries[0].ts if value_json.entries else none }}"
+      json_attributes_topic: "homerun/hallway_upstairs/history"
+    - name: "Bedroom History"
+      unique_id: bedroom_history
+      state_topic: "homerun/bedroom/history"
+      value_template: "{{ value_json.entries[0].ts if value_json.entries else none }}"
+      json_attributes_topic: "homerun/bedroom/history"
+    - name: "Bathroom History"
+      unique_id: bathroom_history
+      state_topic: "homerun/bathroom/history"
+      value_template: "{{ value_json.entries[0].ts if value_json.entries else none }}"
+      json_attributes_topic: "homerun/bathroom/history"
+    - name: "Home Office History"
+      unique_id: home_office_history
+      state_topic: "homerun/home_office/history"
+      value_template: "{{ value_json.entries[0].ts if value_json.entries else none }}"
+      json_attributes_topic: "homerun/home_office/history"
+    - name: "Foreign Office History"
+      unique_id: foreign_office_history
+      state_topic: "homerun/foreign_office/history"
+      value_template: "{{ value_json.entries[0].ts if value_json.entries else none }}"
+      json_attributes_topic: "homerun/foreign_office/history"
+    - name: "Front Garden History"
+      unique_id: front_garden_history
+      state_topic: "homerun/front_garden/history"
+      value_template: "{{ value_json.entries[0].ts if value_json.entries else none }}"
+      json_attributes_topic: "homerun/front_garden/history"
+    - name: "Back Garden History"
+      unique_id: back_garden_history
+      state_topic: "homerun/back_garden/history"
+      value_template: "{{ value_json.entries[0].ts if value_json.entries else none }}"
+      json_attributes_topic: "homerun/back_garden/history"
+    - name: "House History"
+      unique_id: house_history
+      state_topic: "homerun/history"
+      value_template: "{{ value_json.entries[0].ts if value_json.entries else none }}"
+      json_attributes_topic: "homerun/history"
+    # The catalogue is ~22 KB raw, over the recorder's 16 KB attribute cap, so only a projection is kept:
+    # the "subsystem:reason" keys a person would want explained (outcome acted or declined). The card
+    # compares them with its wording table and raises "unexplained_reason" for any it cannot word.
+    - name: "Homerun Catalog"
+      unique_id: homerun_catalog
+      state_topic: "homerun/catalog"
+      value_template: "{{ (value_json.automations | default([])) | length }}"
+      json_attributes_topic: "homerun/catalog"
+      json_attributes_template: >-
+        {% set ns = namespace(found=[]) %}
+        {% for a in (value_json.automations | default([])) %}
+          {% for r, v in a['reasons'].items() if v['outcome'] in ['acted', 'declined'] %}
+            {% set ns.found = ns.found + [a['subsystem'] ~ ':' ~ r] %}
+          {% endfor %}
+        {% endfor %}
+        {{ {'schema': value_json.schema, 'reasons': ns.found | unique | sort | list} | tojson }}
+
   binary_sensor:
     # Occupancy Topics
     - name: "Parlour Occupied"

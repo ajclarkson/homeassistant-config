@@ -109,6 +109,9 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 .feed{display:grid;grid-template-columns:44px 1fr;gap:8px;font-size:12.5px;line-height:1.4;padding:8px 14px;border-top:1px solid ${TOKENS.divider}}
 .feed:first-child{border-top:0}
 .feed .a{color:${TOKENS.text3}}
+.feed.muted{color:${TOKENS.text2}}
+.feed.warn{color:${TOKENS.amber}}
+.feed .g{display:inline-flex;vertical-align:-2px;margin-right:5px}
 .item{display:grid;grid-template-columns:22px 1fr auto;gap:10px;align-items:start;padding:12px 14px;border-top:1px solid ${TOKENS.divider}}
 .item:first-child{border-top:0}
 .item svg,.ic{width:18px;height:18px;stroke:${TOKENS.text2};fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;margin-top:1px}
@@ -314,6 +317,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   // same kind of plumbing. Neither tells the household anything.
   const PLUMBING_DECISIONS = ['update_external_temp', 'record', 'publish_calendar'];
   const PLUMBING_AUTOS = ['room_temp_feed', 'outdoor_temp_history'];
+  const ACTIVITY_ROWS = 10;
 
   // ── Safe readers ─────────────────────────────────────────────────────────────────────────────
   const num = (v) => {
@@ -390,8 +394,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     pres_labels: [], heat_labels: [], humidity: null, hvac_action: null, heating_active: '',
     heating_source: '', lights_on: 0, lights_total: 0, scene: '', lights_enabled: true,
     heating_enabled: null, override: false, ext_open: false, holds: [], reason_text: '',
-    override_text: '', labels: [], manual: null, lights_why: '', lights_ts: '', last: '',
-    last_ts: '', verdict: '',
+    override_text: '', labels: [], manual: null, verdict: '',
   };
 
   function roomEntry(hass, key) {
@@ -418,7 +421,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     for (const k of ['unavailable', 'pres_labels', 'heat_labels', 'labels']) m[k] = strList(e[k]);
     m.holds = parseList(e.holds);
     m.manual = isObj(e.manual) && e.manual.source ? { source: str(e.manual.source), ts: str(e.manual.ts), what: str(e.manual.what) } : null;
-    for (const k of ['target_reason', 'mode_name', 'heating_active', 'heating_source', 'scene', 'reason_text', 'override_text', 'lights_why', 'lights_ts', 'last', 'last_ts', 'verdict']) m[k] = str(m[k]);
+    for (const k of ['target_reason', 'mode_name', 'heating_active', 'heating_source', 'scene', 'reason_text', 'override_text', 'verdict']) m[k] = str(m[k]);
     m.lights_enabled = e.lights_enabled !== false;
     m.heating_enabled = typeof e.heating_enabled === 'boolean' ? e.heating_enabled : null;
     m.override = !!e.override;
@@ -440,10 +443,18 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return /^\d{1,2}:\d{2}$/.test(v) ? v.padStart(5, '0') : '';
   }
 
+  // The sensor's items, plus one the card finds itself: homerun declares a reason this card has no wording
+  // for. It comes last so a real room problem still leads the summary link.
   function attentionItems(hass) {
-    return parseList(attr(hass, 'sensor.info_attention', 'items')).map((i) => ({
+    const items = parseList(attr(hass, 'sensor.info_attention', 'items')).map((i) => ({
       room: str(i.room), key: str(i.key), kind: str(i.kind), text: str(i.text), nav: str(i.nav),
     }));
+    const gaps = unexplainedReasons(hass);
+    if (gaps.length) {
+      const shown = gaps.slice(0, 3).join(', ') + (gaps.length > 3 ? ` +${gaps.length - 3} more` : '');
+      items.push({ room: 'Pulse', key: '', kind: 'unexplained_reason', text: `No wording for ${shown}`, nav: '' });
+    }
+    return items;
   }
 
   // A warm room with heating on reads "steamy" when the room's own data (humidity, or occupied
@@ -461,6 +472,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       case 'hold_active': return 'Override on';
       case 'motion_disabled': return 'Motion sensor off';
       case 'garden_theme_config': return 'Theme setup';
+      case 'unexplained_reason': return 'Reason not worded';
       case 'sensor_unavailable': return 'Sensor unavailable';
       case 'sensor_stale': return 'Sensor not updating';
       case 'cold_not_heating': return 'Too cold, heating off';
@@ -506,19 +518,6 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   function feedEntries(hass) {
     return parseList(attr(hass, 'sensor.info_decision_feed', 'entries')).filter((e) => !isPlumbing(e));
   }
-  function roomFeed(hass, key) {
-    const seen = new Set();
-    const out = [];
-    const all = feedEntries(hass).concat(parseList(attr(hass, 'sensor.info_decision_feed', 'by_room')).filter((e) => !isPlumbing(e)));
-    for (const e of all) {
-      if (e.loc !== key) continue;
-      const id = `${str(e.ts)}|${str(e.sentence)}`;
-      if (seen.has(id)) continue;
-      seen.add(id);
-      out.push(e);
-    }
-    return out.sort((a, b) => (parseTs(b.ts) || 0) - (parseTs(a.ts) || 0)).slice(0, 6);
-  }
   // Consecutive identical sentences (a mashed button) become one row with a count. Entries are
   // newest first, so the row carries the newest time.
   function collapseFeed(entries) {
@@ -534,6 +533,185 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   // The time column already says when; no second "just now".
   function feedRows(entries, now, limit) {
     return collapseFeed(entries).slice(0, limit).map((e) => `<div class="feed"><span class="a">${esc(hhmm(e.ts))}</span><span>${esc(e.sentence)}${e.count > 1 ? ` <b>x${e.count}</b>` : ''}</span></div>`).join('');
+  }
+
+  // ── Wording: homerun history entries in plain words ──────────────────────────────────────────
+  // homerun publishes only structured data (reason keys, outcomes, facts); every sentence on screen is
+  // written here. REASON_TEXT is keyed `subsystem:reason`, the same key the catalogue declares. A test
+  // compares it with tests/fixtures/catalog.json, and at run time `unexplainedReasons` compares it with
+  // sensor.homerun_catalog so a reason added without wording raises attention instead of vanishing.
+  const capFirst = (t) => str(t).replace(/^./, (c) => c.toUpperCase());
+  const pretty = (s) => str(s).replace(/_/g, ' ').trim();
+  const LUX_MAX = 200000; // far above sunlight; keeps a corrupt reading from printing a 20-digit number
+  const clampInt = (n, lo, hi) => Math.round(Math.min(hi, Math.max(lo, n)));
+  const fmtLux = (v) => { const n = num(v); return n === null ? 'no light reading' : `${clampInt(n, 0, LUX_MAX)} lx`; };
+  const fmtThreshold = (v) => { const n = num(v); return n === null ? 'a set level' : String(clampInt(n, 0, LUX_MAX)); };
+  const fmtMinutes = (v) => { const n = num(v); return n === null ? 'a few minutes' : `${clampInt(n, 0, 24 * 60)} min`; };
+  const fmtTheme = (v) => { const t = str(v).trim(); return t ? (THEME_LABELS[t.toLowerCase()] || capFirst(pretty(t))) : 'the new'; };
+  // Entities are named by their friendly name, falling back to the id so a rename never hides the source.
+  const entityName = (hass, id) => {
+    const s = str(id);
+    if (!s) return '';
+    const f = attr(hass, s, 'friendly_name');
+    return typeof f === 'string' && f.trim() ? f.trim() : s;
+  };
+  const luxText = (f) => `${fmtLux(f.lux)}, on below ${fmtThreshold(f.lux_threshold)}`;
+
+  const REASON_TEXT = {
+    'lighting:automation_disabled': () => 'Stayed off: lights automation is off',
+    'lighting:button_cycle': (f) => `Scene set · button pressed${str(f.scene) ? ` (${pretty(f.scene)})` : ''}`,
+    'lighting:button_off': () => 'Lights off · button pressed off',
+    'lighting:calendar_boundary': (f) => `Theme switched to ${fmtTheme(f.theme)} · calendar`,
+    'lighting:calendar_boundary_catch_up': (f) => `Theme switched to ${fmtTheme(f.theme)} · calendar, after a restart`,
+    'lighting:calendar_theme_not_an_option': (f) => `Theme left as it is: the calendar wants ${fmtTheme(f.theme)}, which is not an option`,
+    'lighting:external_suppress_active': (f, c) => `Stayed off: held off by ${c.name(f.source) || 'something else'}`,
+    'lighting:guest_room_sleep_bypass': () => 'Left on when the house went to sleep · guest mode',
+    'lighting:house_sleep_mode': () => 'Lights off · house asleep',
+    'lighting:lux_high': (f) => `Stayed off: bright enough (${luxText(f)})`,
+    'lighting:lux_low': (f) => `Scene set · getting dark (${luxText(f)})`,
+    'lighting:occupancy_off': () => 'Lights off · room emptied',
+    'lighting:occupancy_settle_off': () => 'Lights off · room stayed empty',
+    'lighting:on_outside_evening_window': (f) => `Preview started · turned on outside the evening (off after ${fmtMinutes(f.minutes)})`,
+    'lighting:preview_ended': () => 'Lights off · preview over',
+    'lighting:recent_auto_off': () => 'Scene set · back soon after lights went off',
+    'lighting:schedule_off': () => 'Lights off · scheduled off',
+    'lighting:sleep_mode': () => 'Stayed off: house asleep',
+    'lighting:sunrise': () => 'Lights off · sunrise',
+    'lighting:sunset': () => 'Lights on · sunset',
+    'lighting:sunset_while_house_asleep': () => 'Stayed off at sunset: house asleep',
+    'lighting:theme_changed': (f) => `Lights restyled · lighting theme changed to ${fmtTheme(f.theme)}`,
+    'lighting:theme_changed_by_hand_today': () => 'Theme left as it is: changed by hand today',
+    'lighting:theme_scene_missing': (f) => `Lights on · no scene for this theme (${fmtTheme(f.theme)})`,
+    'occupied:containment_failsafe_expired': () => 'Marked empty · closed-door timeout ended',
+    'occupied:motion_detected': () => 'Marked occupied · motion detected',
+    'occupied:strong_hold_active': (f, c) => `Stayed occupied: held by ${c.name(f.hold) || 'a hold'}`,
+    'occupied:strong_hold_started': (f, c) => `Marked occupied · held by ${c.name(f.hold) || 'a hold'}`,
+    'occupied:timer_expired': () => 'Marked empty · timer ran out',
+  };
+  // Decisions homerun stores without a declaration (heating and other undeclared automations, decisions with
+  // actions only): worded from the decision verb and reason, as the feed sensor always did.
+  const LEGACY_DECISION = {
+    turn_on: 'turned on', turn_off: 'turned off', on: 'turned on', activate_scene: 'scene set', set_occupied: 'marked occupied',
+    clear_occupied: 'marked empty', notify: 'notification sent', join: 'joined the speaker group', unjoin: 'left the speaker group',
+    exit_sleep: 'left sleep mode', clear_recent_auto_off: 'reset after switching off', switch_theme: 'theme switched',
+    start_preview: 'preview started',
+  };
+  const LEGACY_REASON = {
+    occupancy_on: 'room occupied', kitchen_motion_detected: 'kitchen motion', end_of_day: 'end of day',
+    already_in_sleep_mode: 'already asleep', not_in_sleep_mode: 'not asleep', house_away: 'house away', house_not_away: 'someone home',
+    guest_mode_active: 'guest mode', away_but_guest_present: 'away but guest present', bed_occupied: 'bed occupied',
+    bed_not_occupied: 'bed empty', button_pressed: 'button pressed', button_double_press: 'button double press',
+    door_open_heating_on: 'door open while heating', door_closed_was_suspended: 'door closed, heating resumed',
+    open_door: 'door opened', close_door: 'door closed', outside_morning_window: 'outside the morning window',
+    parlour_active: 'parlour in use', overtemp_heater_on: 'too hot',
+  };
+  const NOUN = { lighting: 'Lights', occupied: 'Occupancy', heating: 'Heating' };
+
+  function legacySentence(e) {
+    const noun = NOUN[e.subsystem] || capFirst(pretty(e.subsystem));
+    const verb = DECISION_WORDS[e.decision] || LEGACY_DECISION[e.decision] || pretty(e.decision);
+    const why = REASON_WORDS[e.reason] || LEGACY_REASON[e.reason] || pretty(e.reason);
+    return `${noun}${verb ? ' ' + verb : ''}${why ? ' · ' + why : ''}`;
+  }
+  // What a failed run or action says. Devices are named by their friendly name, never "entity".
+  function problemSentence(e, hass) {
+    const d = e.detail;
+    const who = entityName(hass, d.entity);
+    if (e.kind === 'action_failed') {
+      if (d.failure === 'ack_timeout') return `${who || 'A device'} didn't respond`;
+      return `${who || 'A device'} couldn't be controlled${str(d.action) ? ` (${pretty(str(d.action).split('.').pop())})` : ''}`;
+    }
+    switch (d.abort_kind) {
+      case 'unavailable_input': return `Couldn't run: ${who || 'an input'} unavailable`;
+      case 'guard': return `Held back${who ? ' · ' + who : ''}${e.reason ? ' · ' + pretty(e.reason) : ''}`;
+      case 'unhandled_error': return "Couldn't run: it failed unexpectedly";
+      default: return `Couldn't run: ${pretty(d.abort_kind) || 'unknown problem'}`;
+    }
+  }
+  // One entry in words, plus how to show it: `ok` for something done, `muted` for a rule that chose not
+  // to act, `warn` for a run that could not happen. A declared reason with no wording still renders (never
+  // blank) and is reported by unexplainedReasons.
+  function historySentence(e, hass) {
+    if (e.kind !== 'decision') return { text: problemSentence(e, hass), tone: 'warn' };
+    const tone = e.outcome === 'declined' ? 'muted' : 'ok';
+    if (e.outcome === undefined) return { text: legacySentence(e), tone };
+    const fn = REASON_TEXT[`${e.subsystem}:${e.reason}`];
+    const ctx = { name: (id) => entityName(hass, id) };
+    return { text: fn ? fn(e.facts, ctx) : `${capFirst(pretty(e.subsystem))} ${pretty(e.reason)}`, tone };
+  }
+
+  // ── History: sensor.<location>_history (home.history.v1) ─────────────────────────────────────
+  const HISTORY_SCHEMA = 'home.history.v1';
+  const HISTORY_MAX = 200; // homerun's own upper bound on history.size
+  const HISTORY_KINDS = ['decision', 'abort', 'action_failed'];
+  const flatRecord = (v) => {
+    const out = {};
+    if (!isObj(v)) return out;
+    for (const k of Object.keys(v)) if (v[k] === null || ['string', 'number', 'boolean'].includes(typeof v[k])) out[k] = v[k];
+    return out;
+  };
+  // One entry, or null when it cannot be trusted: the card never renders a half-understood row.
+  function historyEntry(raw) {
+    if (!isObj(raw) || parseTs(raw.ts) === null || !HISTORY_KINDS.includes(raw.kind)) return null;
+    if (typeof raw.subsystem !== 'string' || !raw.subsystem || typeof raw.location !== 'string') return null;
+    if (raw.outcome !== undefined && raw.outcome !== 'acted' && raw.outcome !== 'declined') return null;
+    return {
+      ts: raw.ts, location: raw.location, automation_id: str(raw.automation_id), subsystem: raw.subsystem, kind: raw.kind,
+      decision: str(raw.decision), reason: str(raw.reason), outcome: raw.outcome, facts: flatRecord(raw.facts), detail: flatRecord(raw.detail),
+    };
+  }
+  // A sensor's attributes in, `{entries, note}` out: newest first, never throws. A payload we cannot read
+  // is an empty list plus a note that says so, because "nothing happened" and "we cannot tell" differ.
+  function parseHistory(attrs) {
+    if (attrs === undefined || attrs === null) return { entries: [], note: '' };
+    if (!isObj(attrs)) return { entries: [], note: 'History unreadable' };
+    if (attrs.schema === undefined && attrs.entries === undefined) return { entries: [], note: '' };
+    if (attrs.schema !== HISTORY_SCHEMA) return { entries: [], note: 'History unreadable' };
+    let list = attrs.entries;
+    if (typeof list === 'string') { try { list = JSON.parse(list); } catch (e) { list = null; } }
+    if (!Array.isArray(list)) return { entries: [], note: 'History unreadable' };
+    const entries = list.slice(0, HISTORY_MAX).map(historyEntry).filter(Boolean);
+    entries.sort((a, b) => parseTs(b.ts) - parseTs(a.ts));
+    const skipped = Math.min(list.length, HISTORY_MAX) - entries.length;
+    return { entries, note: skipped > 0 ? `${skipped} ${plural(skipped, 'entry', 'entries')} could not be read` : '' };
+  }
+  function readHistory(hass, entity) {
+    const s = stateObj(hass, entity);
+    if (!s || s.state === 'unavailable') return { entries: [], note: 'History unavailable' };
+    return parseHistory(s.attributes);
+  }
+  const isPlumbingEntry = (e) => PLUMBING_DECISIONS.includes(e.decision) || PLUMBING_AUTOS.some((p) => e.automation_id.includes(p));
+  // A decision that changed something: declared `acted`, or an undeclared decision (stored only with actions).
+  const isActed = (e) => e.kind === 'decision' && e.outcome !== 'declined';
+
+  // sensor.homerun_catalog keeps "subsystem:reason" keys for the reasons worth explaining (acted or declined).
+  // Any without wording is a gap in this card, so it is reported rather than hidden. An unreadable catalogue
+  // reports nothing: an unknown is not a gap.
+  const REASON_KEY = /^[a-z][a-z0-9_]*:[A-Za-z][A-Za-z0-9_]*$/;
+  function unexplainedReasons(hass) {
+    const raw = attr(hass, 'sensor.homerun_catalog', 'reasons');
+    if (!Array.isArray(raw)) return [];
+    return raw.filter((k) => typeof k === 'string' && REASON_KEY.test(k) && !Object.prototype.hasOwnProperty.call(REASON_TEXT, k)).slice(0, 50);
+  }
+
+  // Room "Recent activity": the room's history as rows, consecutive identical rows collapsed (a mashed button).
+  function roomActivity(hass, key) {
+    const h = readHistory(hass, `sensor.${key}_history`);
+    const rows = [];
+    for (const e of h.entries.filter((x) => !isPlumbingEntry(x))) {
+      const { text, tone } = historySentence(e, hass);
+      const last = rows[rows.length - 1];
+      if (last && last.text === text && last.tone === tone) last.count += 1;
+      else rows.push({ ts: e.ts, text, tone, count: 1 });
+    }
+    return { rows, note: h.note };
+  }
+  const DIDNT_GLYPH = 'M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16zM6.3 6.3l11.4 11.4';
+  function activityRows(rows, limit) {
+    return rows.slice(0, limit).map((r) => {
+      const glyph = r.tone === 'muted' ? `<span class="g">${svg(DIDNT_GLYPH, 12)}</span>` : '';
+      return `<div class="feed ${r.tone}"><span class="a">${esc(hhmm(r.ts))}</span><span>${glyph}${esc(r.text)}${r.count > 1 ? ` <b>x${r.count}</b>` : ''}</span></div>`;
+    }).join('');
   }
 
   // ── Icons ────────────────────────────────────────────────────────────────────────────────────
@@ -716,7 +894,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       head = `<div style="display:flex;align-items:center;gap:10px"><span class="dot${hasData ? '' : ' dim'}"></span><div style="font-size:15px;font-weight:700">${hasData ? 'All good' : 'No attention report'}</div><div style="flex:1"></div>${side}</div>`;
     } else {
       const first = items[0];
-      const path = ROOMS[first.key] ? roomPath(first.key) : MOBILE;
+      const path = ROOMS[first.key] ? roomPath(first.key) : first.kind === 'unexplained_reason' ? `${DASH}/now` : MOBILE;
       // The summary is room and what; the room card below carries the sentence.
       const shown = items.slice(0, 3).map((i) => `<div style="font-size:13px;margin-top:6px;line-height:1.4"><b>${esc(i.room)}</b> · ${esc(itemLabel(i, ROOMS[i.key] ? roomModel(hass, i.key) : null))}</div>`).join('');
       const more = items.length > 3 ? `<div style="font-size:12px;color:${TOKENS.text2};margin-top:4px">+${items.length - 3} more</div>` : '';
@@ -745,10 +923,11 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     occupied: { set_occupied: 'marked occupied', clear_occupied: 'marked empty' },
   };
   function recentNote(hass, key, now) {
-    const e = roomFeed(hass, key)[0];
+    // The newest thing the house did here; a rule that chose not to act is not an action.
+    const e = readHistory(hass, `sensor.${key}_history`).entries.find((x) => isActed(x) && !isPlumbingEntry(x));
     if (!e) return '';
     const t = parseTs(e.ts);
-    const phrase = ACTION_PHRASE[str(e.sub)] && ACTION_PHRASE[str(e.sub)][str(e.decision)];
+    const phrase = ACTION_PHRASE[e.subsystem] && ACTION_PHRASE[e.subsystem][e.decision];
     if (t === null || !phrase) return '';
     const age = now - t;
     if (age >= RECENT_MS || age < -60000) return '';
@@ -1395,22 +1574,63 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return `<div style="display:flex;align-items:center;gap:4px"><a class="tap" data-act="nav" data-path="${DASH}/now" aria-label="Back to Now" style="min-height:44px;min-width:44px;display:flex;align-items:center;color:${TOKENS.text2}">${svg(ICON.back, 22)}</a><div style="font-size:28px;font-weight:700;letter-spacing:-.4px">${esc(m.cfg.name)}</div></div>${banner}${numbers}`;
   }
 
-  // The lights row of the Why card: who set the lights and what would change them. Presence holds keep a
-  // room occupied, so no "room emptied" event fires and the lights stay as they are until the last hold
-  // clears; a manual change persists the same way, because the controller only acts on triggers.
-  function lightsExplain(m) {
-    const cap = (t) => t.replace(/^./, (c) => c.toUpperCase());
-    const at = (ts) => (ts ? ' at ' + hhmm(ts) : '');
+  // The lights row of the Why card: why the lights are as they are, including why they are NOT on. One
+  // function, first matching rule wins (the order is the point: a switched-off automation outranks any
+  // history, and a hand change outranks an older automated action):
+  //   1 automation off · 2 manual change newer than the last automated action · 3 lights off and room empty
+  //   4 newest lighting entry is a decline, abort or failure and newer than the last act · 5 the last act.
+  // Presence holds keep a room occupied, so no "room emptied" event fires and the lights stay as they are until
+  // the last hold clears; a manual change persists the same way, because the controller only acts on triggers.
+  // Indoor rooms only: gardens keep their own model (gardenModel), whose sub-line explains each state.
+  // Returns {state, why, tone, holds}: tone is ok | muted | warn.
+  function lightsStory(hass, key, now) {
+    const m = roomModel(hass, key);
     const holds = m.pres_labels.join(' · ');
-    const auto = m.lights_why ? `${cap(m.lights_why)}${at(m.lights_ts)}` : 'No lighting decision seen since Home Assistant started';
-    if (!m.lights_enabled) return { tag: '<span class="tag">Automation off</span>', sub: 'Lights automation is off · they change only by hand' };
+    const at = (ts) => (ts ? ' at ' + hhmm(ts) : '');
+    const out = (state, why, tone) => ({ state, why, tone, holds });
+    if (!m.lights_enabled) return out('disabled', 'Lights automation is off · they change only by hand', 'muted');
+    const h = readHistory(hass, `sensor.${key}_history`);
+    const lighting = h.entries.filter((e) => e.subsystem === 'lighting' && !isPlumbingEntry(e));
+    const lastActed = lighting.find(isActed);
     if (m.manual) {
-      const how = cap(SOURCE_WORDS[m.manual.source] || m.manual.source);
-      const what = m.manual.source !== 'wall_button' && m.manual.what ? `: ${m.manual.what}` : '';
-      return { tag: '<span class="tag">Manual</span>', sub: `${how}${at(m.manual.ts)}${what} · stays until the room is empty` };
+      const manualAt = parseTs(m.manual.ts);
+      const actedAt = lastActed ? parseTs(lastActed.ts) : null;
+      if (manualAt === null || actedAt === null || manualAt > actedAt) {
+        const how = capFirst(SOURCE_WORDS[m.manual.source] || m.manual.source);
+        const what = m.manual.source !== 'wall_button' && m.manual.what ? `: ${m.manual.what}` : '';
+        return out('manual', `${how}${at(m.manual.ts)}${what} · stays until the room is empty`, 'ok');
+      }
     }
-    if (holds) return { tag: '<span class="tag off">Hold</span>', sub: m.lights_on > 0 ? `${auto} · stays on while ${holds}` : auto };
-    return { tag: '<span class="tag ok">Auto</span>', sub: m.lights_on > 0 ? `${auto} · off when the room empties` : auto };
+    const occ = stateObj(hass, `binary_sensor.${key}_occupied`);
+    const sensorGone = m.occupancy_unavailable || state(hass, `binary_sensor.${key}_occupied`) === 'unavailable';
+    if (m.lights_on === 0 && (sensorGone || !m.occupied)) {
+      if (sensorGone) return out('empty', 'Occupancy sensor unavailable', 'warn');
+      const since = parseTs(occ && occ.last_changed);
+      // Clamped to now so a skewed clock never shows a time in the future.
+      const when = since === null ? '' : ` since ${hhmm(new Date(Number.isFinite(now) ? Math.min(since, now) : since).toISOString())}`;
+      const motionOff = state(hass, `input_boolean.${key}_sensor_motion_enabled`) === 'off' ? ' · motion sensor is off' : '';
+      return out('empty', `No one detected${when}${motionOff}`, 'ok');
+    }
+    // What would change the lights next, said only while they are on.
+    const tail = m.lights_on > 0 ? (holds ? ` · stays on while ${holds}` : ' · off when the room empties') : '';
+    const newest = lighting[0];
+    const newer = newest && (!lastActed || parseTs(newest.ts) > parseTs(lastActed.ts));
+    if (newer && !isActed(newest)) {
+      const { text, tone } = historySentence(newest, hass);
+      return out(tone === 'warn' ? 'problem' : 'declined', `${text}${at(newest.ts)}${tail}`, tone);
+    }
+    if (lastActed) return out('acted', `${historySentence(lastActed, hass).text}${at(lastActed.ts)}${tail}`, 'ok');
+    return out('none', `${h.note ? `Lighting ${h.note.toLowerCase()}` : 'No lighting decision recorded yet'}${tail}`, h.note ? 'warn' : 'muted');
+  }
+
+  function lightsTag(story) {
+    switch (story.state) {
+      case 'disabled': return '<span class="tag">Automation off</span>';
+      case 'manual': return '<span class="tag">Manual</span>';
+      case 'problem': return '<span class="tag">Problem</span>';
+      case 'declined': return "<span class=\"tag off\">Didn't act</span>";
+      default: return story.holds ? '<span class="tag off">Hold</span>' : '<span class="tag ok">Auto</span>';
+    }
   }
 
   function sectionWhy(hass, key, now) {
@@ -1418,10 +1638,9 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     if (!m.hasReport) return '';
     const scene = activeScene(hass, key);
     const rows = [];
-    const lx = lightsExplain(m);
-    const lightsTag = lx.tag;
-    const lightsSub = esc(lx.sub);
-    rows.push(`<div class="item">${svg(ICON.bulb, 18)}<div><div class="h">${esc(m.lights_on > 0 ? lightsPhrase(m, scene) : 'Lights off')}</div><div class="s">${lightsSub}</div></div>${lightsTag}</div>`);
+    const story = lightsStory(hass, key, now);
+    const tint = story.tone === 'warn' ? ` style="color:${TOKENS.amber}"` : '';
+    rows.push(`<div class="item">${svg(ICON.bulb, 18)}<div><div class="h">${esc(m.lights_on > 0 ? lightsPhrase(m, scene) : 'Lights off')}</div><div class="s"${tint}>${esc(story.why)}</div></div>${lightsTag(story)}</div>`);
     if (m.cfg.climate) {
       const differs = !!m.target_reason;
       const h = m.target !== null ? `Heating target ${fmt1(m.target)}°` : 'Heating';
@@ -2040,8 +2259,9 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   }
 
   function sectionRoomFeed(hass, key, now) {
-    const entries = roomFeed(hass, key);
-    const body = entries.length ? feedRows(entries, now, 6) : `<div class="feed"><span class="a"></span><span style="color:${TOKENS.text2}">No activity in this room since Home Assistant started</span></div>`;
+    const { rows, note } = roomActivity(hass, key);
+    const quiet = (msg) => `<div class="feed"><span class="a"></span><span style="color:${TOKENS.text2}">${esc(msg)}</span></div>`;
+    const body = (rows.length ? activityRows(rows, ACTIVITY_ROWS) : quiet('Nothing recorded for this room yet')) + (note ? quiet(note) : '');
     return `<div class="lbl" style="margin:4px 4px -10px">Recent activity</div><div class="card">${body}</div>`;
   }
 
@@ -2191,7 +2411,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     }
   }
 
-  const api = { TILE, TILE_H, TILE_WIDE_H, tileNeededHeight, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, entrySentence, tidyVerdict, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, CAMERAS_PATH, PENDING_MS, cameraParts, cameraToggle, cameraPending, parseClips, frigateClipsId, roomGroups, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, MOBILE, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, GARDEN_ORDER, ALL_ROOM_KEYS, THEME_LABELS, THEME_ICON, ICON, gardenModel, gardenSub, themeSource, shortDate, ALLOWED, DEVICE_REASONS, FAN_NUMBERS, render, priceColour, PRICE_STOPS, PRICE_EXTREME_P, roomModel, attentionItems, handleAction, callService, num, parseList };
+  const api = { lightsStory, parseHistory, readHistory, historySentence, roomActivity, unexplainedReasons, REASON_TEXT, TILE, TILE_H, TILE_WIDE_H, tileNeededHeight, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, entrySentence, tidyVerdict, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, CAMERAS_PATH, PENDING_MS, cameraParts, cameraToggle, cameraPending, parseClips, frigateClipsId, roomGroups, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, MOBILE, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, GARDEN_ORDER, ALL_ROOM_KEYS, THEME_LABELS, THEME_ICON, ICON, gardenModel, gardenSub, themeSource, shortDate, ALLOWED, DEVICE_REASONS, FAN_NUMBERS, render, priceColour, PRICE_STOPS, PRICE_EXTREME_P, roomModel, attentionItems, handleAction, callService, num, parseList };
   root.PulseLib = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 

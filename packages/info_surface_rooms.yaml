@@ -68,12 +68,8 @@ template:
                  ['presence', 'binary_sensor.foreign_office_monitor', 'on', 'Monitor on'],
                  ['heating', 'binary_sensor.foreign_office_external_openings', 'on', 'Door open']]}
             ] %}
-            {% set feed = state_attr('sensor.info_decision_feed', 'by_room') %}
-            {% set feed = feed | from_json if feed is string else (feed or []) %}
             {% set mx = state_attr('sensor.info_manual_changes', 'changes') %}
             {% set manual_feed = mx | from_json if mx is string else (mx or []) %}
-            {% set lx = state_attr('sensor.info_decision_feed', 'lights') %}
-            {% set lights_feed = lx | from_json if lx is string else (lx or []) %}
             {% set out = namespace(items=[]) %}
             {% for c in cfg %}
               {% set k = c['k'] %}
@@ -114,12 +110,16 @@ template:
               {% elif differs %}{% set target_reason = 'differs from mode' %}
               {% else %}{% set target_reason = '' %}{% endif %}
               {% set scene = states('sensor.' ~ k ~ '_active_scene') %}
-              {# Entries stored before the feed filtered plumbing may still be present; ignore them here too. #}
+              {# Last decision and the lights reason come from homerun's retained history for this room (newest first).
+                 Raw keys only: the Pulse card words them itself, this prettified form is for the classic views. #}
+              {% set hx = state_attr('sensor.' ~ k ~ '_history', 'entries') %}
+              {% set hist = hx | from_json if hx is string else (hx or []) %}
               {% set lasts = namespace(v=none) %}
-              {% for f in feed if lasts.v is none and f.get('loc') == k and f.get('decision') not in ['update_external_temp', 'record'] and 'room_temp_feed' not in (f.get('auto') or '') %}
+              {% for f in hist if lasts.v is none and f.get('kind') == 'decision' and f.get('decision') not in ['update_external_temp', 'record'] and 'room_temp_feed' not in (f.get('automation_id') or '') %}
                 {% set lasts.v = f %}
               {% endfor %}
               {% set last = lasts.v %}
+              {% set last_sentence = ((last.get('decision') or '') | replace('_', ' ')) ~ ((' · ' ~ (last.get('reason') | replace('_', ' '))) if last.get('reason') else '') if last else '' %}
               {% set parts = [('Occupancy unavailable' if 'occupancy' in un.items else ('Occupied' if occupied else 'Empty'))] %}
               {% set parts = parts + [('lights on' if lights_on else 'lights off')] %}
               {# Effective state: only said when the TRV target is not what the mode implies; otherwise the mode is noise. #}
@@ -130,7 +130,7 @@ template:
               {% set lc = namespace(on=0) %}
               {% for m in members %}{% if is_state(m, 'on') %}{% set lc.on = lc.on + 1 %}{% endif %}{% endfor %}
               {% set lw = namespace(v=none) %}
-              {% for f in lights_feed if lw.v is none and f.get('loc') == k %}{% set lw.v = f %}{% endfor %}
+              {% for f in hist if lw.v is none and f.get('kind') == 'decision' and f.get('subsystem') == 'lighting' %}{% set lw.v = f %}{% endfor %}
               {% if target_reason %}
                 {% set parts = parts + ['heating target ' ~ (target | float(0)) ~ '° (' ~ target_reason ~ ')'] %}
               {% endif %}
@@ -164,9 +164,9 @@ template:
                 'manual': {'source': mn.v.get('source'), 'ts': mn.v.get('ts'), 'what': mn.v.get('what')} if mn.v and mn.v.get('source') else none,
                 'lights_on': lc.on,
                 'lights_total': members | length,
-                'lights_why': (lw.v.get('why') or '') if lw.v else '',
+                'lights_why': (lw.v.get('reason') or '') | replace('_', ' ') if lw.v else '',
                 'lights_ts': (lw.v.get('ts') or '') if lw.v else '',
-                'last': last.get('sentence') if last else '',
+                'last': last_sentence,
                 'last_ts': last.get('ts') if last else '',
                 'verdict': parts | join(' · ')
               }] %}

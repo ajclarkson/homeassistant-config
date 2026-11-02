@@ -62,6 +62,13 @@ const withRooms = (rooms, attention, extra = {}) => mk({
   'sensor.info_attention': { state: String(attention.length), attributes: { items: JSON.stringify(attention) } },
   ...extra,
 });
+// homerun history entries (home.history.v1) and the sensor that carries them. `ago` is minutes before NOW.
+const histEntry = (ago, over = {}) => ({
+  ts: new Date(NOW - ago * 60000).toISOString(), location: 'kitchen', automation_id: 'kitchen:lighting', subsystem: 'lighting',
+  kind: 'decision', decision: 'turn_off', reason: 'occupancy_off', outcome: 'acted', ...over,
+});
+const histSensor = (key, entries, over = {}) => ({ [`sensor.${key}_history`]: { state: entries.length ? entries[0].ts : 'unknown', attributes: { schema: 'home.history.v1', entries, ...over } } });
+const luxHigh = (ago, lux = 85) => histEntry(ago, { decision: 'no_action', reason: 'lux_high', outcome: 'declined', facts: { lux, lux_threshold: 40 } });
 const NOISE = /undefined|NaN|\[object|null/;
 const ALL_MODES = ['now-header', 'status', 'rooms', 'bins-heating', 'feed', 'footer', 'tabbar', 'energy-head', 'energy-day', 'energy-cost', 'energy-history', 'energy-usage'];
 const SHARED_MODES = ['room-head', 'automations', 'room-feed'];
@@ -142,7 +149,7 @@ ok('no-climate rooms: no numbers card, "no climate" in row', () => {
 
 ok('manual marker: the Lighting card shows state only; the Why card explains who set it and what ends it', () => {
   const manual = { source: 'wall_button', ts: '2026-10-25T18:40:00+00:00', what: 'Wall button: scene cycled' };
-  const room = (over) => withRooms([{ ...FULL('parlour'), pres_labels: [], labels: [], ...over }], []);
+  const room = (over, extra = {}) => withRooms([{ ...FULL('parlour'), pres_labels: [], labels: [], ...over }], [], extra);
   const set = P.render('scenes', { room: 'parlour' }, room({ manual }), NOW);
   assert.match(set, /<span class="tag">Manual<\/span>/);
   assert.equal((set.match(/Manual/g) || []).length, 1, 'a bare chip, no explanation');
@@ -151,16 +158,17 @@ ok('manual marker: the Lighting card shows state only; the Why card explains who
   assert.match(set, /data-entity="scene.parlour_lamps"/);
   const none = P.render('scenes', { room: 'parlour' }, room({ manual: null }), NOW);
   assert.doesNotMatch(none, /Manual|class="note"/);
-  const why = (over) => P.render('why', { room: 'parlour' }, room(over), NOW);
+  const why = (over, extra) => P.render('why', { room: 'parlour' }, room(over, extra), NOW);
   const wall = why({ manual });
   assert.match(wall, /<span class="tag">Manual<\/span>/);
   assert.match(wall, /Wall button at 18:40 · stays until the room is empty/);
   assert.doesNotMatch(wall, /scene cycled/, 'what the wall button did is not repeated');
   const dash = why({ manual: { source: 'dashboard', ts: '2026-10-25T18:40:00+00:00', what: 'lamps scene' } });
   assert.match(dash, /Dashboard at 18:40: lamps scene · stays until the room is empty/);
-  const auto = why({ manual: null, lights_on: 2, lights_why: 'sleep hold', lights_ts: '2026-10-25T18:30:00+00:00' });
+  const dark = histEntry(12, { location: 'parlour', decision: 'activate_scene', reason: 'lux_low', facts: { lux: 12, lux_threshold: 40 } });
+  const auto = why({ manual: null, lights_on: 2 }, histSensor('parlour', [dark]));
   assert.match(auto, /<span class="tag ok">Auto<\/span>/);
-  assert.match(auto, /Sleep hold at 18:30 · off when the room empties/);
+  assert.match(auto, /Scene set · getting dark \(12 lx, on below 40\) at 18:30 · off when the room empties/);
   const hold = why({ manual: null, lights_on: 2, pres_labels: ['Monitor on'], labels: ['Monitor on'] });
   assert.match(hold, /<span class="tag off">Hold<\/span>/);
   assert.match(hold, /stays on while Monitor on/);
@@ -170,7 +178,107 @@ ok('manual marker: the Lighting card shows state only; the Why card explains who
   assert.match(disabled, /<span class="tag">Automation off<\/span>/);
   assert.match(disabled, /Lights automation is off · they change only by hand/);
   assert.doesNotMatch(disabled, /<span class="tag ok">Auto<\/span>/);
-  assert.match(why({ manual: null, lights_why: '' }), /No lighting decision seen since Home Assistant started/);
+  assert.match(why({ manual: null }, histSensor('parlour', [])), /No lighting decision recorded yet/);
+  assert.match(why({ manual: null }), /Lighting history unavailable/, 'a missing history sensor is said, not passed off as quiet');
+});
+
+// ── lightsStory: first matching rule wins ─────────────────────────────────────────────────────
+const story = (over = {}, extra = {}, key = 'kitchen') => P.lightsStory(withRooms([{ ...FULL(key), manual: null, pres_labels: [], labels: [], occupied: true, lights_on: 0, ...over }], [], extra), key, NOW);
+const kitchenEntity = (id, friendly) => ({ [id]: { state: 'on', attributes: { friendly_name: friendly } } });
+
+ok('lightsStory rule 1: lights automation off beats a declined entry and a manual change', () => {
+  const s = story({ lights_enabled: false, manual: { source: 'wall_button', ts: histEntry(1).ts, what: '' } }, histSensor('kitchen', [luxHigh(1)]));
+  assert.equal(s.state, 'disabled');
+  assert.equal(s.why, 'Lights automation is off · they change only by hand');
+});
+
+ok('lightsStory rule 2: a manual change wins only when newer than the last automated action', () => {
+  const manual = (ago) => ({ source: 'wall_button', ts: histEntry(ago).ts, what: '' });
+  const acted = histEntry(30);
+  const newer = story({ manual: manual(10), lights_on: 2 }, histSensor('kitchen', [luxHigh(5), acted]));
+  assert.equal(newer.state, 'manual');
+  assert.match(newer.why, /^Wall button at 18:32 · stays until the room is empty$/);
+  const older = story({ manual: manual(40), lights_on: 2 }, histSensor('kitchen', [acted]));
+  assert.equal(older.state, 'acted', 'the automation acted after the hand change, so the hand change no longer explains the lights');
+  assert.match(older.why, /^Lights off · room emptied at 18:12 · off when the room empties$/);
+  assert.equal(story({ manual: manual(10), lights_on: 2 }, histSensor('kitchen', [])).state, 'manual', 'no automated action on record');
+});
+
+ok('lightsStory rule 3: lights off in an empty room says since when, notes a disabled motion sensor, flags an unavailable one', () => {
+  const occ = (state, changed) => ({ 'binary_sensor.kitchen_occupied': { state, last_changed: changed, attributes: {} } });
+  const empty = story({ occupied: false }, { ...occ('off', '2026-10-25T14:03:00+00:00'), ...histSensor('kitchen', [luxHigh(1)]) });
+  assert.deepEqual([empty.state, empty.why, empty.tone], ['empty', 'No one detected since 14:03', 'ok'], 'beats a declined entry');
+  const noMotion = story({ occupied: false }, { ...occ('off', '2026-10-25T14:03:00+00:00'), 'input_boolean.kitchen_sensor_motion_enabled': { state: 'off', attributes: {} } });
+  assert.equal(noMotion.why, 'No one detected since 14:03 · motion sensor is off');
+  assert.equal(story({ occupied: false }, occ('off', 'garbage')).why, 'No one detected', 'an unreadable time is dropped, not invented');
+  assert.equal(story({ occupied: false }, occ('off', '2030-01-01T00:00:00+00:00')).why, 'No one detected since 18:42', 'a future time is clamped to now');
+  const gone = story({ occupied: false, occupancy_unavailable: true });
+  assert.deepEqual([gone.why, gone.tone], ['Occupancy sensor unavailable', 'warn']);
+  assert.equal(story({ occupied: true, lights_on: 0 }, histSensor('kitchen', [])).state, 'none', 'an occupied room with lights off falls through to history');
+  assert.notEqual(story({ occupied: false, lights_on: 2 }, histSensor('kitchen', [])).state, 'empty', 'lights on: not rule 3');
+});
+
+ok('lightsStory rule 4: a newer decline, abort or failure is explained in words; an older one is not', () => {
+  const declined = story({}, histSensor('kitchen', [luxHigh(1), histEntry(30)]));
+  assert.deepEqual([declined.state, declined.tone, declined.why], ['declined', 'muted', 'Stayed off: bright enough (85 lx, on below 40) at 18:41']);
+  assert.match(story({}, histSensor('kitchen', [luxHigh(1, null)])).why, /bright enough \(no light reading, on below 40\)/);
+  const abort = histEntry(2, { kind: 'abort', decision: '', reason: '', outcome: undefined, detail: { abort_kind: 'unavailable_input', entity: 'sensor.kitchen_lux' } });
+  const a = story({}, { ...histSensor('kitchen', [abort, histEntry(30)]), ...kitchenEntity('sensor.kitchen_lux', 'Lux sensor') });
+  assert.deepEqual([a.state, a.tone, a.why], ['problem', 'warn', "Couldn't run: Lux sensor unavailable at 18:40"]);
+  const failed = histEntry(2, { kind: 'action_failed', decision: '', reason: '', outcome: undefined, detail: { failure: 'ack_timeout', action: 'light.turn_on', entity: 'light.kitchen_ceiling' } });
+  const f = story({}, { ...histSensor('kitchen', [failed, histEntry(30)]), ...kitchenEntity('light.kitchen_ceiling', 'Kitchen ceiling') });
+  assert.deepEqual([f.state, f.tone, f.why], ['problem', 'warn', "Kitchen ceiling didn't respond at 18:40"]);
+  const old = story({}, histSensor('kitchen', [histEntry(1), luxHigh(30)]));
+  assert.equal(old.state, 'acted', 'the decline is older than the last act, so the act explains the lights');
+  const heldOn = story({ lights_on: 2, pres_labels: ['Monitor on'] }, histSensor('kitchen', [luxHigh(1)]));
+  assert.match(heldOn.why, /\(85 lx, on below 40\) at 18:41 · stays on while Monitor on$/);
+  const other = story({}, histSensor('kitchen', [histEntry(1, { subsystem: 'occupied', decision: 'set_occupied', reason: 'motion_detected' })]));
+  assert.equal(other.state, 'none', 'occupancy entries are not lighting explanations');
+});
+
+ok('lightsStory rule 5: the last act in words, then an honest empty, then a visible note for a bad payload', () => {
+  const s = story({ lights_on: 2 }, histSensor('kitchen', [histEntry(3, { decision: 'turn_on', reason: 'sunset', facts: {} }), histEntry(9, { decision: 'no_action', reason: 'lux_high', outcome: 'declined', facts: { lux: 60, lux_threshold: 40 } })]));
+  assert.deepEqual([s.state, s.why], ['acted', 'Lights on · sunset at 18:39 · off when the room empties']);
+  assert.equal(story({}, histSensor('kitchen', [])).why, 'No lighting decision recorded yet');
+  const bad = story({}, histSensor('kitchen', [], { schema: 'home.history.v9' }));
+  assert.deepEqual([bad.why, bad.tone], ['Lighting history unreadable', 'warn']);
+  assert.equal(story({}, histSensor('kitchen', [histEntry(1, { subsystem: 'lighting', outcome: undefined, decision: 'turn_on', reason: 'on_by_something' })])).state, 'acted', 'an undeclared decision with actions counts as an act');
+});
+
+ok('history parser: malformed payloads give an empty list and a visible note, never a throw', () => {
+  const good = histEntry(5);
+  assert.deepEqual(P.parseHistory(undefined), { entries: [], note: '' }, 'never received yet');
+  assert.deepEqual(P.parseHistory({}), { entries: [], note: '' });
+  assert.equal(P.parseHistory({ schema: 'home.history.v1', entries: [] }).note, '');
+  for (const bad of [{ schema: 'other', entries: [good] }, { schema: 'home.history.v1', entries: 'not json' }, { schema: 'home.history.v1', entries: { a: 1 } }, { schema: 'home.history.v1' }, 'string', 42]) {
+    assert.deepEqual(P.parseHistory(bad), { entries: [], note: 'History unreadable' }, JSON.stringify(bad));
+  }
+  const mixed = P.parseHistory({ schema: 'home.history.v1', entries: [good, null, 7, { ts: 'x', kind: 'decision', subsystem: 'lighting', location: 'k' }, { ...good, kind: 'mystery' }, { ...good, outcome: 'ignored' }, { ...good, subsystem: '' }] });
+  assert.equal(mixed.entries.length, 1);
+  assert.equal(mixed.note, '6 entries could not be read');
+  const shuffled = P.parseHistory({ schema: 'home.history.v1', entries: JSON.stringify([histEntry(30), histEntry(1), histEntry(10)]) });
+  assert.deepEqual(shuffled.entries.map((e) => e.ts), [1, 10, 30].map((m) => histEntry(m).ts), 'sorted newest first whatever the order sent');
+  assert.equal(P.parseHistory({ schema: 'home.history.v1', entries: Array.from({ length: 500 }, (_, i) => histEntry(i)) }).entries.length, 200, 'capped at homerun\'s own maximum');
+  assert.deepEqual(P.parseHistory({ schema: 'home.history.v1', entries: [{ ...good, facts: { a: 1, b: { x: 1 }, c: [1] } }] }).entries[0].facts, { a: 1 }, 'facts are flat primitives only');
+  assert.deepEqual(P.readHistory(mk(), 'sensor.nope_history'), { entries: [], note: 'History unavailable' });
+  assert.equal(P.readHistory(mk({ 'sensor.x_history': { state: 'unavailable', attributes: {} } }), 'sensor.x_history').note, 'History unavailable');
+});
+
+ok('Recent activity rows by kind: acted plain, declined muted with the didn\'t glyph, abort and failure amber, repeats collapse', () => {
+  const abort = histEntry(4, { kind: 'abort', decision: '', reason: '', outcome: undefined, detail: { abort_kind: 'guard' } });
+  const failed = histEntry(5, { kind: 'action_failed', decision: '', reason: '', outcome: undefined, detail: { failure: 'error', action: 'scene.turn_on', entity: 'scene.kitchen_all' } });
+  const entries = [histEntry(1), histEntry(2), luxHigh(3), abort, failed, histEntry(6, { automation_id: 'kitchen:room_temp_feed', decision: 'update_external_temp', reason: 'heartbeat', outcome: undefined })];
+  const html = P.render('room-feed', { room: 'kitchen' }, mk(histSensor('kitchen', entries, {})), NOW);
+  assert.match(html, /<div class="feed ok"><span class="a">18:41<\/span><span>Lights off · room emptied <b>x2<\/b>/);
+  assert.match(html, /<div class="feed muted"><span class="a">18:39<\/span><span><span class="g"><svg[^>]*>[\s\S]*?<\/svg><\/span>Stayed off: bright enough \(85 lx, on below 40\)/);
+  assert.match(html, /<div class="feed warn"><span class="a">18:38<\/span><span>Held back/);
+  assert.match(html, /<div class="feed warn"><span class="a">18:37<\/span><span>scene\.kitchen_all couldn&#39;t be controlled \(turn on\)/);
+  assert.equal((html.match(/class="feed /g) || []).length, 4, 'the temperature feed plumbing is not shown');
+  assert.match(P.render('room-feed', { room: 'kitchen' }, mk(histSensor('kitchen', [])), NOW), /Nothing recorded for this room yet/);
+  const unreadable = P.render('room-feed', { room: 'kitchen' }, mk(histSensor('kitchen', [good(), 5])), NOW);
+  assert.match(unreadable, /1 entry could not be read/);
+  assert.match(P.render('room-feed', { room: 'kitchen' }, mk(histSensor('kitchen', [], { schema: 'nope' })), NOW), /Nothing recorded for this room yet[\s\S]*History unreadable/);
+  function good() { return histEntry(2); }
 });
 
 ok('scene tiles use the spike scene map and highlight the active scene', () => {
@@ -338,11 +446,14 @@ ok('feed hides stored plumbing entries', () => {
     { loc: 'kitchen', ts: '2026-10-25T18:30:00+00:00', decision: 'update_external_temp', auto: 'kitchen:room_temp_feed', sentence: 'PLUMB' },
     { loc: 'kitchen', ts: '2026-10-25T18:20:00+00:00', decision: 'turn_off', auto: 'kitchen:lighting', sentence: 'Kitchen lights turned off' },
   ];
-  const hass = mk({ 'sensor.info_decision_feed': { state: 'x', attributes: { entries: JSON.stringify(entries), by_room: JSON.stringify(entries) } } });
+  const hass = mk({ 'sensor.info_decision_feed': { state: 'x', attributes: { entries: JSON.stringify(entries) } } });
   const feed = P.render('feed', {}, hass, NOW);
   assert.doesNotMatch(feed, /PLUMB/);
   assert.match(feed, /Kitchen lights turned off/);
-  assert.doesNotMatch(P.render('room-feed', { room: 'kitchen' }, hass, NOW), /PLUMB/);
+  const hist = histSensor('kitchen', [histEntry(1, { automation_id: 'kitchen:room_temp_feed', decision: 'update_external_temp', reason: 'temp_changed', outcome: undefined }), histEntry(3)]);
+  const room = P.render('room-feed', { room: 'kitchen' }, mk({ ...hist }), NOW);
+  assert.doesNotMatch(room, /external temp|update/i);
+  assert.match(room, /Lights off · room emptied/);
   assert.match(P.render('feed', {}, mk(), NOW), /No decisions seen since Home Assistant started/);
 });
 
@@ -778,7 +889,7 @@ ok('Now v2 hold badges (Window / Door) on occupied cards and tiles', () => {
 
 ok('recent action note is a phrase with its verb ("lights off 7 min ago"), under 15 minutes, never a bare duration', () => {
   const at = (mins) => new Date(NOW - mins * 60000).toISOString();
-  const feedOf = (mins, decision = 'turn_off', sub = 'lighting', loc = 'kitchen') => ({ 'sensor.info_decision_feed': { state: 'x', attributes: { entries: JSON.stringify([{ loc, sub, decision, ts: at(mins), sentence: 'x', auto: `${loc}:lighting` }]), by_room: '[]' } } });
+  const feedOf = (mins, decision = 'turn_off', sub = 'lighting', loc = 'kitchen') => histSensor(loc, [histEntry(mins, { location: loc, subsystem: sub, decision, reason: 'x', outcome: undefined })]);
   const rec = (mins, decision, sub) => P.render('rooms', {}, withRooms(calmRooms(), [], feedOf(mins, decision, sub)), NOW);
   assert.match(rec(0.2), /<span>off just now<\/span>/);
   assert.match(rec(7), /<span>off 7 min ago<\/span>/);
@@ -827,7 +938,7 @@ ok('Now v2: the price strip is one 44px+ link to the Energy page; the chart is g
 ok('Now v2 feed limited to 3 rows, collapse kept', () => {
   const e = (i, t) => ({ loc: 'kitchen', ts: `2026-10-25T18:0${i}:00+00:00`, sentence: t, decision: 'turn_on', auto: 'k:l' });
   const entries = [e(9, 'Bathroom lights scene set'), e(8, 'Bathroom lights scene set'), e(7, 'Kitchen on'), e(6, 'Hall off'), e(5, 'Home office on')];
-  const html = P.render('feed', {}, mk({ 'sensor.info_decision_feed': { state: 'x', attributes: { entries: JSON.stringify(entries), by_room: '[]' } } }), NOW);
+  const html = P.render('feed', {}, mk({ 'sensor.info_decision_feed': { state: 'x', attributes: { entries: JSON.stringify(entries) } } }), NOW);
   assert.equal(count(html, /class="feed"/g), 3);
   assert.match(html, /<b>x2<\/b>/);
   assert.doesNotMatch(html, /Home office on/);
@@ -1377,7 +1488,7 @@ ok('feed never shows no-ops (stored too) and rewrites jargon to plain words', ()
     e('set_mode', 'schedule', 'Kitchen heating set mode · schedule', { loc: 'kitchen', i: 5 }),
     e('turn_off', 'occupancy_off', 'Hallway down lights turned off · room emptied', { sub: 'lighting', loc: 'hallway_downstairs', i: 4 }),
   ];
-  const hass = mk({ 'sensor.info_decision_feed': { state: 'x', attributes: { entries: JSON.stringify(entries), by_room: JSON.stringify(entries) } } });
+  const hass = mk({ 'sensor.info_decision_feed': { state: 'x', attributes: { entries: JSON.stringify(entries) } } });
   const feed = P.render('feed', {}, hass, NOW);
   assert.doesNotMatch(feed, /maintain|no change|no action|no_change|set mode|safety/i);
   assert.match(feed, /Bedroom heating mode changed · window open/);
@@ -1538,7 +1649,7 @@ ok('attention labels: sensor_stale names the entity and age; the original four l
 
 ok('Now v3 occupied card is two lines: icon + name + temperature, then badges (amber manual badge, holds, phrase)', () => {
   const manual = { source: 'wall_button', ts: '2026-10-25T15:42:00+00:00', what: 'x' };
-  const feed = { 'sensor.info_decision_feed': { state: 'x', attributes: { entries: JSON.stringify([{ loc: 'parlour', sub: 'lighting', decision: 'turn_on', ts: new Date(NOW - 60000).toISOString(), sentence: 'x', auto: 'p:l' }]), by_room: '[]' } } };
+  const feed = histSensor('parlour', [histEntry(1, { location: 'parlour', decision: 'turn_on', reason: 'x', outcome: undefined })]);
   const hass = withRooms(calmRooms({ parlour: { occupied: true, lights_on: 2, temp: 20.3, manual, heat_labels: ['Window open'], pres_labels: ['Sofa occupied'], labels: ['Sofa occupied'] }, hallway_upstairs: { occupied: true, temp: null } }), [], { ...feed, 'sensor.parlour_active_scene': { state: 'parlour_lamps', attributes: {} } });
   const html = P.render('rooms', {}, hass, NOW);
   const card = html.match(/<a class="card oc tap"[\s\S]*?<\/a>/)[0];
@@ -2517,14 +2628,16 @@ ok('Now page: an Outside group with both gardens linking to their Pulse pages, a
   noNoise({ rooms, withDot, status }, 'outside');
 });
 
-ok('the daily calendar publish is plumbing and stays out of the feed', () => {
+ok('the daily calendar publish is plumbing and stays out of the activity list; a theme switch reads in words', () => {
+  const cal = { location: FG, automation_id: 'front_garden:lighting:theme_calendar' };
   const entries = [
-    { loc: FG, ts: '2026-11-02T00:05:00+00:00', decision: 'publish_calendar', auto: 'front_garden:lighting:theme_calendar', reason: 'not_a_calendar_boundary', sentence: 'CALPLUMB' },
-    { loc: FG, ts: '2026-11-02T00:06:00+00:00', decision: 'switch_theme', auto: 'front_garden:lighting:theme_calendar', reason: 'calendar_boundary', sentence: 'Front garden theme switched · calendar' },
+    histEntry(1, { ...cal, decision: 'switch_theme', reason: 'calendar_boundary', facts: { theme: 'halloween' } }),
+    histEntry(2, { ...cal, decision: 'publish_calendar', reason: 'not_a_calendar_boundary', outcome: undefined }),
   ];
-  const html = gr(frontGarden({ 'sensor.info_decision_feed': b('ok', { entries: JSON.stringify(entries), by_room: JSON.stringify([]) }) }), 'room-feed');
-  assert.doesNotMatch(html, /CALPLUMB/);
-  assert.match(html, /Front garden theme switched · calendar/);
+  const html = gr(frontGarden(histSensor(FG, entries)), 'room-feed');
+  assert.doesNotMatch(html, /publish|calendar publish|not a calendar boundary/i);
+  assert.match(html, /Theme switched to Halloween · calendar/);
+  assert.equal((html.match(/class="feed /g) || []).length, 1);
 });
 
 ok('garden YAML: views use the garden template, Mobile links to Pulse, feed and attention wording are in place', () => {
@@ -2579,6 +2692,121 @@ ok('Christmas scene exists, Normal keeps its entity id, scene ids stay unique', 
   assert.equal(byId['1792000000006'].name, 'Front Garden Christmas');
   assert.deepEqual(Object.keys(byId['1792000000006'].entities).sort(), Object.keys(byId['1792000000003'].entities).sort());
   assert.equal(new Set(scenes.map((x) => x.id)).size, scenes.length);
+});
+
+// ── Wording table against the catalogue snapshot ──────────────────────────────────────────────
+const catalog = JSON.parse(readFileSync(root + 'tests/fixtures/catalog.json', 'utf8'));
+const declared = new Map(); // 'subsystem:reason' -> {outcomes, facts}
+for (const a of catalog.automations) {
+  for (const [reason, v] of Object.entries(a.reasons)) {
+    const key = `${a.subsystem}:${reason}`;
+    const seen = declared.get(key);
+    const facts = [...v.facts].sort().join(',');
+    if (seen) { assert.equal(seen.outcome, v.outcome, `${key}: automations disagree on outcome`); assert.equal(seen.facts, facts, `${key}: automations disagree on facts`); }
+    else declared.set(key, { outcome: v.outcome, facts });
+  }
+}
+const worded = [...declared].filter(([, v]) => v.outcome !== 'ignored');
+
+ok('wording table: every acted or declined reason in the catalogue snapshot has a sentence, and no sentence is stale', () => {
+  assert.ok(worded.length >= 29, 'the snapshot is the real catalogue');
+  const missing = worded.map(([k]) => k).filter((k) => !P.REASON_TEXT[k]);
+  assert.deepEqual(missing, [], 'reasons with no wording');
+  const stale = Object.keys(P.REASON_TEXT).filter((k) => !declared.has(k) || declared.get(k).outcome === 'ignored');
+  assert.deepEqual(stale, [], 'wording for reasons the catalogue no longer declares as acted or declined');
+});
+
+ok('wording table: sentences read only declared facts, never print a placeholder, and survive null facts', () => {
+  const SAMPLE = { lux: 85, lux_threshold: 40, source: 'input_boolean.kitchen_cooking', hold: 'binary_sensor.kitchen_monitor', theme: 'halloween', minutes: 30, scene: 'cosy_evening' };
+  const hass = mk({ 'binary_sensor.kitchen_monitor': { state: 'on', attributes: { friendly_name: 'Kitchen monitor' } } });
+  const strict = (declaredKeys, values) => new Proxy(Object.fromEntries(declaredKeys.map((k) => [k, values(k)])), {
+    get(target, prop) { if (typeof prop === 'string' && !(prop in target)) throw new Error(`reads undeclared fact "${prop}"`); return target[prop]; },
+  });
+  for (const [key, v] of worded) {
+    const [subsystem, reason] = key.split(':');
+    const keys = v.facts ? v.facts.split(',') : [];
+    for (const [label, values] of [['sample', (k) => SAMPLE[k]], ['null', () => null]]) {
+      const raw = { ts: histEntry(1).ts, location: 'kitchen', automation_id: 'kitchen:x', subsystem, kind: 'decision', decision: 'd', reason, outcome: v.outcome, facts: Object.fromEntries(keys.map((k) => [k, values(k)])) };
+      const entry = P.parseHistory({ schema: 'home.history.v1', entries: [raw] }).entries[0];
+      entry.facts = strict(keys, values);
+      const { text, tone } = P.historySentence(entry, hass);
+      assert.ok(text.length > 8, `${key} (${label}) is a sentence`);
+      assert.doesNotMatch(text, /undefined|NaN|\[object|null|\{|\}/, `${key} (${label}): ${text}`);
+      assert.equal(tone, v.outcome === 'declined' ? 'muted' : 'ok', key);
+    }
+  }
+  const text = (key, facts) => P.historySentence({ ts: histEntry(1).ts, location: 'k', automation_id: 'k', subsystem: key.split(':')[0], kind: 'decision', decision: 'd', reason: key.split(':')[1], outcome: declared.get(key).outcome, facts, detail: {} }, hass).text;
+  assert.equal(text('lighting:lux_high', { lux: 85, lux_threshold: 40 }), 'Stayed off: bright enough (85 lx, on below 40)');
+  assert.equal(text('lighting:lux_high', { lux: null, lux_threshold: 40 }), 'Stayed off: bright enough (no light reading, on below 40)');
+  assert.equal(text('lighting:lux_high', { lux: 1e12, lux_threshold: -5 }), 'Stayed off: bright enough (200000 lx, on below 0)', 'formatted numbers are clamped');
+  assert.equal(text('lighting:external_suppress_active', { source: 'binary_sensor.kitchen_monitor' }), 'Stayed off: held off by Kitchen monitor', 'entities are worded by friendly name');
+  assert.equal(text('lighting:external_suppress_active', { source: 'input_boolean.unknown_thing' }), 'Stayed off: held off by input_boolean.unknown_thing', 'falls back to the id');
+  assert.equal(text('occupied:strong_hold_started', { hold: 'binary_sensor.kitchen_monitor' }), 'Marked occupied · held by Kitchen monitor');
+  assert.equal(text('occupied:strong_hold_active', { hold: 'binary_sensor.kitchen_monitor' }), 'Stayed occupied: held by Kitchen monitor');
+  assert.equal(text('lighting:on_outside_evening_window', { minutes: 30 }), 'Preview started · turned on outside the evening (off after 30 min)');
+});
+
+ok('wording table: the garden and feed sentences carry over, so the wording does not change', () => {
+  const carried = { 'lighting:calendar_boundary': 'calendar', 'lighting:calendar_boundary_catch_up': 'calendar, after a restart', 'lighting:on_outside_evening_window': 'turned on outside the evening', 'lighting:preview_ended': 'preview over', 'lighting:theme_scene_missing': 'no scene for this theme', 'lighting:lux_low': 'getting dark', 'lighting:lux_high': 'bright enough', 'lighting:recent_auto_off': 'back soon after lights went off', 'occupied:containment_failsafe_expired': 'closed-door timeout ended', 'lighting:house_sleep_mode': 'house asleep', 'lighting:sunset': 'sunset', 'lighting:sunrise': 'sunrise', 'lighting:schedule_off': 'scheduled off', 'occupied:motion_detected': 'motion detected', 'occupied:timer_expired': 'timer ran out', 'lighting:button_cycle': 'button pressed' };
+  for (const [key, phrase] of Object.entries(carried)) {
+    const raw = P.REASON_TEXT[key]({ lux: 1, lux_threshold: 2, theme: 'x', minutes: 1, scene: '', hold: '' }, { name: () => '' });
+    assert.ok(raw.toLowerCase().includes(phrase.toLowerCase()), `${key} keeps "${phrase}": ${raw}`);
+  }
+});
+
+ok('unexplained_reason: a catalogue reason with no wording raises attention; the real catalogue raises none', () => {
+  const keys = worded.map(([k]) => k).sort();
+  const cat = (reasons) => ({ 'sensor.homerun_catalog': { state: '19', attributes: { schema: 'home.catalog.v1', reasons } } });
+  assert.deepEqual(P.unexplainedReasons(mk(cat(keys))), []);
+  assert.equal(P.attentionItems(withRooms(P.ROOM_ORDER.map(FULL), [], cat(keys))).length, 0);
+  const hass = withRooms(P.ROOM_ORDER.map(FULL), [{ room: 'Bedroom', key: 'bedroom', kind: 'window_open_heating_on', text: 'Open window', nav: '/x' }], cat([...keys, 'lighting:brand_new_reason', 'occupied:another_one']));
+  const items = P.attentionItems(hass);
+  assert.deepEqual(items.map((i) => i.kind), ['window_open_heating_on', 'unexplained_reason'], 'a room problem still leads');
+  assert.match(items[1].text, /No wording for lighting:brand_new_reason, occupied:another_one/);
+  const status = P.render('status', {}, hass, NOW);
+  assert.match(status, /2 need attention/);
+  assert.match(status, /Pulse<\/b> · Reason not worded/);
+  assert.match(status, /data-path="\/pulse-dashboard\/room-bedroom"/, 'the link goes to the real room first');
+  const only = P.render('status', {}, withRooms(P.ROOM_ORDER.map(FULL), [], cat(['lighting:brand_new_reason'])), NOW);
+  assert.match(only, /1 needs attention[\s\S]*Reason not worded/);
+  assert.match(only, /data-path="\/pulse-dashboard\/now"/);
+  for (const bad of ['nope', 7, [1, null, 'bad key', 'lighting:ok_but_unknown', '../etc:x']]) assert.deepEqual(P.unexplainedReasons(mk(cat(bad))).filter((k) => k !== 'lighting:ok_but_unknown'), [], 'only well-formed keys are reported');
+  assert.deepEqual(P.unexplainedReasons(mk()), [], 'no catalogue sensor: an unknown is not a gap');
+  const flood = P.unexplainedReasons(mk(cat(Array.from({ length: 500 }, (_, i) => `lighting:r${i}`))));
+  assert.equal(flood.length, 50, 'capped');
+  noNoise({ s: P.render('status', {}, hass, NOW) }, 'unexplained');
+});
+
+ok('history, catalogue and feed YAML: one history sensor per location plus house, the catalogue projection, the feed lost by_room and lights', () => {
+  const mqtt = yaml.load(readFileSync(root + 'packages/mqtt.yaml', 'utf8')).mqtt.sensor;
+  const by = (id) => mqtt.find((x) => x.unique_id === id);
+  const locations = [...P.ALL_ROOM_KEYS];
+  for (const loc of new Set(catalog.automations.map((a) => a.location))) assert.ok(locations.includes(loc), `catalogue location ${loc} is a room or garden key in the card`);
+  for (const k of locations) {
+    const s = by(`${k}_history`);
+    assert.ok(s, k);
+    assert.deepEqual([s.state_topic, s.json_attributes_topic], [`homerun/${k}/history`, `homerun/${k}/history`]);
+    assert.equal(s.name, `${k.split('_').map((w) => w[0].toUpperCase() + w.slice(1)).join(' ')} History`, 'the entity id is sensor.<location>_history');
+  }
+  assert.deepEqual([by('house_history').state_topic, by('house_history').json_attributes_topic], ['homerun/history', 'homerun/history']);
+  const cat = by('homerun_catalog');
+  assert.deepEqual([cat.state_topic, cat.json_attributes_topic], ['homerun/catalog', 'homerun/catalog']);
+  assert.match(cat.json_attributes_template, /'acted', 'declined'/, 'only the reasons worth explaining are kept, under the 16 KB recorder cap');
+  assert.ok(JSON.stringify(catalog).length > 16384, 'the raw catalogue would exceed the recorder attribute cap');
+  for (const s of mqtt.filter((x) => /_history$/.test(x.unique_id))) assert.match(s.value_template, /entries\[0\]\.ts if value_json\.entries else none/, 'an empty history is unknown, not an error');
+  const feed = readFileSync(root + 'packages/info_surface_feed.yaml', 'utf8');
+  assert.doesNotMatch(feed, /by_room|old_by_room|^\s+lights: >-/m);
+  assert.match(feed, /entries: >-/);
+  assert.match(feed, /aborts: >-/);
+  assert.match(feed, /'strong_hold_active': 'kept on by a hold', 'strong_hold_started': 'started by a hold'/);
+  const rooms = readFileSync(root + 'packages/info_surface_rooms.yaml', 'utf8');
+  assert.doesNotMatch(rooms, /info_decision_feed/);
+  assert.match(rooms, /state_attr\('sensor\.' ~ k ~ '_history', 'entries'\)/);
+  for (const f of ['info_surface_feed', 'info_surface_rooms', 'mqtt']) assert.doesNotThrow(() => yaml.load(readFileSync(root + `packages/${f}.yaml`, 'utf8')), f);
+});
+
+ok('this step adds no write paths', () => {
+  assert.deepEqual(Object.keys(P.ALLOWED).sort(), ['button', 'input_boolean', 'input_number', 'input_select', 'light', 'media_player', 'scene', 'switch']);
 });
 
 console.log(`\n${n} test groups passed`);
