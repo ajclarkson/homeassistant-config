@@ -1,7 +1,6 @@
 title: Front garden
 path: room-front_garden
-subview: true
-back_path: /pulse-dashboard/house
+visible: false
 type: sections
 max_columns: 1
 background: '#12151a'

@@ -1,7 +1,6 @@
 title: Hallway upstairs
 path: room-hallway_upstairs
-subview: true
-back_path: /pulse-dashboard/house
+visible: false
 type: sections
 max_columns: 1
 background: '#12151a'

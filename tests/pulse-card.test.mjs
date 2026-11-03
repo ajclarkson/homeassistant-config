@@ -478,7 +478,6 @@ ok('every nav path targets the registered dashboard (/pulse-dashboard) or Mobile
   for (const f of readdirSync(root + 'views').filter((x) => x.startsWith('info-'))) {
     const v = yaml.load(readFileSync(root + 'views/' + f, 'utf8'));
     viewPaths.add(v.path);
-    if (v.back_path) assert.ok(v.back_path.startsWith(P.DASH + '/'), `${f} back_path ${v.back_path}`);
     assert.doesNotMatch(readFileSync(root + 'views/' + f, 'utf8'), /\/info-dashboard/, f);
   }
   const rooms = P.ROOM_ORDER.map(FULL);
@@ -1737,19 +1736,22 @@ ok('tab bar nav paths use the DASH constant and match real views', () => {
   assert.ok(P.TABS.every((t) => t.path.startsWith(P.DASH)));
 });
 
-ok('tab pages are normal views (no subview, no back_path); room and garden pages stay subviews that go back to House', () => {
+ok('all Pulse views are normal views; room and garden views are hidden from the tab strip (visible: false), still reachable by path', () => {
   const load = (f) => yaml.load(readFileSync(root + 'views/' + f, 'utf8'));
   for (const f of ['info-house', 'info-energy', 'info-cameras', 'info-settings']) {
     const v = load(f + '.yaml');
     assert.ok(!('subview' in v), `${f} must not be a subview`);
     assert.ok(!('back_path' in v), `${f} must not have a back_path`);
+    assert.ok(!('visible' in v), `${f} stays in the tab strip`);
   }
   const rooms = readdirSync(root + 'views').filter((x) => x.startsWith('info-room-'));
   assert.equal(rooms.length, P.ALL_ROOM_KEYS.length);
   for (const f of rooms) {
     const v = load(f);
-    assert.equal(v.subview, true, f);
-    assert.equal(v.back_path, '/pulse-dashboard/house', f);
+    assert.strictEqual(v.visible, false, f);
+    assert.ok(!('subview' in v), `${f} must not be a subview`);
+    assert.ok(!('back_path' in v), `${f} must not have a back_path`);
+    assert.match(v.path, /^room-[a-z_]+$/, f);
   }
 });
 
@@ -1761,16 +1763,11 @@ ok('tab pages render a title and no back link; the heading is the only title (HA
   }
 });
 
-ok('headerOverlap: pure, clamped, fail-safe to zero', () => {
-  assert.equal(P.headerOverlap(100, 40), 60);
-  assert.equal(P.headerOverlap(100.4, 40.2), 60);
-  assert.equal(P.headerOverlap(100, 100), 0);
-  assert.equal(P.headerOverlap(100, 140), 0, 'content already below the bar');
-  assert.equal(P.headerOverlap(5000, 0), P.MAX_HEADER_OVERLAP, 'clamped');
-  for (const bad of [undefined, null, NaN, Infinity, -Infinity, '60', {}, []]) {
-    assert.equal(P.headerOverlap(bad, 0), 0, String(bad));
-    assert.equal(P.headerOverlap(100, bad), 0, String(bad));
-  }
+ok('no headerOverlap workaround is left in the card', () => {
+  const src = readFileSync(root + 'www/pulse-card.js', 'utf8');
+  assert.doesNotMatch(src, /headerOverlap|headPad|MAX_HEADER_OVERLAP|_headerProbe|_hpTimers|_huiRoot/);
+  assert.equal(P.headerOverlap, undefined);
+  assert.equal(P.headPadStyle, undefined);
 });
 
 ok('placement: fixed in-flow decision from ancestor snapshots, naming the offender', () => {
@@ -3069,7 +3066,7 @@ ok('room page order: banner, Lights, Heating, Presence, Media, Recent activity',
   const html = cards.filter((m) => m !== 'chart').map((m) => P.render(m, { room: 'parlour' }, hass, NOW)).join('');
   const heads = [...html.matchAll(/class="lbl" style="margin:4px 4px -10px">([^<]+)</g)].map((m) => m[1]);
   assert.deepEqual(heads, ['Lights', 'Heating', 'Presence', 'Media', 'Recent activity']);
-  assert.match(html.slice(0, html.indexOf('>Lights<')), /^<div class="p"><div class="card pad[\s\S]*All good[\s\S]*settings-open/, 'the banner (with the gear) comes first, no name row');
+  assert.match(html.slice(0, html.indexOf('>Lights<')), /^<div class="p"><div[^>]*><a [^>]*Back to House[\s\S]*>Parlour<\/div>[\s\S]*settings-open[\s\S]*All good/, 'the header row (back, name, gear) comes first, then the banner');
   assert.doesNotMatch(html, /Why it/, 'no separate explanation card');
   // The bathroom puts the fan row beside Media, so the order of the named sections is unchanged.
   const bath = loadYaml('info_templates.yaml').pulse_room.card.cards.map((c) => (c.type === 'conditional' ? 'chart' : c.mode));
@@ -3127,28 +3124,21 @@ ok('settings: the gear is in every room header and the sheet is a labelled dialo
   assert.equal(P.render('room-head', { room: 'bedroom' }, sheetHass(), NOW), P.render('room-head', { room: 'bedroom' }, sheetHass(), NOW, {}), 'no ui is the same as closed');
 });
 
-ok('room head: no back link or name row (HA subview header has them); the gear sits inside the banner card', () => {
+ok('room head: Pulse header row (back link, name, gear) in that order, then the banner', () => {
   for (const k of P.ALL_ROOM_KEYS) {
     const html = P.render('room-head', { room: k }, sheetHass(), NOW, {});
-    assert.ok(!html.includes(P.HOUSE_PATH), `${k}: no link to the house`);
-    assert.doesNotMatch(html, /Back to House|font-size:28px/, k);
-    assert.ok(html.startsWith('<div class="p"><div class="card pad'), `${k}: the banner card is the first element`);
-    const card = html.slice(0, html.indexOf('</svg></button></div>') + 21);
+    const name = P.ROOMS[k].name;
+    const iBack = html.indexOf(`data-act="nav" data-path="${P.HOUSE_PATH}" aria-label="Back to House"`);
+    const iName = html.indexOf(`font-size:28px;font-weight:700;letter-spacing:-.4px">${name}</div>`);
+    const iGear = html.indexOf('data-act="settings-open"');
+    const iBanner = html.indexOf('<div class="card pad');
+    assert.ok(iBack > 0 && iBack < iName && iName < iGear && iGear < iBanner, `${k}: back, name, gear, banner`);
     assert.equal((html.match(/data-act="settings-open"/g) || []).length, 1, k);
-    assert.ok(card.includes('data-act="settings-open"'), `${k}: gear inside the banner`);
-    assert.ok(card.indexOf('class="dot') < card.indexOf('settings-open'), `${k}: dot, text, then gear`);
-    assert.match(card, /class="round quiet tap"[^>]*align-self:flex-start/, k);
+    assert.equal((html.match(/Back to House/g) || []).length, 1, k);
+    assert.match(html, /class="round quiet tap" data-act="nav"/, k);
+    assert.match(html, new RegExp(`data-act="settings-open" data-room="${k}" aria-haspopup="dialog" aria-label="${name} settings"`), k);
+    assert.ok(!html.slice(iBanner).includes('settings-open'), `${k}: the gear is no longer in the banner`);
   }
-});
-
-ok('room head pads its top by the measured overlap, only that mode, and only for a sane value', () => {
-  const plain = P.render('room-head', { room: 'bedroom' }, sheetHass(), NOW, {});
-  assert.ok(plain.startsWith('<div class="p"><div class="card pad'));
-  for (const bad of [0, -5, NaN, Infinity, '40', null, undefined]) assert.equal(P.render('room-head', { room: 'bedroom' }, sheetHass(), NOW, { headPad: bad }), plain, String(bad));
-  const padded = P.render('room-head', { room: 'bedroom' }, sheetHass(), NOW, { headPad: 57 });
-  assert.ok(padded.startsWith('<div class="p" style="padding-top:57px"><div class="card pad'));
-  assert.match(P.render('room-head', { room: 'bedroom' }, sheetHass(), NOW, { headPad: 99999 }), /padding-top:160px/);
-  assert.doesNotMatch(P.render('lights', { room: 'bedroom' }, sheetHass(), NOW, { headPad: 57 }), /padding-top:57px/);
 });
 
 ok('settings: open and close are state in ui, focus goes into the sheet then back to the gear, and the page underneath is unchanged', () => {
@@ -3169,7 +3159,7 @@ ok('settings: open and close are state in ui, focus goes into the sheet then bac
     assert.equal(P.render(m, { room: 'parlour' }, sheetHass(), NOW, { settings: true }), P.render(m, { room: 'parlour' }, sheetHass(), NOW, { settings: false }), m);
   }
   const base = P.render('room-head', { room: 'bathroom' }, sheetHass(), NOW, {});
-  assert.ok(sheet('bathroom').startsWith(base.slice(0, base.length - '</div>'.length)), 'the sheet is appended after the unchanged header and banner');
+  assert.ok(sheet('bathroom').startsWith(base.slice(0, base.length - '</div>'.length)), 'the sheet is appended after the unchanged header row and banner');
 });
 
 ok('settings: Tab wraps inside the sheet', () => {
