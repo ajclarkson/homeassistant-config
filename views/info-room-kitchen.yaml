@@ -1,7 +1,6 @@
 title: Kitchen
 path: room-kitchen
-subview: true
-back_path: /pulse-dashboard/house
+visible: false
 type: sections
 max_columns: 1
 background: '#12151a'
