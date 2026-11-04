@@ -2255,6 +2255,7 @@ ok('settings sheet CSS: the body scrolls inside a viewport-bounded sheet and doe
   assert.match(sb, /min-height:0/);
   assert.match(sb, /touch-action:pan-y/);
   assert.match(sb, /calc\(24px \+ env\(safe-area-inset-bottom,0px\)\)/);
+  assert.match(rule('.sb>*'), /flex-shrink:0/, 'sheet body children never shrink: the clipping .card would hide rows instead of .sb scrolling');
   assert.match(rule('.ovl'), /overscroll-behavior:contain/);
   assert.match(rule('.scrim'), /touch-action:none/, 'a drag on the scrim does not scroll the page');
   assert.match(rule('.sh'), /touch-action:none/);
