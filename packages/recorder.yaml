@@ -11,3 +11,12 @@ recorder:
       - sensor.*_history
     entities:
       - sensor.homerun_catalog
+      # Pulse-internal derived sensors. Pulse and the other template sensors read their live state
+      # through state_attr only; nothing reads their history (no history, statistics, logbook or
+      # apexcharts use anywhere in this repo). Listed one by one, not as sensor.info_*, because
+      # sensor.info_attention, sensor.info_temperature_rule and the info_*_heating binary sensors stay
+      # recorded: their small histories show when an alert appeared and why.
+      - sensor.info_rooms
+      - sensor.info_attention_calc
+      - sensor.info_manual_changes
+      - sensor.info_stale_sensors
