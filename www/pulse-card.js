@@ -1675,6 +1675,69 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return { inset, max: Math.max(120, Math.floor(room * 0.88)) };
   }
 
+  // ── Settings sheet portal ──────────────────────────────────────────────────────────────────────
+  // The sheet is rendered as the last thing in the room-head html, starting at this marker. The card moves it out
+  // of its own shadow root into a host on document.body, so position:fixed is relative to the viewport whatever
+  // transform/filter/contain HA's view containers carry. Returns the page html and the sheet html (empty when closed).
+  const SHEET_MARK = '<div class="ovl">';
+  function splitSheet(html) {
+    const s = typeof html === 'string' ? html : '';
+    const at = s.indexOf(SHEET_MARK);
+    return at < 0 ? { page: s, sheet: '' } : { page: s.slice(0, at), sheet: s.slice(at) };
+  }
+
+  // iOS WebKit hands a touch scroll to the page when the inner scroller cannot move, and rubber-bands even with
+  // overscroll-behavior. So every touchmove on the open sheet is cancelled unless it is inside the sheet body and the
+  // body can still scroll the way the finger is going. deltaY is the finger's movement since the last event: positive
+  // is a swipe down, which scrolls the content toward its top. Anything unmeasurable is cancelled (fail safe).
+  function touchGuard(scrollTop, scrollHeight, clientHeight, deltaY, insideBody) {
+    if (!insideBody) return 'prevent';
+    if (![scrollTop, scrollHeight, clientHeight, deltaY].every(Number.isFinite)) return 'prevent';
+    const max = scrollHeight - clientHeight;
+    if (max < 1) return 'prevent'; // nothing to scroll: any move would chain to the page
+    if (deltaY === 0) return 'allow';
+    // 1px of slack: fractional scroll positions on high-density screens never quite reach the bounds.
+    return deltaY > 0 ? (scrollTop > 1 ? 'allow' : 'prevent') : scrollTop < max - 1 ? 'allow' : 'prevent';
+  }
+
+  // Lock the page's scrollers while the sheet is open and put each back exactly. Targets are elements (or anything
+  // with style and scrollTop). overflow:hidden alone does not stop iOS (hence touchGuard) but does stop wheel,
+  // keyboard and other scroll paths, and the saved scrollTop makes the close land where the page was.
+  function lockScroll(targets) {
+    const saved = [];
+    for (const el of Array.isArray(targets) ? targets : []) {
+      if (!el || typeof el !== 'object' || !el.style) continue;
+      saved.push({ el, overflow: el.style.overflow, top: Number.isFinite(el.scrollTop) ? el.scrollTop : 0 });
+      el.style.overflow = 'hidden';
+    }
+    let done = false;
+    return function unlock() {
+      if (done) return;
+      done = true;
+      for (const s of saved) {
+        s.el.style.overflow = s.overflow;
+        if (s.el.scrollTop !== s.top) s.el.scrollTop = s.top;
+      }
+    };
+  }
+
+  // HA's page scroller differs by version and by theme (Material You restyles the header), so find it rather than
+  // assume it: the document scroller plus every ancestor of the card, through shadow roots, that really scrolls.
+  function scrollTargets(from, doc) {
+    const out = [];
+    const add = (el) => { if (el && !out.includes(el)) out.push(el); };
+    let node = from;
+    while (node) {
+      if (node.nodeType === 1 && typeof getComputedStyle === 'function') {
+        const oy = getComputedStyle(node).overflowY;
+        if ((oy === 'auto' || oy === 'scroll' || oy === 'overlay') && node.scrollHeight > node.clientHeight) add(node);
+      }
+      node = node.assignedSlot || node.parentNode || node.host || null;
+    }
+    if (doc) { add(doc.scrollingElement); add(doc.documentElement); add(doc.body); }
+    return out;
+  }
+
   // ── Bottom tab bar ─────────────────────────────────────────────────────────────────────────────
   // position:fixed only works if no ancestor creates a containing block for fixed descendants (transform,
   // filter, perspective, contain, will-change, backdrop-filter). tabbarPlacement decides from computed-style
@@ -2855,7 +2918,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     }
   }
 
-  const api = { lightsStory, lightsState, verdictFor, houseActivity, parseHistory, readHistory, sentenceFor, roomActivity, unexplainedReasons, REASON_TEXT, TILE, TILE_H, TILE_WIDE_H, tileNeededHeight, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, SETTINGS_PATH, takesTaps, coverNeed, topGuard, sheetFit, HEAD_MODES, TOP_GUARD_MAX, CAMERAS_PATH, PENDING_MS, cameraParts, cameraToggle, cameraPending, perform, pendingStart, pendingFor, pendingKey, markPending, ERROR_MS, parseClips, frigateClipsId, roomGroups, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, GARDEN_ORDER, ALL_ROOM_KEYS, THEME_LABELS, THEME_ICON, ICON, gardenModel, gardenSub, themeSource, shortDate, ALLOWED, DEVICE_REASONS, ROOM_SETTINGS, MO_TOGGLES, settingFor, settingsOpen, settingsClose, tabTarget, render, priceColour, PRICE_STOPS, PRICE_EXTREME_P, roomModel, attentionItems, handleAction, callService, num, parseList };
+  const api = { lightsStory, lightsState, verdictFor, houseActivity, parseHistory, readHistory, sentenceFor, roomActivity, unexplainedReasons, REASON_TEXT, TILE, TILE_H, TILE_WIDE_H, tileNeededHeight, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, SETTINGS_PATH, takesTaps, coverNeed, topGuard, sheetFit, splitSheet, touchGuard, lockScroll, scrollTargets, SHEET_MARK, HEAD_MODES, TOP_GUARD_MAX, CAMERAS_PATH, PENDING_MS, cameraParts, cameraToggle, cameraPending, perform, pendingStart, pendingFor, pendingKey, markPending, ERROR_MS, parseClips, frigateClipsId, roomGroups, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, GARDEN_ORDER, ALL_ROOM_KEYS, THEME_LABELS, THEME_ICON, ICON, gardenModel, gardenSub, themeSource, shortDate, ALLOWED, DEVICE_REASONS, ROOM_SETTINGS, MO_TOGGLES, settingFor, settingsOpen, settingsClose, tabTarget, render, priceColour, PRICE_STOPS, PRICE_EXTREME_P, roomModel, attentionItems, handleAction, callService, num, parseList };
   root.PulseLib = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 
@@ -2874,13 +2937,9 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         this._histAt = 0;
         this._histRetryAt = 0;
         this._scrub = { idx: null, slots: null, active: false, pending: null, timer: null };
-        this._root.addEventListener('click', (ev) => this._click(ev));
-        this._root.addEventListener('change', (ev) => this._change(ev));
-        // Keep the track fill under the thumb while dragging (no re-render mid-drag).
-        this._root.addEventListener('input', (ev) => { const t = ev.target; if (t && t.type === 'range') t.style.setProperty('--p', `${t.value}%`); });
-        this._root.addEventListener('pointerdown', (ev) => { if (ev.target && ev.target.type === 'range') this._busy = true; });
-        this._root.addEventListener('pointerup', () => { this._busy = false; });
-        this._root.addEventListener('pointercancel', () => { this._busy = false; });
+        this._wireControls(this._root);
+        this._portal = null; // the settings sheet's host on document.body while it is open
+        this._portalBroken = false;
         // Price chart scrubbing (see PR for the manual test list; not testable in node).
         this._root.addEventListener('pointerdown', (ev) => this._chartDown(ev));
         this._root.addEventListener('pointermove', (ev) => this._chartMove(ev));
@@ -2891,6 +2950,16 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         this._onOpenRequest = (ev) => this._settingsRequest(ev);
         this._onWindowKey = (ev) => this._settingsKey(ev);
         this._root.addEventListener('focusout', (ev) => { if (ev.target && ev.target.closest && ev.target.closest('[data-chart]') && !this._scrub.active) this._chartClear(); });
+      }
+      // Taps, toggles and slider drags: wired to the card's root and, while open, to the sheet's portal root.
+      _wireControls(root) {
+        root.addEventListener('click', (ev) => this._click(ev));
+        root.addEventListener('change', (ev) => this._change(ev));
+        // Keep the track fill under the thumb while dragging (no re-render mid-drag).
+        root.addEventListener('input', (ev) => { const t = ev.target; if (t && t.type === 'range') t.style.setProperty('--p', `${t.value}%`); });
+        root.addEventListener('pointerdown', (ev) => { if (ev.target && ev.target.type === 'range') this._busy = true; });
+        root.addEventListener('pointerup', () => { this._busy = false; });
+        root.addEventListener('pointercancel', () => { this._busy = false; });
       }
       setConfig(config) {
         validate(config);
@@ -2917,6 +2986,10 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
           window.removeEventListener('pulse-card:settings', this._onOpenRequest);
           window.removeEventListener('keydown', this._onWindowKey);
         }
+        // The portal lives outside this element, so unmounting must take it down; the sheet state goes with it
+        // so a remount does not come back to an invisible open sheet.
+        this._portalHide();
+        if (this._ui.settings) { this._ui.settings = false; this._ui.focus = null; this._opener = null; this._html = null; }
         this._histSeq += 1;
         this._histBusy = false;
         for (const t of this._tbTimers || []) clearTimeout(t);
@@ -2975,7 +3048,10 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         this._html = html;
         this.style.display = html ? '' : 'none';
         const kept = this._captureFocus();
-        this._root.innerHTML = `<style>${STYLE}</style>${html}`;
+        const { page, sheet } = splitSheet(html);
+        const portaled = sheet ? this._portalShow(sheet) : (this._portalHide(), false);
+        // No sheet, or a sheet that could not be portaled (fallback: it stays in the card): paint all of it here.
+        this._root.innerHTML = `<style>${STYLE}</style>${portaled ? page : html}`;
         this._restoreFocus(kept);
         if (this._config.mode === 'tabbar' && !this._tbProbed) this._tabbarProbeLater();
         this._fitSheet();
@@ -2988,8 +3064,9 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       // So both are captured before and put back after. A pending focus request (ui.focus: into the sheet on open,
       // back to the gear on close) wins over the captured one.
       _captureFocus() {
-        const sheet = this._root.querySelector ? this._root.querySelector('.sb') : null;
-        const active = this._root.activeElement;
+        const root = this._sheetRoot();
+        const sheet = root.querySelector ? root.querySelector('.sb') : null;
+        const active = root.activeElement || this._root.activeElement;
         return {
           scroll: sheet ? sheet.scrollTop : 0,
           key: sheet && active && active.dataset && active.dataset.act ? pendingKey(active.dataset) : null,
@@ -2997,10 +3074,11 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       }
       // Controls only: the scrim shares the Close button's data-act but is not focusable.
       _focusables() {
-        return [...this._root.querySelectorAll('button[data-act], a[data-act]')];
+        const sel = 'button[data-act], a[data-act]';
+        return [...this._root.querySelectorAll(sel), ...(this._portal ? this._portal.root.querySelectorAll(sel) : [])];
       }
       _restoreFocus(kept) {
-        const sheet = this._root.querySelector('.sb');
+        const sheet = this._sheetRoot().querySelector('.sb');
         if (sheet && kept.scroll) sheet.scrollTop = kept.scroll;
         const req = this._ui.focus;
         this._ui.focus = null; // one-shot: a request that finds nothing must not steal focus on a later paint
@@ -3009,7 +3087,65 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         if (el) el.focus({ preventScroll: true });
       }
       _sheetControls() {
-        return [...this._root.querySelectorAll('.sheet button:not([disabled])')];
+        return [...this._sheetRoot().querySelectorAll('.sheet button:not([disabled])')];
+      }
+      // Where the sheet's DOM lives: the portal while it is open there, else the card (closed, or the fallback).
+      _sheetRoot() { return this._portal ? this._portal.root : this._root; }
+      // Show or update the portaled sheet. False means it could not be attached: the caller keeps the sheet in the card.
+      _portalShow(sheetHtml) {
+        if (this._portalBroken || typeof document === 'undefined' || !document.body) {
+          this._portalWarn(this._portalBroken ? 'earlier failure' : 'no document body');
+          return false;
+        }
+        try {
+          if (!this._portal) this._portalOpen();
+          this._portal.root.innerHTML = `<style>${STYLE}</style><div class="p">${sheetHtml}</div>`;
+          return true;
+        } catch (err) {
+          this._portalBroken = true;
+          this._portalHide();
+          this._portalWarn(err && err.message ? err.message : err);
+          return false;
+        }
+      }
+      _portalWarn(why) {
+        if (this._portalWarned) return;
+        this._portalWarned = true;
+        console.warn(`pulse-card: settings sheet kept inside the card (portal unavailable: ${why}); it may not scroll on iOS`);
+      }
+      _portalOpen() {
+        const host = document.createElement('div');
+        host.setAttribute('data-pulse-sheet', '');
+        const root = host.attachShadow({ mode: 'open' });
+        this._wireControls(root);
+        // Non-passive: the guard has to be able to cancel. touchstart only records where the finger is.
+        const pos = { x: null, y: null };
+        const start = (ev) => { const t = ev.touches && ev.touches[0]; if (t) { pos.x = t.clientX; pos.y = t.clientY; } };
+        const move = (ev) => this._sheetTouch(ev, pos);
+        root.addEventListener('touchstart', start, { passive: true });
+        root.addEventListener('touchmove', move, { passive: false });
+        document.body.appendChild(host);
+        this._portal = { host, root, unlock: lockScroll(scrollTargets(this, document)) };
+      }
+      _sheetTouch(ev, pos) {
+        const t = ev.touches && ev.touches[0];
+        if (!t) return;
+        const dx = pos.x === null ? 0 : t.clientX - pos.x;
+        const dy = pos.y === null ? 0 : t.clientY - pos.y;
+        pos.x = t.clientX;
+        pos.y = t.clientY;
+        const body = ev.target && ev.target.closest ? ev.target.closest('.sb') : null;
+        // A mostly sideways drag inside the body (a brightness slider) is not a scroll: leave it to the control.
+        if (body && Math.abs(dx) > Math.abs(dy)) return;
+        const verdict = touchGuard(body ? body.scrollTop : 0, body ? body.scrollHeight : 0, body ? body.clientHeight : 0, dy, !!body);
+        if (verdict === 'prevent' && ev.cancelable) ev.preventDefault();
+      }
+      _portalHide() {
+        const p = this._portal;
+        if (!p) return;
+        this._portal = null;
+        p.unlock();
+        p.host.remove();
       }
       _settingsRequest(ev) {
         const room = ev && ev.detail ? ev.detail.room : '';
@@ -3032,7 +3168,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         if (ev.key === 'Escape') { ev.preventDefault(); this._settingsClose(); return; }
         if (ev.key !== 'Tab') return;
         const list = this._sheetControls();
-        const at = list.indexOf(this._root.activeElement);
+        const at = list.indexOf(this._sheetRoot().activeElement);
         const to = tabTarget(at, list.length, ev.shiftKey);
         if (to < 0) return;
         ev.preventDefault();

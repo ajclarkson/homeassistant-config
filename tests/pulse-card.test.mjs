@@ -3516,3 +3516,127 @@ ok('Pulse page paths: info-dashboard.yaml lists House first then Energy, Setting
   const everyMode = Object.entries(renderAll(withRooms(P.ROOM_ORDER.map(FULL), []))).map(([, html]) => html).join('');
   assert.doesNotMatch(everyMode, /pulse-dashboard\/now\b|Back to Now/);
 });
+
+ok('touchGuard: allows a scroll the sheet body can still make, cancels everything else', () => {
+  const g = P.touchGuard;
+  // body 600 tall in a 300 viewport: max scrollTop 300. Positive deltaY is a swipe down (content moves toward its top).
+  assert.equal(g(150, 600, 300, -20, true), 'allow', 'middle, swipe up');
+  assert.equal(g(150, 600, 300, 20, true), 'allow', 'middle, swipe down');
+  assert.equal(g(0, 600, 300, 20, true), 'prevent', 'top edge, swipe down would chain to the page');
+  assert.equal(g(0, 600, 300, -20, true), 'allow', 'top edge, swipe up scrolls');
+  assert.equal(g(300, 600, 300, -20, true), 'prevent', 'bottom edge, swipe up would chain to the page');
+  assert.equal(g(299.6, 600, 300, -20, true), 'prevent', 'fractional bottom counts as the bottom');
+  assert.equal(g(300, 600, 300, 20, true), 'allow', 'bottom edge, swipe down scrolls back');
+  assert.equal(g(0, 300, 300, -20, true), 'prevent', 'no overflow, up');
+  assert.equal(g(0, 300, 300, 20, true), 'prevent', 'no overflow, down');
+  assert.equal(g(150, 600, 300, -20, false), 'prevent', 'outside the body (scrim, header)');
+  assert.equal(g(150, 600, 300, 0, true), 'allow', 'no vertical movement yet');
+  assert.equal(g(NaN, 600, 300, -20, true), 'prevent', 'unmeasurable fails safe');
+});
+
+ok('lockScroll: locks every target and restores overflow and the exact position, once', () => {
+  const a = { style: { overflow: '' }, scrollTop: 420 };
+  const b = { style: { overflow: 'auto' }, scrollTop: 0 };
+  const unlock = P.lockScroll([a, null, b, 7]);
+  assert.equal(a.style.overflow, 'hidden');
+  assert.equal(b.style.overflow, 'hidden');
+  a.scrollTop = 0; // the browser moved it while locked
+  unlock();
+  assert.deepEqual([a.style.overflow, a.scrollTop, b.style.overflow, b.scrollTop], ['', 420, 'auto', 0]);
+  a.scrollTop = 5; unlock();
+  assert.equal(a.scrollTop, 5, 'a second unlock does nothing');
+  assert.equal(typeof P.lockScroll(undefined), 'function', 'bad input still returns an unlock');
+});
+
+ok('splitSheet: separates the sheet from the page, and a closed room-head has none', () => {
+  const open = P.splitSheet(sheet('bathroom'));
+  assert.ok(open.sheet.startsWith(P.SHEET_MARK) && open.sheet.includes('class="sb"') && !open.page.includes('class="ovl"'));
+  assert.ok(open.page.includes('data-act="settings-open"'));
+  assert.deepEqual(P.splitSheet(P.render('room-head', { room: 'bathroom' }, sheetHass(), NOW, {})).sheet, '');
+  assert.deepEqual(P.splitSheet(undefined), { page: '', sheet: '' });
+});
+
+ok('settings portal: open adds exactly one host to the body, repaints reuse it and keep the scroll, close and disconnect remove it', () => {
+  const saved = { HTMLElement: globalThis.HTMLElement, customElements: globalThis.customElements, window: globalThis.window, document: globalThis.document };
+  let Card;
+  const bodyKids = [];
+  const mkRoot = () => {
+    const sb = { scrollTop: 0 };
+    return { listeners: {}, addEventListener(t, f, o) { this.listeners[t] = { f, o }; }, querySelector(q) { return q === '.sb' && this.innerHTML.includes('class="sb"') ? sb : null; }, querySelectorAll() { return []; }, activeElement: null, innerHTML: '', sb };
+  };
+  globalThis.HTMLElement = class { constructor() { this.style = {}; } attachShadow() { return mkRoot(); } };
+  globalThis.customElements = { get() { return undefined; }, define(n, c) { if (n === 'pulse-card') Card = c; } };
+  globalThis.window = { customCards: [], addEventListener() {}, removeEventListener() {} };
+  const docEl = { style: { overflow: '' }, scrollTop: 300 };
+  globalThis.document = {
+    documentElement: docEl, scrollingElement: docEl, body: { style: { overflow: '' }, scrollTop: 0, appendChild(h) { bodyKids.push(h); } },
+    createElement() { const h = { attrs: {}, setAttribute(k, v) { this.attrs[k] = v; }, attachShadow() { this.shadow = mkRoot(); return this.shadow; }, remove() { bodyKids.splice(bodyKids.indexOf(this), 1); } }; return h; },
+  };
+  try {
+    const modPath = new URL('../www/pulse-card.js', import.meta.url).pathname;
+    delete require.cache[require.resolve(modPath)];
+    require(modPath);
+    const c = new Card();
+    Object.defineProperty(c, 'isConnected', { get: () => true });
+    c.setConfig({ mode: 'room-head', room: 'bathroom' });
+    c.hass = sheetHass();
+    assert.equal(bodyKids.length, 0, 'closed: no host');
+    window.dispatchEvent = undefined;
+    c._settingsRequest({ detail: { room: 'bathroom', opener: null } });
+    assert.equal(bodyKids.length, 1, 'open: exactly one host');
+    const host = bodyKids[0];
+    assert.ok(host.shadow.innerHTML.includes('class="sheet"') && host.shadow.innerHTML.includes('<style>'), 'sheet and styles are in the portal');
+    assert.ok(!c._root.innerHTML.includes('class="sheet"'), 'and not in the card');
+    assert.equal(host.shadow.listeners.touchmove.o.passive, false, 'the touch guard can cancel');
+    assert.ok(host.shadow.listeners.click && host.shadow.listeners.change, 'controls are wired');
+    assert.equal(docEl.style.overflow, 'hidden', 'the page scroller is locked');
+    // a repaint (stepper tap) updates the same host and keeps the sheet's scroll position
+    host.shadow.sb.scrollTop = 180;
+    c._html = null;
+    c._paint();
+    assert.equal(bodyKids.length, 1, 'repaint does not add a second host');
+    assert.equal(host.shadow.sb.scrollTop, 180, 'sheet scroll kept across the repaint');
+    // close removes it and restores the page position
+    docEl.scrollTop = 0;
+    c._settingsClose();
+    assert.equal(bodyKids.length, 0, 'closed: host removed');
+    assert.deepEqual([docEl.style.overflow, docEl.scrollTop], ['', 300], 'page lock released at the saved position');
+    // touchmove outside .sb is cancelled; inside, at the bottom edge, swiping up is cancelled
+    c._settingsRequest({ detail: { room: 'bathroom', opener: null } });
+    const h2 = bodyKids[0];
+    const calls = [];
+    const pos = { x: 0, y: 100 };
+    const ev = (target, y) => ({ touches: [{ clientX: 0, clientY: y }], target, cancelable: true, preventDefault() { calls.push('p'); } });
+    c._sheetTouch(ev({ closest: () => null }, 80), pos);
+    assert.deepEqual(calls, ['p'], 'scrim/header move cancelled');
+    pos.y = 100;
+    c._sheetTouch(ev({ closest: () => ({ scrollTop: 300, scrollHeight: 600, clientHeight: 300 }) }, 80), pos);
+    assert.equal(calls.length, 2, 'bottom edge, swipe up cancelled');
+    pos.y = 100;
+    c._sheetTouch(ev({ closest: () => ({ scrollTop: 100, scrollHeight: 600, clientHeight: 300 }) }, 80), pos);
+    assert.equal(calls.length, 2, 'mid-scroll allowed');
+    // a disconnect while open removes the host and lets go of the page
+    c.disconnectedCallback();
+    assert.equal(bodyKids.length, 0, 'disconnect removes the host');
+    assert.equal(docEl.style.overflow, '');
+    assert.equal(c._ui.settings, false);
+    assert.ok(h2);
+    // a portal that cannot attach falls back to the in-card sheet, with a warning
+    const warns = []; const w = console.warn; console.warn = (m) => warns.push(m);
+    try {
+      globalThis.document.body.appendChild = () => { throw new Error('nope'); };
+      const d = new Card();
+      Object.defineProperty(d, 'isConnected', { get: () => true });
+      d.setConfig({ mode: 'room-head', room: 'bathroom' });
+      d.hass = sheetHass();
+      d._settingsRequest({ detail: { room: 'bathroom', opener: null } });
+      assert.ok(d._root.innerHTML.includes('class="sheet"'), 'fallback: sheet stays in the card');
+      assert.equal(bodyKids.length, 0);
+      assert.equal(docEl.style.overflow, '', 'failed attach leaves the page unlocked');
+      assert.ok(warns.some((m) => /kept inside the card/.test(m)));
+    } finally { console.warn = w; }
+  } finally {
+    Object.assign(globalThis, saved);
+    for (const k of Object.keys(saved)) if (saved[k] === undefined) delete globalThis[k];
+  }
+});
