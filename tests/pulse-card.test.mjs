@@ -2204,6 +2204,74 @@ ok('why card says what ends a heating hold and an occupancy hold', () => {
   assert.match(empty, /<div class="s">No holds<\/div>/);
 });
 
+ok('top guard: a hit-testable invisible header button pushes the back link and gear down; clear targets are left alone', () => {
+  // Material You: ha-menu-button has opacity 0 but pointer-events all, over the top-left of the page.
+  const menu = { left: 16, top: 59, right: 64, bottom: 107 };
+  const back = { left: 8, top: 70, right: 52, bottom: 114 };
+  const title = { left: 60, top: 70, right: 300, bottom: 114 };
+  assert.equal(P.coverNeed([menu], [back], 0), 107 - 70);
+  assert.equal(P.coverNeed([menu], [{ ...back, top: 107, bottom: 151 }], 37), 37, 'with the guard in place, the answer is about the natural position, so it is stable');
+  assert.equal(P.coverNeed([menu], [{ left: 120, top: 70, right: 200, bottom: 100 }], 0), 0, 'a target clear of the button to the right');
+  assert.equal(P.coverNeed([menu], [{ left: 8, top: 120, right: 52, bottom: 160 }], 0), 0, 'a target below it');
+  assert.equal(P.coverNeed([], [back], 0), 0);
+  assert.equal(P.coverNeed([menu], [], 0), 0);
+  assert.equal(P.coverNeed([menu, null, { left: NaN }], [null, back, title], undefined), 37, 'garbage rects are ignored');
+  assert.equal(P.coverNeed([{ left: 0, top: 0, right: 99, bottom: 9999 }], [back], 0), P.TOP_GUARD_MAX, 'clamped');
+  assert.equal(P.takesTaps({ pointerEvents: 'all', display: 'flex', visibility: 'visible', opacity: '0' }), true, 'opacity is not what stops a tap');
+  assert.equal(P.takesTaps({ pointerEvents: 'none', display: 'flex', visibility: 'visible' }), false);
+  assert.equal(P.takesTaps({ pointerEvents: 'auto', display: 'none', visibility: 'visible' }), false);
+  assert.equal(P.takesTaps({ pointerEvents: 'auto', display: 'flex', visibility: 'hidden' }), false);
+  assert.equal(P.takesTaps(null), false);
+});
+
+ok('top guard: the heading cards (and only they) get the empty row above everything, sized from ui.top', () => {
+  const hass = withRooms([quietRoom('bedroom')], []);
+  for (const mode of P.HEAD_MODES) {
+    const cfg = { room: 'bedroom' };
+    const plain = P.render(mode, cfg, hass, NOW, { top: 0 });
+    const guarded = P.render(mode, cfg, hass, NOW, { top: 63 });
+    if (!plain) continue;
+    assert.doesNotMatch(plain, /data-top-guard/, `${mode}: no row when nothing overlaps`);
+    assert.match(guarded, /^<div class="p"><div data-top-guard style="height:63px;margin-bottom:-14px" aria-hidden="true"><\/div>/, `${mode}: the row is the first thing in the card`);
+  }
+  const back = P.render('room-head', { room: 'bedroom' }, hass, NOW, { top: 63 });
+  assert.ok(back.indexOf('data-top-guard') < back.indexOf('aria-label="Back to House"'), 'the back control comes after the guard row');
+  assert.match(P.render('lights', { room: 'bedroom' }, hass, NOW, { top: 63 }), /^(?!.*data-top-guard)/s, 'other cards get none');
+  assert.match(P.render('room-head', { room: 'bedroom' }, hass, NOW, { top: 1e6 }), /height:200px/, 'clamped');
+  assert.match(P.render('room-head', { room: 'bedroom' }, hass, NOW, { top: NaN }), /^(?!.*data-top-guard)/s);
+});
+
+ok('settings sheet CSS: the body scrolls inside a viewport-bounded sheet and does not let the page behind scroll', () => {
+  const rule = (sel) => cssRules().filter((r) => r.sel === sel).map((r) => r.body).join(';');
+  const sheet = rule('.sheet');
+  assert.match(sheet, /max-height:var\(--sheet-max,min\(88vh,calc\(100vh - env\(safe-area-inset-top,0px\) - 16px\)\)\)/, 'vh fallback');
+  assert.match(sheet, /max-height:var\(--sheet-max,min\(88dvh,calc\(100dvh - env\(safe-area-inset-top,0px\) - 16px\)\)\)/, 'dvh');
+  assert.ok(sheet.indexOf('88vh') < sheet.indexOf('88dvh'), 'dvh comes last so it wins where supported');
+  assert.match(sheet, /min-height:0/);
+  const sb = rule('.sb');
+  assert.match(sb, /overflow-y:auto/);
+  assert.match(sb, /overscroll-behavior:contain/);
+  assert.match(sb, /-webkit-overflow-scrolling:touch/);
+  assert.match(sb, /min-height:0/);
+  assert.match(sb, /touch-action:pan-y/);
+  assert.match(sb, /calc\(24px \+ env\(safe-area-inset-bottom,0px\)\)/);
+  assert.match(rule('.ovl'), /overscroll-behavior:contain/);
+  assert.match(rule('.scrim'), /touch-action:none/, 'a drag on the scrim does not scroll the page');
+  assert.match(rule('.sh'), /touch-action:none/);
+  assert.doesNotMatch(rule('.ovl') + rule('.sheet'), /touch-action|overflow:hidden/, 'nothing on the overlay or sheet blocks the body scrolling');
+});
+
+ok('sheetFit: nothing to do when the overlay is the viewport; lifts and bounds the sheet when an ancestor contains it', () => {
+  assert.equal(P.sheetFit(800, { left: 0, top: 0, right: 390, bottom: 800 }), null);
+  assert.equal(P.sheetFit(800, { left: 0, top: 0.4, right: 390, bottom: 800.3 }), null);
+  // overlay is the whole tall page: 2000px tall, its bottom 1200px below the fold
+  assert.deepEqual(P.sheetFit(800, { left: 0, top: -400, right: 390, bottom: 2000 }), { inset: 800, max: 120 }, 'inset is capped to the viewport and the sheet stays usable');
+  assert.deepEqual(P.sheetFit(800, { left: 0, top: 0, right: 390, bottom: 1000 }), { inset: 200, max: Math.floor(600 * 0.88) });
+  assert.deepEqual(P.sheetFit(800, { left: 0, top: 100, right: 390, bottom: 700 }), { inset: 0, max: Math.floor(700 * 0.88) });
+  assert.equal(P.sheetFit(0, { left: 0, top: 0, right: 1, bottom: 1 }), null);
+  assert.equal(P.sheetFit(800, null), null);
+});
+
 ok('no "valve" wording in anything the user reads', () => {
   const bed = quietRoom('bedroom', { occupied: true, target: 5, target_reason: 'window open', mode_name: 'baseline day', mode_target: 18, heat_labels: ['Window open'], labels: ['Window open'] });
   const hass = withRooms([bed], [], { 'input_boolean.bedroom_automation_heating_enabled': { state: 'on', attributes: {} } });
