@@ -203,6 +203,8 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 .sheet{position:relative;max-height:var(--sheet-max,min(88vh,calc(100vh - env(safe-area-inset-top,0px) - 16px)));max-height:var(--sheet-max,min(88dvh,calc(100dvh - env(safe-area-inset-top,0px) - 16px)));min-height:0;display:flex;flex-direction:column;background:${TOKENS.ground};border-radius:20px 20px 0 0;border-top:1px solid ${TOKENS.divider};box-shadow:0 -8px 32px rgba(0,0,0,.5);animation:sheetup .22s ease-out;outline:none}
 .sh{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 16px 8px;flex:none;touch-action:none}
 .sb{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y;padding:0 14px calc(24px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:14px}
+/* Scroll bug: flex children default to shrink, so a bounded .sb squeezed them (the .card clips) instead of overflowing, leaving nothing to scroll. */
+.sb>*{flex-shrink:0}
 @keyframes sheetup{from{transform:translateY(40px);opacity:0}to{transform:none;opacity:1}}
 @media (prefers-reduced-motion:reduce){.sheet{animation:none}}
 .rt.wide .t.gh{font-size:15px;font-weight:600;white-space:nowrap}
