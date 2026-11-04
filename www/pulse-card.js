@@ -198,11 +198,11 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 .gbtn:disabled{opacity:.4;cursor:default}
 .gl{align-items:center}
 .lnk{display:block;min-height:44px;padding:0;margin-top:2px;border:0;background:none;color:${TOKENS.link};font:inherit;font-size:13px;font-weight:600;text-align:left;cursor:pointer}
-.ovl{position:fixed;inset:0;z-index:2147483000;display:flex;flex-direction:column;justify-content:flex-end}
-.scrim{position:absolute;inset:0;background:rgba(0,0,0,.6)}
-.sheet{position:relative;max-height:88vh;display:flex;flex-direction:column;background:${TOKENS.ground};border-radius:20px 20px 0 0;border-top:1px solid ${TOKENS.divider};box-shadow:0 -8px 32px rgba(0,0,0,.5);animation:sheetup .22s ease-out;outline:none}
-.sh{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 16px 8px}
-.sb{overflow-y:auto;overscroll-behavior:contain;padding:0 14px calc(24px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:14px}
+.ovl{position:fixed;inset:0;z-index:2147483000;display:flex;flex-direction:column;justify-content:flex-end;padding-bottom:var(--sheet-inset,0px);box-sizing:border-box;overscroll-behavior:contain}
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,.6);touch-action:none}
+.sheet{position:relative;max-height:var(--sheet-max,min(88vh,calc(100vh - env(safe-area-inset-top,0px) - 16px)));max-height:var(--sheet-max,min(88dvh,calc(100dvh - env(safe-area-inset-top,0px) - 16px)));min-height:0;display:flex;flex-direction:column;background:${TOKENS.ground};border-radius:20px 20px 0 0;border-top:1px solid ${TOKENS.divider};box-shadow:0 -8px 32px rgba(0,0,0,.5);animation:sheetup .22s ease-out;outline:none}
+.sh{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 16px 8px;flex:none;touch-action:none}
+.sb{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y;padding:0 14px calc(24px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:14px}
 @keyframes sheetup{from{transform:translateY(40px);opacity:0}to{transform:none;opacity:1}}
 @media (prefers-reduced-motion:reduce){.sheet{animation:none}}
 .rt.wide .t.gh{font-size:15px;font-weight:600;white-space:nowrap}
@@ -1625,6 +1625,56 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return `<div class="lbl" style="margin:4px 4px -10px">What the house did</div><div class="card">${body}</div>`;
   }
 
+  // ── Top guard ────────────────────────────────────────────────────────────────────────────────
+  // Room, garden and tab pages are normal views, so HA's header is not meant to show. Material You hides the app
+  // bar by setting ha-menu-button to opacity 0 (--ha-menu-button-opacity) but also gives it pointer-events: all, so
+  // on a narrow screen the invisible hamburger sits over the top-left of the page and takes the tap meant for
+  // our back link. The card measures any header control that would take a tap and a tap target of its own that
+  // it overlaps, and the heading cards put an empty row above their content that tall (ui.top). Nothing is
+  // hard-coded: the size comes from the browser. It only ever grows, because a scrolled page moves the targets
+  // up and would read as "no overlap".
+  const TOP_GUARD_MAX = 200; // a header is 56px plus the top safe area; this only stops a bad measurement running away
+  const HEAD_MODES = ['now-header', 'energy-head', 'house-head', 'cameras-head', 'room-head'];
+  const rectOk = (r) => isObj(r) && ['left', 'top', 'right', 'bottom'].every((k) => Number.isFinite(r[k])) && r.right > r.left && r.bottom > r.top;
+  // A header control takes taps unless it, or an ancestor it inherits from, switched them off or removed it.
+  function takesTaps(cs) {
+    return isObj(cs) && cs.pointerEvents !== 'none' && cs.display !== 'none' && cs.visibility !== 'hidden' && cs.visibility !== 'collapse';
+  }
+  // Pixels to move the targets down so none sits under a blocker. `shift` is the guard already in place, so the
+  // answer is about the content's natural position and does not flip-flop as the guard appears.
+  function coverNeed(blockers, targets, shift) {
+    const dy = Number.isFinite(shift) ? Math.max(0, shift) : 0;
+    let need = 0;
+    for (const b of Array.isArray(blockers) ? blockers : []) {
+      if (!rectOk(b)) continue;
+      for (const t of Array.isArray(targets) ? targets : []) {
+        if (!rectOk(t)) continue;
+        const top = t.top - dy;
+        const bottom = t.bottom - dy;
+        if (t.left < b.right && t.right > b.left && top < b.bottom && bottom > b.top) need = Math.max(need, Math.ceil(b.bottom - top));
+      }
+    }
+    return Math.max(0, Math.min(TOP_GUARD_MAX, need));
+  }
+  function topGuard(ui) {
+    const h = ui && Number.isFinite(ui.top) ? Math.max(0, Math.min(TOP_GUARD_MAX, ui.top)) : 0;
+    // The page's own 14px gap follows the row, so take it back.
+    return h > 0 ? `<div data-top-guard style="height:${h}px;margin-bottom:-14px" aria-hidden="true"></div>` : '';
+  }
+
+  // The settings sheet is position:fixed, but an ancestor with a transform, filter or contain makes it relative to
+  // that ancestor instead. Given the overlay's real rect and the viewport height, say how far to lift the sheet
+  // off the bottom and how tall it may be so it lies inside the visible viewport either way. Null when the
+  // overlay already covers the viewport (the CSS dvh rules are then right).
+  function sheetFit(viewportH, rect) {
+    if (!Number.isFinite(viewportH) || viewportH <= 0 || !rectOk(rect)) return null;
+    if (Math.abs(rect.top) < 1 && Math.abs(rect.bottom - viewportH) < 1) return null;
+    const inset = Math.max(0, Math.min(viewportH, Math.round(rect.bottom - viewportH)));
+    const top = Math.max(0, rect.top);
+    const room = Math.max(0, viewportH - inset - top);
+    return { inset, max: Math.max(120, Math.floor(room * 0.88)) };
+  }
+
   // ── Bottom tab bar ─────────────────────────────────────────────────────────────────────────────
   // position:fixed only works if no ancestor creates a containing block for fixed descendants (transform,
   // filter, perspective, contain, will-change, backdrop-filter). tabbarPlacement decides from computed-style
@@ -2703,7 +2753,8 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   function render(mode, config, hass, now, ui) {
     validate({ ...config, mode });
     const at = Number.isFinite(now) ? now : Date.now();
-    const html = MODES[mode](hass, config || {}, at, ui || {});
+    const body = MODES[mode](hass, config || {}, at, ui || {});
+    const html = body && HEAD_MODES.includes(mode) ? topGuard(ui) + body : body;
     return html ? `<div class="p">${errorBanner(ui, at)}${markPending(html, ui, hass, at)}</div>` : '';
   }
 
@@ -2804,7 +2855,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     }
   }
 
-  const api = { lightsStory, lightsState, verdictFor, houseActivity, parseHistory, readHistory, sentenceFor, roomActivity, unexplainedReasons, REASON_TEXT, TILE, TILE_H, TILE_WIDE_H, tileNeededHeight, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, SETTINGS_PATH, CAMERAS_PATH, PENDING_MS, cameraParts, cameraToggle, cameraPending, perform, pendingStart, pendingFor, pendingKey, markPending, ERROR_MS, parseClips, frigateClipsId, roomGroups, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, GARDEN_ORDER, ALL_ROOM_KEYS, THEME_LABELS, THEME_ICON, ICON, gardenModel, gardenSub, themeSource, shortDate, ALLOWED, DEVICE_REASONS, ROOM_SETTINGS, MO_TOGGLES, settingFor, settingsOpen, settingsClose, tabTarget, render, priceColour, PRICE_STOPS, PRICE_EXTREME_P, roomModel, attentionItems, handleAction, callService, num, parseList };
+  const api = { lightsStory, lightsState, verdictFor, houseActivity, parseHistory, readHistory, sentenceFor, roomActivity, unexplainedReasons, REASON_TEXT, TILE, TILE_H, TILE_WIDE_H, tileNeededHeight, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, SETTINGS_PATH, takesTaps, coverNeed, topGuard, sheetFit, HEAD_MODES, TOP_GUARD_MAX, CAMERAS_PATH, PENDING_MS, cameraParts, cameraToggle, cameraPending, perform, pendingStart, pendingFor, pendingKey, markPending, ERROR_MS, parseClips, frigateClipsId, roomGroups, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, GARDEN_ORDER, ALL_ROOM_KEYS, THEME_LABELS, THEME_ICON, ICON, gardenModel, gardenSub, themeSource, shortDate, ALLOWED, DEVICE_REASONS, ROOM_SETTINGS, MO_TOGGLES, settingFor, settingsOpen, settingsClose, tabTarget, render, priceColour, PRICE_STOPS, PRICE_EXTREME_P, roomModel, attentionItems, handleAction, callService, num, parseList };
   root.PulseLib = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 
@@ -2817,7 +2868,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         this._root = this.attachShadow({ mode: 'open' });
         this._html = null;
         this._busy = false;
-        this._ui = { tb: 'inflow', open: false, settings: false, focus: null, day: 'today', fuel: 'electricity', cam: { rec: {} }, pending: {}, error: null, hist: { electricity: { status: 'loading', days: [] }, gas: { status: 'loading', days: [] } } };
+        this._ui = { top: 0, tb: 'inflow', open: false, settings: false, focus: null, day: 'today', fuel: 'electricity', cam: { rec: {} }, pending: {}, error: null, hist: { electricity: { status: 'loading', days: [] }, gas: { status: 'loading', days: [] } } };
         this._histBusy = false;
         this._histSeq = 0;
         this._histAt = 0;
@@ -2859,6 +2910,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         }
         this._histEnsure();
         this._tabbarProbeLater();
+        this._topProbeLater();
       }
       disconnectedCallback() {
         if (hasWindowEvents()) {
@@ -2868,6 +2920,9 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         this._histSeq += 1;
         this._histBusy = false;
         for (const t of this._tbTimers || []) clearTimeout(t);
+        for (const t of this._topTimers || []) clearTimeout(t);
+        this._topTimers = null;
+        if (this._onResize && typeof window !== 'undefined' && window.removeEventListener) window.removeEventListener('resize', this._onResize);
         this._tbTimers = null;
       }
       // Daily cost history: one read-only WS call when the Energy view mounts, then at most every 30
@@ -2923,6 +2978,8 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         this._root.innerHTML = `<style>${STYLE}</style>${html}`;
         this._restoreFocus(kept);
         if (this._config.mode === 'tabbar' && !this._tbProbed) this._tabbarProbeLater();
+        this._fitSheet();
+        if (!this._topTimers) this._topProbeLater();
         // The repaint replaced the chart nodes: put a live readout back instead of flickering it away.
         if (this._scrub.idx !== null) this._chartShow(this._scrub.idx, false);
       }
@@ -3094,6 +3151,53 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         } catch (e) {
           status.textContent = "Couldn't play this recording";
         }
+      }
+      // ── top guard and sheet fit ──
+      _topProbeLater() {
+        if (!this._config || !HEAD_MODES.includes(this._config.mode) || this._topTimers) return;
+        // HA and Material You build the header asynchronously: look again as it settles. The probe itself is cheap.
+        this._topTimers = [0, 800, 2500].map((ms) => setTimeout(() => this._topProbe(), ms));
+        this._onResize = () => this._topProbe();
+        if (typeof window !== 'undefined' && window.addEventListener) window.addEventListener('resize', this._onResize);
+      }
+      // Every header control (the hamburger, the back arrow, the action items) lives in an ancestor's shadow root;
+      // collect the ones that would take a tap, in viewport coordinates.
+      _headerBlockers() {
+        const out = [];
+        let node = this;
+        while (node) {
+          if (node.nodeType === 11 && node.querySelectorAll) {
+            for (const el of node.querySelectorAll('ha-menu-button, ha-icon-button-arrow-prev, .action-items')) {
+              const r = el.getBoundingClientRect();
+              if (rectOk(r) && takesTaps(getComputedStyle(el))) out.push({ left: r.left, top: r.top, right: r.right, bottom: r.bottom });
+            }
+          }
+          node = node.assignedSlot || node.parentNode || node.host || null;
+        }
+        return out;
+      }
+      _topProbe() {
+        if (!this.isConnected || typeof getComputedStyle !== 'function' || !this._config || !HEAD_MODES.includes(this._config.mode)) return;
+        const targets = [...this._root.querySelectorAll('[data-act]')]
+          .filter((el) => !el.closest('.ovl'))
+          .map((el) => el.getBoundingClientRect())
+          .map((r) => ({ left: r.left, top: r.top, right: r.right, bottom: r.bottom }));
+        const need = coverNeed(this._headerBlockers(), targets, this._ui.top);
+        // Grow only (see the comment at TOP_GUARD_MAX).
+        if (need > this._ui.top) {
+          this._ui.top = need;
+          this._paint();
+        }
+      }
+      // After a paint with the sheet open: if the overlay is not the viewport (an ancestor contains it), size and lift
+      // the sheet from the overlay's real rect. Otherwise the CSS rules stand.
+      _fitSheet() {
+        const ovl = this._root.querySelector('.ovl');
+        if (!ovl || typeof window === 'undefined') return;
+        const fit = sheetFit(window.innerHeight, ovl.getBoundingClientRect());
+        if (!fit) return;
+        ovl.style.setProperty('--sheet-inset', `${fit.inset}px`);
+        ovl.style.setProperty('--sheet-max', `${fit.max}px`);
       }
       // ── tab bar placement ──
       _tabbarProbeLater() {
