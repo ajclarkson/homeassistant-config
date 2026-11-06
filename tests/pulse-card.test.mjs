@@ -29,9 +29,33 @@ const FULL = (k) => ({
   heat_labels: ['Window open'], humidity: 63, hvac_action: 'idle', heating_active: 'baseline_day',
   heating_source: 'schedule', lights_on: 0, lights_total: 3, scene: 'off', lights_enabled: true,
   heating_enabled: true, override: false, ext_open: true, holds: [], reason_text: 'Bed occupied · Window open',
-  override_text: '', labels: ['Bed occupied', 'Window open'], manual: null, lights_why: 'sleep hold',
-  lights_ts: '2026-10-25T18:30:00+00:00', last: 'x', last_ts: '2026-10-25T18:30:00+00:00', verdict: 'Occupied · lights off',
+  override_text: '', labels: ['Bed occupied', 'Window open'], manual: null, verdict: 'Occupied · lights off',
 });
+// The scenes each room must yield from the HA registry: ordered ids, the off scene last. This is the current
+// hand list the card used before it read the registry, so the registry has to reproduce it.
+const SCENES = {
+  parlour: ['all', 'lamps', 'dining', 'off'], kitchen: ['all', 'cabinets', 'off'], hallway_downstairs: ['daylight', 'low', 'off'],
+  hallway_upstairs: ['daylight', 'low', 'off'], bedroom: ['all', 'all_full', 'lamps', 'off'], bathroom: ['full', 'low', 'off'],
+  home_office: ['all', 'lamps', 'off'], foreign_office: ['all', 'off'], back_garden: ['all', 'off'], front_garden: ['normal', 'off'],
+};
+// A registry as hass.entities / hass.devices carry it. Positions are deliberately inserted out of order, kitchen
+// scenes take their area from the device, and each area also holds entities that are not scenes.
+function registryFixture(want = SCENES) {
+  const entities = {}; const devices = { 'dev-kitchen': { area_id: 'kitchen' } };
+  for (const [key, ids] of Object.entries(want)) {
+    const ordered = ids.filter((id) => id !== 'off');
+    [...ordered.entries()].reverse().forEach(([i, id]) => {
+      entities[`scene.${key}_${id}`] = key === 'kitchen' ? { entity_id: `scene.${key}_${id}`, device_id: 'dev-kitchen', area_id: null, labels: [`scene_order_${i + 1}`] }
+        : { entity_id: `scene.${key}_${id}`, area_id: key, labels: [`scene_order_${i + 1}`, 'other_label'] };
+    });
+    entities[`scene.${key}_off`] = { entity_id: `scene.${key}_off`, area_id: key, labels: ['scene_control_off'] };
+    entities[`switch.${key}_camera_motion`] = { entity_id: `switch.${key}_camera_motion`, area_id: key, labels: [] };
+    entities[`scene.${key}_unlabelled`] = { entity_id: `scene.${key}_unlabelled`, area_id: key, labels: [] };
+  }
+  entities['scene.elsewhere_all'] = { entity_id: 'scene.elsewhere_all', area_id: 'garage', labels: ['scene_order_1'] };
+  entities['scene.front_garden_autumn'] = { entity_id: 'scene.front_garden_autumn', area_id: 'front_garden', labels: ['scene_theme_autumn'] };
+  return { entities, devices };
+}
 const mk = (over = {}) => {
   const states = {
     'person.adam': { state: 'home', attributes: {} }, 'person.sarah': { state: 'not_home', attributes: {} },
@@ -57,7 +81,7 @@ const mk = (over = {}) => {
     'input_boolean.bedroom_automation_lights_enabled': { state: 'on', attributes: {} },
     'input_boolean.bedroom_automation_heating_enabled': { state: 'off', attributes: {} },
   };
-  const hass = { states };
+  const hass = { states, ...registryFixture() };
   for (const [id, v] of Object.entries(over)) { if (v === null) delete states[id]; else states[id] = v; }
   return hass;
 };
@@ -289,8 +313,10 @@ ok('Recent activity rows by kind: acted plain, declined muted with the didn\'t g
 });
 
 ok('scene tiles use the spike scene map and highlight the active scene', () => {
-  const want = { parlour: ['all', 'lamps', 'dining', 'off'], kitchen: ['all', 'cabinets', 'off'], hallway_downstairs: ['daylight', 'low', 'off'], hallway_upstairs: ['daylight', 'low', 'off'], bedroom: ['all', 'all_full', 'lamps', 'off'], bathroom: ['full', 'low', 'off'], home_office: ['all', 'lamps', 'off'], foreign_office: ['all', 'off'] };
-  for (const [k, ids] of Object.entries(want)) assert.deepEqual([...P.ROOMS[k].scenes].sort(), [...ids].sort(), k);
+  for (const k of INDOOR_KEYS) {
+    const tiles = [...P.render('lights', { room: k }, mk(), NOW).matchAll(/data-act="scene" data-entity="scene\.(\w+)"/g)].map((m) => m[1]);
+    assert.deepEqual(tiles, SCENES[k].map((id) => `${k}_${id}`), k);
+  }
   for (const g of GARDENS) assert.equal(P.ROOMS[g].scenes, undefined, `${g} offers no scenes of its own`);
 });
 
@@ -2979,7 +3005,6 @@ ok('history, catalogue and feed YAML: one history sensor per location plus house
   assert.ok(!existsSync(root + 'packages/info_surface_feed.yaml'), 'the feed trigger template is gone: House reads sensor.house_history');
   const rooms = readFileSync(root + 'packages/info_surface_rooms.yaml', 'utf8');
   assert.doesNotMatch(rooms, /info_decision_feed/);
-  assert.match(rooms, /state_attr\('sensor\.' ~ k ~ '_history', 'entries'\)/);
   for (const f of ['info_surface_rooms', 'mqtt']) assert.doesNotThrow(() => yaml.load(readFileSync(root + `packages/${f}.yaml`, 'utf8')), f);
 });
 
@@ -3640,4 +3665,68 @@ ok('settings portal: open adds exactly one host to the body, repaints reuse it a
     Object.assign(globalThis, saved);
     for (const k of Object.keys(saved)) if (saved[k] === undefined) delete globalThis[k];
   }
+});
+
+// ── Room registry (step 7.1) ─────────────────────────────────────────────────────────────────
+ok('scenes derive from the registry: ordered by scene_order_N, off last, device area fallback, other areas and unlabelled scenes ignored', () => {
+  const { entities, devices } = registryFixture();
+  const d = P.deriveScenes(entities, devices);
+  assert.deepEqual(d.problems, []);
+  for (const [k, ids] of Object.entries(SCENES)) assert.deepEqual(d.rooms[k].ids, ids, k);
+  for (const k of Object.keys(SCENES)) assert.equal(d.rooms[k].off, `${k}_off`.replace(`${k}_`, ''), k);
+  assert.deepEqual(d.rooms.front_garden.themes, { autumn: 'autumn' });
+  // Position, not name order: scene_order_10 sorts after scene_order_2.
+  const wide = registryFixture({ ...SCENES, parlour: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'off'] });
+  assert.deepEqual(P.deriveScenes(wide.entities, wide.devices).rooms.parlour.ids, ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'off']);
+  // An off scene that also carries a position is still the last tile.
+  const both = registryFixture(); both.entities['scene.parlour_off'].labels.push('scene_order_1');
+  assert.deepEqual(P.deriveScenes(both.entities, both.devices).rooms.parlour.ids, ['all', 'lamps', 'dining', 'off']);
+  // No registry yet: nothing and no problems, never a throw.
+  assert.deepEqual(P.sceneRegistry({ states: {} }), { rooms: {}, problems: [] });
+});
+
+ok('registry problems fail loudly: bad label, missing or duplicate off scene, duplicate position, foreign scene id', () => {
+  const run = (edit) => { const f = registryFixture(); edit(f.entities); return P.deriveScenes(f.entities, f.devices).problems; };
+  assert.match(run((e) => e['scene.parlour_all'].labels.push('scene_order_x'))[0], /scene\.parlour_all has label "scene_order_x"/);
+  assert.match(run((e) => e['scene.parlour_all'].labels.push('scene_order_0'))[0], /scene_order_0/);
+  assert.match(run((e) => e['scene.parlour_all'].labels.push('scene_theme_'))[0], /scene_theme_/);
+  assert.match(run((e) => e['scene.parlour_all'].labels.push('scene_nonsense'))[0], /scene_nonsense/);
+  assert.match(run((e) => { delete e['scene.bedroom_off']; })[0], /bedroom: expected one scene labelled scene_control_off, found 0/);
+  assert.match(run((e) => e['scene.bedroom_lamps'].labels.push('scene_control_off'))[0], /bedroom: expected one scene labelled scene_control_off, found 2/);
+  assert.match(run((e) => { e['scene.parlour_lamps'].labels = ['scene_order_1']; })[0], /parlour: scenes lamps and all are both scene_order_1|parlour: scenes all and lamps are both scene_order_1/);
+  assert.match(run((e) => { e['scene.other_thing'] = { area_id: 'parlour', labels: ['scene_order_9'] }; })[0], /scene\.other_thing is in parlour but its id does not start with scene\.parlour_/);
+  // The card surfaces them as an attention item and in the console.
+  const f = registryFixture(); delete f.entities['scene.bedroom_off'];
+  const errs = []; const orig = console.error; console.error = (m) => errs.push(m);
+  try {
+    const hass = { ...mk(), entities: f.entities, devices: f.devices };
+    const html = P.render('status', {}, hass, NOW);
+    assert.match(html, /Scene labels|bedroom: expected one scene labelled scene_control_off/);
+  } finally { console.error = orig; }
+  assert.ok(errs.some((m) => /scene registry: bedroom: expected one scene/.test(m)), 'logged to the console');
+});
+
+ok('room keys agree across the card table, info_rooms and the info-room views', () => {
+  const tableKeys = P.ROOM_TABLE.map((r) => r.key);
+  assert.equal(new Set(tableKeys).size, tableKeys.length, 'unique keys');
+  const rooms = readFileSync(root + 'packages/info_surface_rooms.yaml', 'utf8');
+  const cfgKeys = [...rooms.matchAll(/\{'k': '(\w+)', 'n': '[^']+', 'nav': '([^']+)'/g)].map((m) => m[1]);
+  const gardenKeys = P.ROOM_TABLE.filter((r) => r.kind === 'garden').map((r) => r.key);
+  assert.deepEqual([...cfgKeys].sort(), P.ROOM_TABLE.filter((r) => r.kind === 'room').map((r) => r.key).sort(), 'info_rooms rooms = table rooms');
+  for (const g of gardenKeys) assert.match(rooms, new RegExp(`\\['${g}', '[^']+', '/pulse-dashboard/room-${g}'\\]`), `info_attention garden ${g}`);
+  const paths = readdirSync(root + 'views').filter((x) => /^info-room-/.test(x)).map((f) => yaml.load(readFileSync(root + 'views/' + f, 'utf8')).path).sort();
+  assert.deepEqual(paths, tableKeys.map((k) => `room-${k}`).sort(), 'views = table');
+  // Display order is explicit and unique within each kind; areas are unique (a scene belongs to one room).
+  for (const kind of ['room', 'garden']) {
+    const orders = P.ROOM_TABLE.filter((r) => r.kind === kind).map((r) => r.order);
+    assert.deepEqual([...orders].sort((a, b) => a - b), orders.map((_, i) => i + 1), `${kind} order is 1..n`);
+  }
+  assert.equal(new Set(P.ROOM_TABLE.map((r) => r.area)).size, tableKeys.length, 'one area per room');
+  assert.deepEqual(P.ROOM_ORDER, ['parlour', 'kitchen', 'hallway_downstairs', 'hallway_upstairs', 'bedroom', 'bathroom', 'home_office', 'foreign_office']);
+});
+
+ok('info_rooms emits only the fields its own template or the card reads', () => {
+  const rooms = readFileSync(root + 'packages/info_surface_rooms.yaml', 'utf8');
+  for (const gone of ['lights_why', 'lights_ts', "'last'", 'last_ts']) assert.ok(!rooms.includes(gone), gone);
+  assert.ok(!/_history/.test(rooms), 'no homerun history read left in info_rooms');
 });
