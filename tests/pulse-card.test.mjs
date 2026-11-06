@@ -3268,7 +3268,8 @@ ok('settings: Tab wraps inside the sheet', () => {
 
 ok('settings: groups per room, in subsystem order, with the plan rows', () => {
   const groupsOf = (k) => titlesOf(sheet(k));
-  for (const k of ['parlour', 'hallway_downstairs', 'hallway_upstairs', 'bedroom']) assert.deepEqual(groupsOf(k), ['Lights', 'Heating', 'Presence'], k);
+  for (const k of ['parlour', 'hallway_downstairs', 'bedroom']) assert.deepEqual(groupsOf(k), ['Lights', 'Heating', 'Presence'], k);
+  assert.deepEqual(groupsOf('hallway_upstairs'), ['Lights', 'Presence']);
   assert.deepEqual(groupsOf('kitchen'), ['Lights', 'Heating', 'Presence', 'Media']);
   assert.deepEqual(groupsOf('home_office'), ['Lights', 'Heating', 'Presence', 'Media']);
   assert.deepEqual(groupsOf('bathroom'), ['Lights', 'Heating', 'Presence', 'Fan']);
@@ -3388,8 +3389,8 @@ ok('settings: a tap on a settings control writes nothing outside the table even 
 });
 
 ok('settings: rows with a missing or unusable helper are hidden and an empty group is not shown', () => {
-  // hallway_upstairs has no heating helper at all: no Heating group.
-  assert.deepEqual(titlesOf(sheet('hallway_upstairs', sheetHass({ 'input_boolean.hallway_upstairs_automation_heating_enabled': null }))), ['Lights', 'Presence']);
+  // hallway_upstairs has no heating automation: its table has no Heating group.
+  assert.deepEqual(titlesOf(sheet('hallway_upstairs')), ['Lights', 'Presence']);
   const noLux = sheet('bedroom', sheetHass({ 'input_number.bedroom_automation_lux_threshold_dark': null }));
   assert.doesNotMatch(noLux, /Dark below/);
   assert.match(noLux, /Lights automation/, 'the other Lights row stays');
@@ -3407,9 +3408,9 @@ ok('settings: rows with a missing or unusable helper are hidden and an empty gro
   assert.match(none, /role="dialog"/);
 });
 
-ok('settings: every row names a helper that exists in packages/helpers.yaml, except those listed as missing', () => {
+ok('settings: every row names a helper that exists in packages/helpers.yaml, with no exceptions', () => {
   const missing = settingRows().filter(({ row }) => !helperIds.has(row.id)).map(({ room, group, row }) => `${room}/${group}/${row.key}`);
-  assert.deepEqual(missing, ['hallway_upstairs/heating/automation'], 'the only absent helper (hidden at run time)');
+  assert.deepEqual(missing, []);
   for (const { row } of settingRows()) assert.match(row.id, row.kind === 'toggle' ? /^input_boolean\.\w+$/ : /^input_number\.\w+$/);
 });
 
@@ -3790,9 +3791,6 @@ ok('every settings and house helper the card writes exists in packages/helpers.y
   for (const [d, s, id] of writableEntities()) {
     const [dom, name] = id.split('.');
     if (!dom.startsWith('input_')) continue;
-    // Known gap: hallway_upstairs has no heating helper (it has no climate entity); the settings sheet leaves
-    // a row whose helper is missing out, so this write cannot be made.
-    if (id === 'input_boolean.hallway_upstairs_automation_heating_enabled') continue;
     assert.ok(name in helpers[dom], `${id} (${d}.${s}) has no helper in packages/helpers.yaml`);
   }
 });

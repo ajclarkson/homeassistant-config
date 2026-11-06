@@ -297,7 +297,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       climate: '', temp: '', hum: '',
       lights: [['light.hallway_upstairs_light_ceiling', 'Ceiling']],
       media: [],
-      settings: indoor('hallway_upstairs'),
+      settings: [lightsGroup('hallway_upstairs', []), presenceGroup('hallway_upstairs')], // no heating automation or helper here
     },
     {
       key: 'bedroom', kind: 'room', order: 5, area: 'bedroom',
