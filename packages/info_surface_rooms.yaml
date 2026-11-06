@@ -187,7 +187,7 @@ template:
               {% if r['heating_enabled'] == false and (age('input_boolean.' ~ k ~ '_automation_heating_enabled') | trim | float(-1)) > disabled_s %}{% set off = off + ['heating'] %}{% endif %}
               {% if off %}
                 {% set out.items = out.items + [{'room': r['n'], 'key': k, 'kind': 'automation_disabled',
-                  'text': (off | join(' and ') | capitalize) ~ ' automation off', 'nav': r['nav']}] %}
+                  'text': (off | join(' and ') | capitalize) ~ (' automations are off' if off | length > 1 else ' automation is off'), 'nav': r['nav']}] %}
               {% endif %}
               {# The PIR gate off means motion is ignored entirely; easy to forget, and the room then looks permanently vacant. #}
               {% set mg = 'input_boolean.' ~ k ~ '_sensor_motion_enabled' %}
@@ -222,7 +222,7 @@ template:
               {% set gh = 'input_boolean.' ~ g[0] ~ '_automation_lights_enabled' %}
               {% if is_state(gh, 'off') and (age(gh) | trim | float(-1)) > disabled_s %}
                 {% set out.items = out.items + [{'room': g[1], 'key': g[0], 'kind': 'automation_disabled',
-                  'text': 'Lights automation off', 'nav': g[2]}] %}
+                  'text': 'Lights automation is off', 'nav': g[2]}] %}
               {% endif %}
               {# A theme the garden cannot show: no labelled scene for a helper option, or a calendar theme that is
                  not an option. Read from the lighting scenes template and the calendar topic; unknown gives none. #}
