@@ -438,6 +438,35 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return s && isObj(s.attributes) ? s.attributes[a] : undefined;
   };
   const usable = (s) => s !== '' && s !== 'unknown' && s !== 'unavailable';
+
+  // ── Render cost ──────────────────────────────────────────────────────────────────────────────
+  // `optimise` switches the two caches below off so a test can prove they change nothing on screen.
+  let optimise = true;
+  function setOptimise(on) {
+    if (typeof on !== 'boolean') throw new Error('pulse-card: setOptimise needs a boolean');
+    optimise = on;
+  }
+  // Parsed JSON attributes, kept per state object. HA replaces the state object when anything about the entity
+  // changes, so a hit is always current. The raw value is compared as well: it costs nothing and keeps an
+  // in-place edit (a test fixture, never HA) from serving a stale parse. Callers must treat the result as read-only.
+  const parseCache = new WeakMap();
+  function parsedAttr(hass, id, a, parse) {
+    const s = stateObj(hass, id);
+    if (typeof parse !== 'function') throw new Error('pulse-card: parsedAttr needs a parser');
+    if (!s || !isObj(s.attributes)) return parse(undefined);
+    const raw = s.attributes[a];
+    if (!optimise) return parse(raw);
+    let per = parseCache.get(s);
+    if (!per) { per = new Map(); parseCache.set(s, per); }
+    const hit = per.get(a);
+    if (hit && hit.raw === raw) return hit.value;
+    const value = parse(raw);
+    per.set(a, { raw, value });
+    return value;
+  }
+  // Room models, built at most once per key in a render pass (a page of cards builds the same room many times).
+  // Only live while render() runs, and keyed to that pass's hass, so direct callers always get a fresh model.
+  let pass = null;
   const fmt1 = (n) => (n === null ? '' : n.toFixed(1));
   const plural = (n, one, many) => (n === 1 ? one : many);
 
@@ -474,11 +503,17 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   };
 
   function roomEntry(hass, key) {
-    const list = parseList(attr(hass, 'sensor.info_rooms', 'rooms'));
+    const list = parsedAttr(hass, 'sensor.info_rooms', 'rooms', parseList);
     return list.find((r) => r.k === key) || null;
   }
 
   function roomModel(hass, key) {
+    if (!pass || pass.hass !== hass) return buildRoomModel(hass, key);
+    let m = pass.models.get(key);
+    if (!m) { m = buildRoomModel(hass, key); pass.models.set(key, m); }
+    return m;
+  }
+  function buildRoomModel(hass, key) {
     const cfg = ROOMS[key];
     if (!cfg) throw new Error(`pulse-card: unknown room "${key}"`);
     const e = roomEntry(hass, key) || {};
@@ -524,7 +559,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   // The sensor's items, plus one the card finds itself: homerun declares a reason this card has no wording
   // for. It comes last so a real room problem still leads the summary link.
   function attentionItems(hass) {
-    const items = parseList(attr(hass, 'sensor.info_attention', 'items')).map((i) => ({
+    const items = parsedAttr(hass, 'sensor.info_attention', 'items', parseList).map((i) => ({
       room: str(i.room), key: str(i.key), kind: str(i.kind), text: str(i.text), nav: str(i.nav),
     }));
     const gaps = unexplainedReasons(hass);
@@ -929,10 +964,17 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const skipped = Math.min(list.length, HISTORY_MAX) - entries.length;
     return { entries, note: skipped > 0 ? `${skipped} ${plural(skipped, 'entry', 'entries')} could not be read` : '' };
   }
+  const historyCache = new WeakMap();
   function readHistory(hass, entity) {
     const s = stateObj(hass, entity);
     if (!s || s.state === 'unavailable') return { entries: [], note: 'History unavailable' };
-    return parseHistory(s.attributes);
+    if (!optimise) return parseHistory(s.attributes);
+    // Keyed by the state object, and checked against the attributes object and the entries payload it was built from.
+    const hit = historyCache.get(s);
+    if (hit && hit.attrs === s.attributes && hit.raw === s.attributes.entries) return hit.value;
+    const value = parseHistory(s.attributes);
+    historyCache.set(s, { attrs: s.attributes, raw: s.attributes && s.attributes.entries, value });
+    return value;
   }
   // A decision that changed something: declared `acted`, or an undeclared decision (stored only with actions).
   const isActed = (e) => e.kind === 'decision' && e.outcome !== 'declined';
@@ -2911,9 +2953,99 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   function render(mode, config, hass, now, ui) {
     validate({ ...config, mode });
     const at = Number.isFinite(now) ? now : Date.now();
-    const body = MODES[mode](hass, config || {}, at, ui || {});
-    const html = body && HEAD_MODES.includes(mode) ? topGuard(ui) + body : body;
-    return html ? `<div class="p">${errorBanner(ui, at)}${markPending(html, ui, hass, at)}</div>` : '';
+    // One pass, one set of room models; restored in `finally` so a throw cannot leave a stale pass behind.
+    const outer = pass;
+    pass = optimise ? { hass, models: new Map() } : null;
+    try {
+      const body = MODES[mode](hass, config || {}, at, ui || {});
+      const html = body && HEAD_MODES.includes(mode) ? topGuard(ui) + body : body;
+      return html ? `<div class="p">${errorBanner(ui, at)}${markPending(html, ui, hass, at)}</div>` : '';
+    } finally {
+      pass = outer;
+    }
+  }
+
+  // ── Skipping a render nothing could have changed ─────────────────────────────────────────────
+  // A render is a function of: the mode and config, the ui state, `now`, and whatever it reads from hass.
+  // Everything read from hass goes through a recording view, so nothing is on a hand list that could drift:
+  //   - hass.states[id] (get, `in`): the state object, by identity (HA replaces it on any change);
+  //   - listing hass.states: the list of ids, compared in full (a scene appearing must show);
+  //   - any other hass property (entities, devices, areas, user, config, themes, locale...): its identity;
+  //   - anything stranger (spread, Object.keys(hass), a descriptor lookup on states): not trackable, so the
+  //     render is marked opaque and never skipped.
+  // The ui state is mutated in place, so it is compared by its JSON text; if that fails, never skip.
+  // `now` is covered by a maximum age: relative times ("5 min ago", stale-sensor ages) only change with it.
+  // Callers that are not a hass update (taps, timers, the settings sheet, scrubbing) never skip at all.
+  const RENDER_MAX_AGE_MS = 15000;
+  function trackHass(hass) {
+    if (!isObj(hass)) throw new Error('pulse-card: trackHass needs a hass object');
+    const deps = { states: new Map(), props: new Map(), keys: null, opaque: false };
+    const rawStates = hass.states;
+    const statesView = isObj(rawStates) ? new Proxy(rawStates, {
+      get(t, k, r) { if (typeof k === 'string') deps.states.set(k, t[k]); return Reflect.get(t, k, r); },
+      has(t, k) { if (typeof k === 'string') deps.states.set(k, t[k]); return Reflect.has(t, k); },
+      ownKeys(t) { deps.keys = Reflect.ownKeys(t).filter((k) => typeof k === 'string'); return Reflect.ownKeys(t); },
+      getOwnPropertyDescriptor(t, k) { deps.opaque = deps.opaque || !deps.keys; return Reflect.getOwnPropertyDescriptor(t, k); },
+      set() { throw new Error('pulse-card: render must not write hass.states'); },
+      deleteProperty() { throw new Error('pulse-card: render must not write hass.states'); },
+    }) : rawStates;
+    const view = new Proxy(hass, {
+      get(t, k, r) {
+        if (typeof k !== 'string') return Reflect.get(t, k, r);
+        // Not recorded as a property: HA replaces the whole states object on every change; entries are tracked below.
+        if (k === 'states') return statesView;
+        const v = t[k];
+        deps.props.set(k, v);
+        return v;
+      },
+      has() { deps.opaque = true; return true; },
+      ownKeys(t) { deps.opaque = true; return Reflect.ownKeys(t); },
+      set() { throw new Error('pulse-card: render must not write hass'); },
+      deleteProperty() { throw new Error('pulse-card: render must not write hass'); },
+    });
+    return { view, deps };
+  }
+  // True when every recorded read would give the same answer against this hass.
+  function depsUnchanged(deps, hass) {
+    if (!deps || deps.opaque || !isObj(hass)) return false;
+    for (const [k, v] of deps.props) if (hass[k] !== v) return false;
+    if (deps.states.size === 0 && deps.keys === null) return true;
+    const states = hass.states;
+    if (!isObj(states)) return false;
+    for (const [id, v] of deps.states) if (states[id] !== v) return false;
+    if (deps.keys !== null) {
+      const now = Object.keys(states);
+      if (now.length !== deps.keys.length || now.some((id, i) => id !== deps.keys[i])) return false;
+    }
+    return true;
+  }
+  const uiSignature = (ui) => { try { return JSON.stringify(ui === undefined ? null : ui); } catch (e) { return null; } };
+
+  function makeRenderGate(maxAgeMs = RENDER_MAX_AGE_MS) {
+    if (!Number.isFinite(maxAgeMs) || maxAgeMs < 1000 || maxAgeMs > 60000) throw new Error(`pulse-card: render max age must be 1s to 60s, got ${maxAgeMs}`);
+    const stats = { renders: 0, skips: 0 };
+    let prev = null;
+    return {
+      stats,
+      // Forget the last render: the next run renders. For setConfig and for mount changes.
+      reset() { prev = null; },
+      // `force` is for every caller that is not a hass update. Returns {html, skipped}.
+      run(mode, config, hass, now, ui, force) {
+        const sig = uiSignature(ui);
+        const at = Number.isFinite(now) ? now : Date.now();
+        if (!force && prev && sig !== null && prev.mode === mode && prev.config === config && prev.sig === sig
+          && at >= prev.at && at - prev.at < maxAgeMs && depsUnchanged(prev.deps, hass)) {
+          stats.skips += 1;
+          return { html: prev.html, skipped: true };
+        }
+        prev = null; // a throw below must not leave a result that no longer matches
+        const { view, deps } = trackHass(hass);
+        const html = render(mode, config, view, at, ui);
+        stats.renders += 1;
+        prev = { mode, config, sig, at, deps, html };
+        return { html, skipped: false };
+      },
+    };
   }
 
   // ── Service calls ────────────────────────────────────────────────────────────────────────────
@@ -3047,7 +3179,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     }
   }
 
-  const api = { deriveScenes, sceneRegistry, ROOM_TABLE, lightsStory, lightsState, verdictFor, houseActivity, parseHistory, readHistory, sentenceFor, roomActivity, unexplainedReasons, REASON_TEXT, TILE, TILE_H, TILE_WIDE_H, tileNeededHeight, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, SETTINGS_PATH, takesTaps, coverNeed, topGuard, sheetFit, splitSheet, touchGuard, lockScroll, scrollTargets, SHEET_MARK, HEAD_MODES, TOP_GUARD_MAX, CAMERAS_PATH, PENDING_MS, cameraParts, cameraToggle, cameraPending, perform, pendingStart, pendingFor, pendingKey, markPending, ERROR_MS, parseClips, frigateClipsId, roomGroups, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, GARDEN_ORDER, ALL_ROOM_KEYS, THEME_LABELS, THEME_ICON, ICON, gardenModel, gardenSub, themeSource, shortDate, ALLOWED, writeAllowed, HOUSE_NUMBERS, HOUSE_MODIFIER, HOUSE_VACATION_HOURS, CAMERAS, PTZ_DIRS, DEVICE_REASONS, ROOM_SETTINGS, MO_TOGGLES, settingFor, settingsOpen, settingsClose, tabTarget, render, priceColour, PRICE_STOPS, PRICE_EXTREME_P, roomModel, attentionItems, handleAction, callService, num, parseList };
+  const api = { parsedAttr, setOptimise, trackHass, depsUnchanged, makeRenderGate, RENDER_MAX_AGE_MS, deriveScenes, sceneRegistry, ROOM_TABLE, lightsStory, lightsState, verdictFor, houseActivity, parseHistory, readHistory, sentenceFor, roomActivity, unexplainedReasons, REASON_TEXT, TILE, TILE_H, TILE_WIDE_H, tileNeededHeight, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, SETTINGS_PATH, takesTaps, coverNeed, topGuard, sheetFit, splitSheet, touchGuard, lockScroll, scrollTargets, SHEET_MARK, HEAD_MODES, TOP_GUARD_MAX, CAMERAS_PATH, PENDING_MS, cameraParts, cameraToggle, cameraPending, perform, pendingStart, pendingFor, pendingKey, markPending, ERROR_MS, parseClips, frigateClipsId, roomGroups, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, GARDEN_ORDER, ALL_ROOM_KEYS, THEME_LABELS, THEME_ICON, ICON, gardenModel, gardenSub, themeSource, shortDate, ALLOWED, writeAllowed, HOUSE_NUMBERS, HOUSE_MODIFIER, HOUSE_VACATION_HOURS, CAMERAS, PTZ_DIRS, DEVICE_REASONS, ROOM_SETTINGS, MO_TOGGLES, settingFor, settingsOpen, settingsClose, tabTarget, render, priceColour, PRICE_STOPS, PRICE_EXTREME_P, roomModel, attentionItems, handleAction, callService, num, parseList };
   root.PulseLib = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 
@@ -3059,6 +3191,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         super();
         this._root = this.attachShadow({ mode: 'open' });
         this._html = null;
+        this._gate = makeRenderGate();
         this._busy = false;
         this._ui = { top: 0, tb: 'inflow', open: false, settings: false, focus: null, day: 'today', fuel: 'electricity', cam: { rec: {} }, pending: {}, error: null, hist: { electricity: { status: 'loading', days: [] }, gas: { status: 'loading', days: [] } } };
         this._histBusy = false;
@@ -3093,14 +3226,18 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       setConfig(config) {
         validate(config);
         this._config = config;
+        this._gate.reset();
       }
+      // Dev only: how many hass updates rendered and how many were skipped. Read it from the console.
+      get renderStats() { return { ...this._gate.stats }; }
       set hass(hass) {
         this._hass = hass;
         this._histEnsure();
-        this._paint();
+        this._paint(true);
         this._syncStream();
       }
       connectedCallback() {
+        this._gate.reset(); // a (re)mount always renders once
         // Any card on the page (the gear, the Presence link) asks for the sheet by event; only the room-head card has one.
         if (hasWindowEvents()) {
           window.addEventListener('pulse-card:settings', this._onOpenRequest);
@@ -3111,6 +3248,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         this._topProbeLater();
       }
       disconnectedCallback() {
+        this._gate.reset();
         if (hasWindowEvents()) {
           window.removeEventListener('pulse-card:settings', this._onOpenRequest);
           window.removeEventListener('keydown', this._onWindowKey);
@@ -3162,13 +3300,15 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
           });
       }
       getCardSize() { return 3; }
-      _paint() {
+      // `fromHass` is true only for a hass update, the one caller allowed to skip an unchanged render. Taps,
+      // timers (pending and error expiry), the settings sheet, history arrival and scrubbing always render.
+      _paint(fromHass = false) {
         // Never re-render under a finger: a slider drag or a chart scrub owns the DOM until release.
         if (!this._config || !this._hass || this._busy || this._scrub.active) return;
         if (this._config.mode === 'camera') { this._paintCamera(); return; }
         let html;
         try {
-          html = render(this._config.mode, this._config, this._hass, Date.now(), this._ui);
+          html = this._gate.run(this._config.mode, this._config, this._hass, Date.now(), this._ui, !fromHass).html;
         } catch (err) {
           // Fail loudly in the card itself rather than leaving a blank hole.
           html = `<div class="p"><div class="card warn pad"><b>pulse-card error</b><div class="s">${esc(err && err.message)}</div></div></div>`;
