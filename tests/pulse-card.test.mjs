@@ -525,14 +525,14 @@ ok('every nav path targets the registered dashboard (/pulse-dashboard) or Mobile
 
 ok('write paths are whitelisted; others throw', () => {
   const calls = [];
-  const hass = { states: { 'light.a': { state: 'off' }, 'media_player.b': { state: 'playing' } }, callService: (d, s, data) => calls.push([d, s, data]) };
+  const hass = { states: { 'light.parlour_light_floor_lamp': { state: 'off' }, 'media_player.parlour': { state: 'playing' } }, callService: (d, s, data) => calls.push([d, s, data]) };
   const el = (act, entity) => ({ dataset: { act, entity } });
   P.handleAction(hass, el('scene', 'scene.parlour_lamps'));
-  P.handleAction(hass, el('toggle', 'light.a'));
-  P.handleAction(hass, el('brightness', 'light.a'), '40');
-  P.handleAction(hass, el('brightness', 'light.a'), '0');
-  P.handleAction(hass, el('media-play', 'media_player.b'));
-  P.handleAction(hass, el('volume', 'media_player.b'), '28');
+  P.handleAction(hass, el('toggle', 'light.parlour_light_floor_lamp'));
+  P.handleAction(hass, el('brightness', 'light.parlour_light_floor_lamp'), '40');
+  P.handleAction(hass, el('brightness', 'light.parlour_light_floor_lamp'), '0');
+  P.handleAction(hass, el('media-play', 'media_player.parlour'));
+  P.handleAction(hass, el('volume', 'media_player.parlour'), '28');
   assert.deepEqual(calls.map((c) => `${c[0]}.${c[1]}`), ['scene.turn_on', 'light.turn_on', 'light.turn_on', 'light.turn_off', 'media_player.media_play_pause', 'media_player.volume_set']);
   assert.equal(calls[5][2].volume_level, 0.28);
   assert.throws(() => P.callService(hass, 'mqtt', 'publish', {}), /not an allowed write path/);
@@ -3737,4 +3737,129 @@ ok('info_rooms emits only the fields its own template or the card reads', () => 
   const rooms = readFileSync(root + 'packages/info_surface_rooms.yaml', 'utf8');
   for (const gone of ['lights_why', 'lights_ts', "'last'", 'last_ts']) assert.ok(!rooms.includes(gone), gone);
   assert.ok(!/_history/.test(rooms), 'no homerun history read left in info_rooms');
+});
+
+// ── Write paths per entity ───────────────────────────────────────────────────────────────────
+// Every entity the card can write, enumerated from the tables it reads (room table, settings rows, Mo toggles,
+// house numbers, cameras), must pass; anything else must throw.
+const writableEntities = () => {
+  const out = []; // [domain, service, entity]
+  for (const r of P.ROOM_TABLE) {
+    out.push(['scene', 'turn_on', `scene.${r.key}_anything_at_all`]);
+    for (const [id] of r.lights || []) {
+      const d = id.split('.')[0];
+      out.push([d, 'turn_on', id], [d, 'turn_off', id]);
+    }
+    for (const [id] of r.media || []) for (const s of ['media_play_pause', 'volume_set', 'turn_on', 'turn_off']) out.push(['media_player', s, id]);
+    for (const g of r.settings) for (const row of g.rows) {
+      if (row.kind === 'toggle') out.push(['input_boolean', 'turn_on', row.id], ['input_boolean', 'turn_off', row.id]);
+      else out.push(['input_number', 'set_value', row.id]);
+    }
+    if (r.kind === 'room') out.push(['input_boolean', 'turn_on', `input_boolean.${r.key}_automation_presence_override`]); // keepOccupiedRow
+    if (r.theme) out.push(['input_select', 'select_option', r.theme], ['input_boolean', 'turn_on', `input_boolean.${r.key}_light_theme_calendar_enabled`]);
+  }
+  for (const d of Object.values(P.MO_TOGGLES)) out.push(['input_boolean', 'turn_on', d.id], ['input_boolean', 'turn_off', d.id]);
+  for (const d of Object.values(P.HOUSE_NUMBERS)) out.push(['input_number', 'set_value', d.id]);
+  out.push(['input_number', 'set_value', P.HOUSE_VACATION_HOURS], ['input_select', 'select_option', P.HOUSE_MODIFIER]);
+  for (const id of ['input_boolean.house_heating_enabled', 'input_boolean.wfh_adam', 'input_boolean.wfh_sarah']) out.push(['input_boolean', 'turn_on', id], ['input_boolean', 'turn_off', id]);
+  for (const c of P.CAMERAS) {
+    out.push(['switch', 'turn_on', `switch.${c.k}_privacy`], ['switch', 'turn_off', `switch.${c.k}_privacy`]);
+    for (const dir of Object.keys(P.PTZ_DIRS)) out.push(['button', 'press', `button.${c.k}_move_${dir}`]);
+  }
+  out.push(['switch', 'turn_on', 'switch.bathroom_fan_extractor'], ['switch', 'turn_off', 'switch.bathroom_fan_extractor']);
+  return out;
+};
+
+ok('every entity the card can write passes callService', () => {
+  const sent = [];
+  const hass = { callService: (...a) => sent.push(a) };
+  const all = writableEntities();
+  assert.ok(all.length > 150, `enumerated ${all.length} writes`);
+  for (const [d, s, id] of all) P.callService(hass, d, s, { entity_id: id });
+  assert.equal(sent.length, all.length);
+});
+
+ok('the fan switch the bathroom view passes to the device row is writable', () => {
+  const view = readFileSync(root + 'views/info-room-bathroom.yaml', 'utf8');
+  const fan = /fan: (switch\.\S+)/.exec(view)[1];
+  assert.ok(P.writeAllowed('switch', 'turn_on', fan) && P.writeAllowed('switch', 'turn_off', fan), fan);
+});
+
+ok('every settings and house helper the card writes exists in packages/helpers.yaml', () => {
+  const helpers = yaml.load(readFileSync(root + 'packages/helpers.yaml', 'utf8'));
+  for (const [d, s, id] of writableEntities()) {
+    const [dom, name] = id.split('.');
+    if (!dom.startsWith('input_')) continue;
+    // Known gap: hallway_upstairs has no heating helper (it has no climate entity); the settings sheet leaves
+    // a row whose helper is missing out, so this write cannot be made.
+    if (id === 'input_boolean.hallway_upstairs_automation_heating_enabled') continue;
+    assert.ok(name in helpers[dom], `${id} (${d}.${s}) has no helper in packages/helpers.yaml`);
+  }
+});
+
+ok('writes outside the patterns throw', () => {
+  const hass = { callService: () => assert.fail('must not be called') };
+  const bad = [
+    ['light', 'toggle', 'light.parlour_light_floor_lamp'], // wrong service
+    ['scene', 'create', 'scene.parlour_lamps'],
+    ['lock', 'unlock', 'lock.front_door'], // wrong domain
+    ['homeassistant', 'restart', 'homeassistant.x'],
+    ['light', 'turn_on', 'light.not_in_the_room_table'], // right domain and service, unknown entity
+    ['switch', 'turn_on', 'switch.garage_door'],
+    ['media_player', 'turn_on', 'media_player.nowhere'],
+    ['button', 'press', 'button.parlour_move_diagonal'],
+    ['button', 'press', 'button.garage_move_up'],
+    ['scene', 'turn_on', 'scene.garage_all'], // scene for an unknown room
+    ['scene', 'turn_on', 'scene.parlour'], // no scene name after the room
+    ['scene', 'turn_on', 'scene.parlourx_all'],
+    ['scene', 'turn_on', 'light.parlour_all'],
+    ['input_boolean', 'turn_on', 'input_boolean.patio_door_heating_suspended'], // a real helper the card does not own
+    ['input_boolean', 'turn_on', 'input_boolean.anything'],
+    ['input_boolean', 'toggle', 'input_boolean.house_heating_enabled'],
+    ['input_number', 'set_value', 'input_number.bathroom_automation_shower_rise'], // calibration, not exposed on purpose
+    ['input_number', 'set_value', 'input_number.front_garden_automation_porch_hold'],
+    ['input_select', 'select_option', 'input_select.parlour_heating_manual_mode'],
+    ['input_select', 'select_option', 'input_select.anything'],
+    ['input_boolean', 'turn_on', 'input_boolean.house_heating_enabled\n'], // anchored
+    ['input_boolean', 'turn_on', 'xinput_boolean.house_heating_enabled'],
+  ];
+  for (const [d, s, id] of bad) assert.throws(() => P.callService(hass, d, s, { entity_id: id }), /not an allowed write path/, `${d}.${s} ${id}`);
+});
+
+ok('a call without a usable entity_id throws, for every domain and service', () => {
+  const hass = { callService: () => assert.fail('must not be called') };
+  for (const [d, svcs] of Object.entries(P.ALLOWED)) for (const s of Object.keys(svcs)) {
+    for (const data of [undefined, null, {}, { entity_id: '' }, { entity_id: null }, { entity_id: ['light.parlour_light_floor_lamp'] }, { entity_id: { x: 1 } }, { option: 'x' }]) {
+      assert.throws(() => P.callService(hass, d, s, data), /not an allowed write path/, `${d}.${s} ${JSON.stringify(data)}`);
+    }
+  }
+  assert.throws(() => P.callService(hass, 'prototype', 'turn_on', { entity_id: 'x.y' }), /not an allowed write path/);
+  assert.throws(() => P.callService(hass, '__proto__', 'x', { entity_id: 'x.y' }), /not an allowed write path/);
+  assert.throws(() => P.callService(hass, 'light', 'constructor', { entity_id: 'light.parlour_light_floor_lamp' }), /not an allowed write path/);
+});
+
+ok('scene patterns come from the room table, gardens included', () => {
+  for (const k of ['front_garden', 'back_garden', 'parlour', 'home_office']) assert.ok(P.writeAllowed('scene', 'turn_on', `scene.${k}_all`), k);
+  assert.ok(P.ROOM_TABLE.filter((r) => r.kind === 'garden').length >= 2);
+  assert.ok(!P.writeAllowed('scene', 'turn_on', 'scene.shed_all'));
+});
+
+ok('handleAction cannot be steered at an entity outside the table by a forged data-entity', () => {
+  const hass = { states: {}, callService: () => assert.fail('must not be called') };
+  for (const act of ['toggle', 'scene', 'brightness', 'media-play', 'media-power', 'volume']) {
+    assert.throws(() => P.handleAction(hass, { dataset: { act, entity: 'lock.front_door' } }, '50'), /not an allowed write path|is not/, act);
+  }
+  assert.throws(() => P.handleAction(hass, { dataset: { act: 'toggle', entity: 'input_boolean.anything' } }), /not an allowed write path/);
+  assert.throws(() => P.handleAction(hass, { dataset: { act: 'scene' } }), /not an allowed write path/);
+});
+
+ok('every service call in the card goes through callService', () => {
+  const src = readFileSync(root + 'www/pulse-card.js', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  const direct = [...src.matchAll(/\.callService\s*\(/g)];
+  assert.equal(direct.length, 1, 'hass.callService is called in exactly one place');
+  const fn = src.slice(src.indexOf('function callService(hass'));
+  assert.ok(fn.indexOf('.callService(') < fn.indexOf('\n  }\n'), 'and that place is callService itself');
+  assert.ok(fn.indexOf('writeAllowed(domain, service, entity)') < fn.indexOf('.callService('), 'after the entity check');
+  for (const other of ['callApi', 'fireEvent', 'callWS({ type: \'call_service', 'hass.connection.sendMessage', 'publish(']) assert.ok(!src.includes(other), `no ${other}`);
+  for (const m of src.matchAll(/callWS\(\s*\{([^}]*)\}/g)) assert.match(m[1], /type:\s*'(history|recorder|media_source|config)\//, `callWS reads only: ${m[1]}`);
 });
