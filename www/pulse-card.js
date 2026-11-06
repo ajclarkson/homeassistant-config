@@ -590,7 +590,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   // ── Scenes from the HA registry ───────────────────────────────────────────────────────────────
   // A room's scenes are the `scene.*` entities in its area (the entity's own area, else its device's), by label:
   // `scene_order_N` puts the scene in the tile list at position N, `scene_control_off` marks the scene that
-  // switches the room off (shown last), and `scene_theme_<theme>` marks a garden's theme look (not a tile). The
+  // switches the room off (shown last), and `scene_theme_<theme>` marks a garden's theme look (not a tile); other `scene_control_<name>` labels are the automations' and ignored. The
   // scene id the card shows is the entity id without `scene.<room>_`. Anything under `scene_` that is none of
   // these, a scene whose id does not start with its room key, two scenes at one position, or a room without
   // exactly one off scene is a problem: it is returned, surfaced as an attention item and logged, never skipped.
@@ -598,6 +598,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   const SCENE_ORDER_LABEL = /^scene_order_([1-9]\d{0,2})$/;
   const SCENE_THEME_LABEL = /^scene_theme_([a-z][a-z0-9_]*)$/;
   const SCENE_OFF_LABEL = 'scene_control_off';
+  const SCENE_CONTROL_LABEL = /^scene_control_[a-z][a-z0-9_]*$/;
   const registryCache = new WeakMap();
 
   function sceneArea(devices, e) {
@@ -629,7 +630,9 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         if (order) found[key].ordered.push({ n: Number(order[1]), id });
         else if (l === SCENE_OFF_LABEL) found[key].offs.push(id);
         else if (theme) rooms[key].themes[theme[1]] = id;
-        else problems.push(`${eid} has label "${l}" which is not scene_order_N, ${SCENE_OFF_LABEL} or scene_theme_<name>`);
+        // Other control labels (scene_control_daylight, ...) belong to the lighting automations; Pulse ignores them.
+        else if (SCENE_CONTROL_LABEL.test(l)) continue;
+        else problems.push(`${eid} has label "${l}" which is not scene_order_N, scene_control_<name> or scene_theme_<name>`);
       }
     }
     for (const key of ALL_ROOM_KEYS) {

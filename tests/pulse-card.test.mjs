@@ -3695,6 +3695,14 @@ ok('registry problems fail loudly: bad label, missing or duplicate off scene, du
   assert.match(run((e) => e['scene.bedroom_lamps'].labels.push('scene_control_off'))[0], /bedroom: expected one scene labelled scene_control_off, found 2/);
   assert.match(run((e) => { e['scene.parlour_lamps'].labels = ['scene_order_1']; })[0], /parlour: scenes lamps and all are both scene_order_1|parlour: scenes all and lamps are both scene_order_1/);
   assert.match(run((e) => { e['scene.other_thing'] = { area_id: 'parlour', labels: ['scene_order_9'] }; })[0], /scene\.other_thing is in parlour but its id does not start with scene\.parlour_/);
+  // Other control labels are the automations' business: no problem, no change to the tiles.
+  const ctl = registryFixture(); ctl.entities['scene.kitchen_cabinets'].labels.push('scene_control_daylight', 'scene_control_night', 'scene_control_evening');
+  const cd = P.deriveScenes(ctl.entities, ctl.devices);
+  assert.deepEqual(cd.problems, []);
+  assert.deepEqual(cd.rooms.kitchen.ids, SCENES.kitchen);
+  // Theme scenes without a position (front garden) raise nothing and are not tiles.
+  assert.deepEqual(cd.rooms.front_garden.ids, SCENES.front_garden);
+  assert.match(run((e) => e['scene.parlour_all'].labels.push('scene_control_'))[0], /scene_control_/);
   // The card surfaces them as an attention item and in the console.
   const f = registryFixture(); delete f.entities['scene.bedroom_off'];
   const errs = []; const orig = console.error; console.error = (m) => errs.push(m);
