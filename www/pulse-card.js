@@ -1880,6 +1880,8 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   // The sheet is rendered as the last thing in the room-head html, starting at this marker. The card moves it out
   // of its own shadow root into a host on document.body, so position:fixed is relative to the viewport whatever
   // transform/filter/contain HA's view containers carry. Returns the page html and the sheet html (empty when closed).
+  // Appended after STYLE on repaints of an already-open sheet, so the open animation does not replay.
+  const STILL = '<style>.sheet{animation:none}</style>';
   const SHEET_MARK = '<div class="ovl">';
   function splitSheet(html) {
     const s = typeof html === 'string' ? html : '';
@@ -3179,7 +3181,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     }
   }
 
-  const api = { parsedAttr, setOptimise, trackHass, depsUnchanged, makeRenderGate, RENDER_MAX_AGE_MS, deriveScenes, sceneRegistry, ROOM_TABLE, lightsStory, lightsState, verdictFor, houseActivity, parseHistory, readHistory, sentenceFor, roomActivity, unexplainedReasons, REASON_TEXT, TILE, TILE_H, TILE_WIDE_H, tileNeededHeight, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, SETTINGS_PATH, takesTaps, coverNeed, topGuard, sheetFit, splitSheet, touchGuard, lockScroll, scrollTargets, SHEET_MARK, HEAD_MODES, TOP_GUARD_MAX, CAMERAS_PATH, PENDING_MS, cameraParts, cameraToggle, cameraPending, perform, pendingStart, pendingFor, pendingKey, markPending, ERROR_MS, parseClips, frigateClipsId, roomGroups, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, GARDEN_ORDER, ALL_ROOM_KEYS, THEME_LABELS, THEME_ICON, ICON, gardenModel, gardenSub, themeSource, shortDate, ALLOWED, writeAllowed, HOUSE_NUMBERS, HOUSE_MODIFIER, HOUSE_VACATION_HOURS, CAMERAS, PTZ_DIRS, DEVICE_REASONS, ROOM_SETTINGS, MO_TOGGLES, settingFor, settingsOpen, settingsClose, tabTarget, render, priceColour, PRICE_STOPS, PRICE_EXTREME_P, roomModel, attentionItems, handleAction, callService, num, parseList };
+  const api = { parsedAttr, setOptimise, trackHass, depsUnchanged, makeRenderGate, RENDER_MAX_AGE_MS, deriveScenes, sceneRegistry, ROOM_TABLE, lightsStory, lightsState, verdictFor, houseActivity, parseHistory, readHistory, sentenceFor, roomActivity, unexplainedReasons, REASON_TEXT, TILE, TILE_H, TILE_WIDE_H, tileNeededHeight, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, SETTINGS_PATH, takesTaps, coverNeed, topGuard, sheetFit, splitSheet, touchGuard, lockScroll, scrollTargets, SHEET_MARK, STILL, HEAD_MODES, TOP_GUARD_MAX, CAMERAS_PATH, PENDING_MS, cameraParts, cameraToggle, cameraPending, perform, pendingStart, pendingFor, pendingKey, markPending, ERROR_MS, parseClips, frigateClipsId, roomGroups, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, GARDEN_ORDER, ALL_ROOM_KEYS, THEME_LABELS, THEME_ICON, ICON, gardenModel, gardenSub, themeSource, shortDate, ALLOWED, writeAllowed, HOUSE_NUMBERS, HOUSE_MODIFIER, HOUSE_VACATION_HOURS, CAMERAS, PTZ_DIRS, DEVICE_REASONS, ROOM_SETTINGS, MO_TOGGLES, settingFor, settingsOpen, settingsClose, tabTarget, render, priceColour, PRICE_STOPS, PRICE_EXTREME_P, roomModel, attentionItems, handleAction, callService, num, parseList };
   root.PulseLib = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 
@@ -3318,9 +3320,13 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         this.style.display = html ? '' : 'none';
         const kept = this._captureFocus();
         const { page, sheet } = splitSheet(html);
-        const portaled = sheet ? this._portalShow(sheet) : (this._portalHide(), false);
+        // The open animation belongs to the moment the sheet appears; a repaint of an open sheet builds a new
+        // element, which would replay it (the sheet fading out and sliding back on every stepper tap).
+        const still = sheet && this._sheetPainted ? STILL : '';
+        this._sheetPainted = !!sheet;
+        const portaled = sheet ? this._portalShow(sheet, still) : (this._portalHide(), false);
         // No sheet, or a sheet that could not be portaled (fallback: it stays in the card): paint all of it here.
-        this._root.innerHTML = `<style>${STYLE}</style>${portaled ? page : html}`;
+        this._root.innerHTML = `<style>${STYLE}</style>${still}${portaled ? page : html}`;
         this._restoreFocus(kept);
         if (this._config.mode === 'tabbar' && !this._tbProbed) this._tabbarProbeLater();
         this._fitSheet();
@@ -3361,14 +3367,14 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       // Where the sheet's DOM lives: the portal while it is open there, else the card (closed, or the fallback).
       _sheetRoot() { return this._portal ? this._portal.root : this._root; }
       // Show or update the portaled sheet. False means it could not be attached: the caller keeps the sheet in the card.
-      _portalShow(sheetHtml) {
+      _portalShow(sheetHtml, still = '') {
         if (this._portalBroken || typeof document === 'undefined' || !document.body) {
           this._portalWarn(this._portalBroken ? 'earlier failure' : 'no document body');
           return false;
         }
         try {
           if (!this._portal) this._portalOpen();
-          this._portal.root.innerHTML = `<style>${STYLE}</style><div class="p">${sheetHtml}</div>`;
+          this._portal.root.innerHTML = `<style>${STYLE}</style>${still}<div class="p">${sheetHtml}</div>`;
           return true;
         } catch (err) {
           this._portalBroken = true;

@@ -3812,9 +3812,12 @@ ok('settings portal: open adds exactly one host to the body, repaints reuse it a
     assert.ok(host.shadow.listeners.click && host.shadow.listeners.change, 'controls are wired');
     assert.equal(docEl.style.overflow, 'hidden', 'the page scroller is locked');
     // a repaint (stepper tap) updates the same host and keeps the sheet's scroll position
+    assert.ok(!host.shadow.innerHTML.includes(P.STILL), 'first paint of the open sheet plays the open animation');
     host.shadow.sb.scrollTop = 180;
     c._html = null;
     c._paint();
+    assert.ok(host.shadow.innerHTML.includes(P.STILL), 'a repaint of the open sheet does not replay it');
+    assert.ok(c._root.innerHTML.includes(P.STILL), 'nor does the card side');
     assert.equal(bodyKids.length, 1, 'repaint does not add a second host');
     assert.equal(host.shadow.sb.scrollTop, 180, 'sheet scroll kept across the repaint');
     // close removes it and restores the page position
@@ -3825,6 +3828,7 @@ ok('settings portal: open adds exactly one host to the body, repaints reuse it a
     // touchmove outside .sb is cancelled; inside, at the bottom edge, swiping up is cancelled
     c._settingsRequest({ detail: { room: 'bathroom', opener: null } });
     const h2 = bodyKids[0];
+    assert.ok(!h2.shadow.innerHTML.includes(P.STILL), 'reopening plays the open animation again');
     const calls = [];
     const pos = { x: 0, y: 100 };
     const ev = (target, y) => ({ touches: [{ clientX: 0, clientY: y }], target, cancelable: true, preventDefault() { calls.push('p'); } });
@@ -3852,6 +3856,13 @@ ok('settings portal: open adds exactly one host to the body, repaints reuse it a
       d.hass = sheetHass();
       d._settingsRequest({ detail: { room: 'bathroom', opener: null } });
       assert.ok(d._root.innerHTML.includes('class="sheet"'), 'fallback: sheet stays in the card');
+      assert.ok(!d._root.innerHTML.includes(P.STILL), 'fallback: first paint animates');
+      d._html = null;
+      d._paint();
+      assert.ok(d._root.innerHTML.includes(P.STILL) && d._root.innerHTML.includes('class="sheet"'), 'fallback: repaint of the open sheet does not replay');
+      d._settingsClose();
+      d._settingsRequest({ detail: { room: 'bathroom', opener: null } });
+      assert.ok(!d._root.innerHTML.includes(P.STILL), 'fallback: reopen animates again');
       assert.equal(bodyKids.length, 0);
       assert.equal(docEl.style.overflow, '', 'failed attach leaves the page unlocked');
       assert.ok(warns.some((m) => /kept inside the card/.test(m)));
