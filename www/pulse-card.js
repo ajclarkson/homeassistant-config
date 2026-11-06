@@ -354,7 +354,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       key: 'front_garden', kind: 'garden', order: 1, area: 'front_garden', name: 'Front garden', short: 'Front garden', theme: 'input_select.front_garden_light_theme',
       settings: [{
         key: 'lights', title: 'Lights', rows: [
-          toggleRow('automation', 'input_boolean.front_garden_automation_lights_enabled', 'Lights automation', 'On from sunset; off when the house goes to sleep'),
+          toggleRow('automation', 'input_boolean.front_garden_automation_lights_enabled', 'Lights automation', 'On from sunset; off when the house is set to asleep'),
           toggleRow('calendar', 'input_boolean.front_garden_light_theme_calendar_enabled', 'Follow calendar', 'Switches theme on the days it changes'),
         ],
       }],
@@ -362,7 +362,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     {
       key: 'back_garden', kind: 'garden', order: 2, area: 'back_garden', name: 'Back garden', short: 'Back garden', theme: '',
       settings: [{
-        key: 'lights', title: 'Lights', rows: [toggleRow('automation', 'input_boolean.back_garden_automation_lights_enabled', 'Lights automation', 'On from sunset; off when the house goes to sleep')],
+        key: 'lights', title: 'Lights', rows: [toggleRow('automation', 'input_boolean.back_garden_automation_lights_enabled', 'Lights automation', 'On from sunset; off when the house is set to asleep')],
       }],
     },
   ];
@@ -586,7 +586,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   function itemLabel(item, m) {
     switch (item.kind) {
       case 'window_open_heating_on': return 'Window open, heating on';
-      case 'automation_disabled': return 'Automation off';
+      case 'automation_disabled': return 'Automation is off';
       case 'hold_active': return 'Override on';
       case 'motion_disabled': return 'Motion sensor off';
       case 'garden_theme_config': return 'Theme setup';
@@ -718,7 +718,28 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const f = attr(hass, s, 'friendly_name');
     return typeof f === 'string' && f.trim() ? f.trim() : s;
   };
-  const luxText = (f) => `${fmtLux(f.lux)}, on below ${fmtThreshold(f.lux_threshold)}`;
+  // The lights come on when the reading is at or below the threshold, so the words say "or below".
+  const luxText = (f) => `${fmtLux(f.lux)}, on at ${fmtThreshold(f.lux_threshold)} or below`;
+  const fmtHours = (v) => { const n = num(v); return n === null ? 'a long time' : `${clampInt(n, 0, 24 * 31)} h`; };
+  // " (scene)" after "Scene set" when homerun says which scene; nothing when it does not.
+  const sceneNote = (v) => (str(v).trim() ? ` (${pretty(v)})` : '');
+  // A person is named by the fact (adam -> Adam); a missing one leaves the sentence without a name.
+  const personLead = (v, tail) => (str(v).trim() ? `${capFirst(pretty(v).toLowerCase())} ${lowerFirst(tail)}` : tail);
+  const fmtClock = (v) => { const t = str(v).trim(); return /^\d{1,2}:\d{2}$/.test(t) ? t : ''; };
+  // Why a heating mode was re-evaluated, in the words after the reason. `other` is a runtime fallback and
+  // says nothing; a cause that only repeats its reason (house mode on a house-mode reason, a manual set on
+  // a manual setting) is dropped so the row never reads "house asleep, house mode changed".
+  const HEATING_CAUSE = {
+    boundary: 'schedule time reached', window_closed: 'window closed', house_mode: 'house mode changed', manual_ended: 'manual setting ended',
+    manual_set: 'set by hand', occupancy: 'room occupancy changed', heating_on: 'heating switched on', wfh: 'working from home', startup: 'after a restart',
+  };
+  const REPEATS_CAUSE = { house_mode: /^house_mode_/, manual_set: /^manual_override$/ };
+  const causeClause = (cause, reason) => {
+    const c = str(cause).trim();
+    const words = own(HEATING_CAUSE, c);
+    if (!words || (REPEATS_CAUSE[c] && REPEATS_CAUSE[c].test(reason))) return '';
+    return `, ${words}`;
+  };
   // Heating modes by the words the settings page uses (HOUSE_NUMBERS titles). Anything else is shown
   // as its own key so a new mode is readable rather than hidden.
   const MODE_WORDS = { comfort: 'comfort', baseline_day: 'day baseline', baseline_night: 'night baseline', minimum: 'minimum', off: 'off' };
@@ -741,79 +762,86 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   const lowerFirst = (t) => str(t).replace(/^./, (c) => c.toLowerCase());
   const themeOr = (v, fallback) => { const t = str(v).trim(); return t ? lowerFirst(fmtTheme(t)) : fallback; };
 
+  // The privacy switch is on when the cameras are off, so the verdict reads the opposite way round.
+  const privacyVerdict = (privacy) => {
+    const p = str(privacy).trim().toLowerCase();
+    return p === 'on' || p === 'true' ? 'Cameras off' : p === 'off' || p === 'false' ? 'Cameras on' : 'Cameras switched on or off';
+  };
+
   const REASON_TEXT = {
     'lighting:automation_disabled': () => 'Stayed off: lights automation is off',
-    'lighting:button_cycle': (f) => `Scene set · button pressed${str(f.scene) ? ` (${pretty(f.scene)})` : ''}`,
-    'lighting:button_off': () => 'Lights off · button pressed off',
+    'lighting:button_cycle': (f) => `Scene set${sceneNote(f.scene)} · button pressed`,
+    'lighting:button_off': () => 'Lights off · button held',
     'lighting:calendar_boundary': (f) => `Theme switched to ${fmtTheme(f.theme)} · calendar`,
     'lighting:calendar_boundary_catch_up': (f) => `Theme switched to ${fmtTheme(f.theme)} · calendar, after a restart`,
     'lighting:calendar_theme_not_an_option': (f) => `Theme left as it is: the calendar wants ${fmtTheme(f.theme)}, which is not an option`,
     'lighting:external_suppress_active': (f, c) => `Stayed off: held off by ${c.name(f.source) || 'something else'}`,
-    'lighting:guest_room_sleep_bypass': () => 'Left on when the house went to sleep · guest mode',
-    'lighting:house_sleep_mode': () => 'Lights off · house asleep',
+    'lighting:guest_room_sleep_bypass': () => 'Not switched off at bedtime: room kept for a guest',
+    'lighting:house_sleep_mode': () => 'Lights off · house set to asleep',
     'lighting:lux_high': (f) => `Stayed off: bright enough (${luxText(f)})`,
-    'lighting:lux_low': (f) => `Scene set · getting dark (${luxText(f)})`,
-    'lighting:occupancy_off': () => 'Lights off · room emptied',
+    'lighting:lux_low': (f) => (num(f.lux) === null ? `Scene set${sceneNote(f.scene)} · room occupied (no light reading)` : `Scene set${sceneNote(f.scene)} · room occupied and dark (${luxText(f)})`),
+    'lighting:occupancy_off': () => 'Lights off · room empty',
     'lighting:occupancy_settle_off': () => 'Lights off · room stayed empty',
-    'lighting:on_outside_evening_window': (f) => `Preview started · turned on outside the evening (off after ${fmtMinutes(f.minutes)})`,
+    'lighting:on_outside_evening_window': (f) => `Off in ${fmtMinutes(f.minutes)} · turned on by hand outside lighting hours`,
     'lighting:preview_ended': () => 'Lights off · preview over',
-    'lighting:recent_auto_off': () => 'Scene set · back soon after lights went off',
-    'lighting:schedule_off': () => 'Lights off · scheduled off',
+    'lighting:recent_auto_off': (f) => `Scene set${sceneNote(f.scene)} · back soon after lights went off`,
+    'lighting:schedule_off': () => 'Lights off · end of the evening',
     'lighting:sleep_mode': () => 'Stayed off: house asleep',
     'lighting:sunrise': () => 'Lights off · sunrise',
     'lighting:sunset': () => 'Lights on · sunset',
     'lighting:sunset_while_house_asleep': () => 'Stayed off at sunset: house asleep',
     'lighting:theme_changed': (f) => `Lights restyled · lighting theme changed to ${fmtTheme(f.theme)}`,
-    'lighting:theme_changed_by_hand_today': () => 'Theme left as it is: changed by hand today',
-    'lighting:theme_scene_missing': (f) => `Lights on · no scene for this theme (${fmtTheme(f.theme)})`,
-    'lighting:automation_disabled_restore': () => 'Automation switched off · porch look restored',
-    'lighting:halloween_scene_activated': () => 'Halloween effects started · scene activated',
+    'lighting:theme_changed_by_hand_today': () => 'Theme left as it is: picked by hand (checked after a restart)',
+    'lighting:theme_scene_missing': (f) => (str(f.theme).trim() ? `Normal scene used · no ${fmtTheme(f.theme)} scene set up` : 'Normal scene used · no scene set up for this theme'),
+    'lighting:automation_disabled_restore': () => 'Porch light back to its look · porch automation is off',
+    'lighting:halloween_scene_activated': () => 'Halloween animation started · Halloween scene on',
     'lighting:hold_expired': () => 'Porch light back to its look · motion over',
     'lighting:hold_expired_look_missing_garden_off': () => 'Porch light off · motion over, no saved look and garden off',
     'lighting:look_unreadable': () => "Porch light not warmed: couldn't save its current look",
     'lighting:motion_detected': () => 'Porch light warmed · motion detected',
     'lighting:motion_during_fade_back': () => 'Porch light warmed again · motion while it faded back',
-    'lighting:no_feature_lights': () => 'Halloween effects not started: no feature lights',
+    'lighting:no_feature_lights': () => 'Halloween effects not started: no lights labelled for them',
     'lighting:no_lights_in_theme_roles': (f) => `Effects not started: no lights set up for ${themeOr(f.theme, 'this theme')}`,
-    'lighting:restore_look_missing': () => 'Porch light left as it is: no saved look to restore',
+    'lighting:restore_look_missing': () => 'Porch light left warm: no saved look to go back to',
     'lighting:scene_changed_during_hold': () => 'Porch light warmed again · scene changed during motion',
-    'lighting:scene_without_effects_activated': () => 'Light effects stopped · scene has none',
+    'lighting:theme_effects_stopped': (f) => (str(f.theme).trim() ? `Light effects stopped · ${fmtTheme(f.theme)} scene replaced` : 'Light effects stopped · theme scene replaced'),
     'lighting:theme_opted_out': () => 'Porch light stayed as it is: this theme ignores motion',
-    'lighting:theme_scene_settled': (f) => `Light effects started · ${themeOr(f.theme, 'new')} theme scene`,
+    'lighting:theme_scene_settled': (f) => (str(f.theme).trim() ? `Light effects started · ${fmtTheme(f.theme)} scene on` : 'Light effects started · theme scene on'),
     'heating:demand_ended': () => 'Boiler off · no room needs heat',
     'heating:demand_started': (f) => `Boiler on · ${roomList(f.rooms) || 'a room'} calling for heat`,
-    'heating:door_closed_was_suspended': () => 'Heating restored · door closed, heating resumed',
-    'heating:door_open_heating_on': () => 'Heating suspended · door open while heating',
-    'heating:heating_disabled': () => 'Boiler off · heating switched off',
+    'heating:door_closed_was_suspended': () => 'House heating back on · patio door closed',
+    'heating:door_open_heating_on': () => 'House heating paused · patio door left open',
+    'heating:heating_disabled': () => 'Boiler off · house heating switched off',
     'heating:helper_unavailable': (f) => `Heating left as it is: no ${modeWord(f.mode) || 'mode'} temperature available`,
-    'heating:house_mode_away': (f) => `Heating ${setTo(f.mode)} · house away`,
-    'heating:house_mode_sleep': (f) => `Heating ${setTo(f.mode)} · house asleep`,
-    'heating:house_mode_vacation': (f) => `Heating ${setTo(f.mode)} · house on holiday`,
-    'heating:manual_override': (f) => `Heating ${setTo(f.mode)} · manual setting`,
+    'heating:house_mode_away': (f) => `Heating ${setTo(f.mode)} · house away${causeClause(f.cause, 'house_mode_away')}`,
+    'heating:house_mode_sleep': (f) => `Heating ${setTo(f.mode)} · house asleep${causeClause(f.cause, 'house_mode_sleep')}`,
+    'heating:house_mode_vacation': (f) => `Heating ${setTo(f.mode)} · house on holiday${causeClause(f.cause, 'house_mode_vacation')}`,
+    'heating:manual_override': (f) => `Heating ${setTo(f.mode)} · manual setting${causeClause(f.cause, 'manual_override')}`,
     'heating:overtemp_heater_on': (f) => `Heater off · too hot${fmtDegrees(f.temp) ? ` (${fmtDegrees(f.temp)})` : ''}`,
-    'heating:safety_heating_disabled': (f) => `Heating ${setTo(f.mode)} · heating switched off`,
+    'heating:safety_heating_disabled': (f) => `Heating ${setTo(f.mode)} · house heating switched off`,
     'heating:safety_window_open': (f) => `Heating ${setTo(f.mode)} · window open`,
-    'heating:schedule': (f) => `Heating ${setTo(f.mode)} · schedule`,
-    'heating:schedule_occupied': (f) => `Heating ${setTo(f.mode)} · schedule, room occupied`,
-    'heating:temperature_set_arbitrage': (f) => `Heating ${setTo(f.mode)}${fmtDegrees(f.target) ? ` (${fmtDegrees(f.target)})` : ''} · cheap power${fmtDegrees(f.clamped_from) ? `, limited from ${fmtDegrees(f.clamped_from)}` : ''}`,
+    'heating:schedule': (f) => `Heating ${setTo(f.mode)} · schedule${causeClause(f.cause, 'schedule')}`,
+    'heating:schedule_occupied': (f) => `Heating ${setTo(f.mode)} · schedule, room occupied${causeClause(f.cause, 'schedule_occupied')}`,
+    'heating:temperature_set_arbitrage': (f) => `Heating ${setTo(f.mode)}${fmtDegrees(f.target) ? ` (${fmtDegrees(f.target)})` : ''} · free power, room empty${fmtDegrees(f.clamped_from) ? `, limited from ${fmtDegrees(f.clamped_from)}` : ''}`,
     'heating:trvs_not_set': (f) => `Radiators left as they are: no temperature for the mode in ${roomList(f.skipped) || 'some rooms'}`,
     'heating:unknown_mode': (f) => `Heating left as it is: unknown mode${modeWord(f.mode) ? ` (${modeWord(f.mode)})` : ''}`,
-    'heating:valve_characteristic_lost': (f) => `${roomName(f.room) || 'A'} radiator valve needs an adaptation run · notification sent`,
+    'heating:valve_characteristic_lost': (f) => `Notification sent · ${roomName(f.room) ? lowerFirst(roomName(f.room)) : 'a'} radiator valve needs recalibrating`,
     'house_mode:all_left_door_recently': () => 'House set to away · everyone left',
     'house_mode:away_duration_exceeded': () => 'House set to holiday · away for a long time',
-    'house_mode:bed_not_occupied': () => 'Sleep mode not started: bed empty',
-    'house_mode:bed_occupied': () => 'Stayed in sleep mode: bed occupied',
-    'house_mode:button_hold_bed_occupied': () => 'House set to sleep · button held, bed occupied',
-    'house_mode:button_pressed': () => 'Left sleep mode · button pressed',
-    'house_mode:double_press_bypass': () => 'House set to sleep · button double press, bed sensor skipped',
-    'house_mode:guest_mode_active': () => 'Stayed in sleep mode: guest mode',
-    'house_mode:kitchen_motion_detected': () => 'Left sleep mode · kitchen motion',
-    'house_mode:parlour_active': () => 'Sleep mode not started: parlour in use',
+    'house_mode:bed_not_occupied': () => 'Not set to asleep: bed empty',
+    'house_mode:bed_occupied': () => 'Stayed asleep: bed occupied',
+    'house_mode:button_hold_bed_occupied': () => 'House set to asleep · button held, bed occupied',
+    'house_mode:button_pressed': () => 'House set to at home · button pressed',
+    'house_mode:double_press_bypass': () => 'House set to asleep · button double-pressed, bed sensor skipped',
+    'house_mode:guest_mode_active': () => 'Stayed asleep: guest mode',
+    'house_mode:kitchen_motion_detected': () => 'House set to at home · kitchen in use in the morning',
+    'house_mode:parlour_active': () => 'Not set to asleep: parlour in use',
     'house_mode:sitter_mode_ended_house_empty': () => 'House set to away · sitter left, nobody home',
     'house_mode:sitter_present': () => 'House set to at home · house sitter here',
     'house_mode:someone_returned': () => 'House set to at home · someone came back',
     'cameras:away_but_guest_present': () => 'Cameras left off: house away, guest staying',
-    'cameras:button_double_press': () => 'Camera privacy toggled · button double press',
+    'cameras:button_double_press': (f) => `${privacyVerdict(f.privacy)} · button double-pressed`,
+    'cameras:guest_arrived_while_away': () => 'Cameras off · guest arrived while away',
     'cameras:house_away': () => 'Cameras on · house away',
     'cameras:house_not_away': () => 'Cameras off · house at home',
     'cameras:sleep_kitchen_camera_on': () => 'Kitchen camera on for Mo · house asleep',
@@ -825,33 +853,33 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     'energy:sarah': () => 'Cheap power tip sent to Sarah',
     'energy:sessions_joined': (f) => { const n = fmtCount(f.count); return n === null ? 'Joined power down sessions' : `Joined ${n} power down ${plural(n, 'session', 'sessions')}`; },
     'energy:wheels_spun': (f) => { const n = fmtCount(f.count); return n === null ? 'Spun the Octopus wheels' : `Spun ${n} Octopus ${plural(n, 'wheel', 'wheels')}`; },
-    'fan:automation_disabled': () => 'Fan stayed off: bathroom automation is off',
-    'fan:fan_not_auto_started': () => 'Fan left alone · turned on by hand',
+    'fan:automation_disabled': () => 'Fan not started: fan automation is off',
+    'fan:fan_not_auto_started': () => 'Fan left alone: already on by hand',
     'fan:fan_off_humidity_normal': () => 'Fan off · humidity back to normal',
     'fan:fan_off_max_run': () => 'Fan off · ran its maximum time',
     'fan:fan_on_shower_started': () => 'Fan on · shower started',
     'mo:eating': (f) => `Mo eating${roomName(f.room) ? ` · ${roomName(f.room)}` : ''}`,
     'mo:spotted': (f) => `Mo spotted${roomName(f.room) ? ` · ${roomName(f.room)}` : ''}`,
-    'modifier:guest_absent': () => 'Guest left · home office presence override off',
-    'modifier:guest_present': () => 'Guest staying · home office presence override on',
-    'shower:shower_ended': () => 'Shower ended',
-    'shower:shower_max_duration': () => 'Shower ended · ran past the longest it should',
-    'shower:shower_started': () => 'Shower started',
-    'sonos:automation_disabled': () => 'Speaker grouping switched off · left the speaker group',
-    'sonos:automation_enabled': () => 'Speaker grouping switched on · joined the speaker group',
+    'modifier:guest_absent': () => 'Home office released · guest mode off',
+    'modifier:guest_present': () => 'Home office kept occupied · guest staying',
+    'shower:shower_ended': () => 'Shower over · humidity falling',
+    'shower:shower_max_duration': () => 'Shower marked over · on longer than any real shower',
+    'shower:shower_started': () => 'Shower detected · humidity rising fast',
+    'sonos:automation_disabled': () => 'Left the speaker group · grouping switched off',
+    'sonos:automation_enabled': () => 'Joined the speaker group · grouping switched on',
     'thermal:close_bedroom': () => 'Told to close the bedroom windows · sun building',
     'thermal:close_both': () => 'Told to close bedroom and home office windows · sun building, outside warmer',
     'thermal:close_door': (f) => `Told to close the door · outside ${fmtDegrees(f.outdoor) || 'warmer'}${fmtDegrees(f.indoor) ? `, inside ${fmtDegrees(f.indoor)}` : ''}`,
     'thermal:close_home_office': () => 'Told to close the home office windows · outside warmer',
     'thermal:open_both': () => 'Told to open the windows · cooler outside',
     'thermal:open_door': (f) => `Told to open the door · inside ${fmtDegrees(f.indoor) || 'warm'}${fmtDegrees(f.outdoor) ? `, outside ${fmtDegrees(f.outdoor)}` : ''}`,
-    'wfh_inference:always_wfh_wed_fri': () => 'Marked as working from home · Wednesday to Friday',
-    'wfh_inference:home_at_inference_time': () => 'Marked as working from home · home first thing',
-    'occupied:containment_failsafe_expired': () => 'Marked empty · closed-door timeout ended',
+    'wfh_inference:always_wfh_wed_fri': (f) => `${personLead(f.person, 'Marked as working from home')} · always Wed to Fri`,
+    'wfh_inference:home_at_inference_time': (f) => `${personLead(f.person, 'Marked as working from home')} · home${fmtClock(f.time) ? ` at ${fmtClock(f.time)}` : ' when checked'}`,
+    'occupied:containment_failsafe_expired': (f) => `Marked empty · door shut but no movement for ${fmtHours(f.hours)}`,
     'occupied:motion_detected': () => 'Marked occupied · motion detected',
     'occupied:strong_hold_active': (f, c) => `Stayed occupied: held by ${c.name(f.hold) || 'a hold'}`,
     'occupied:strong_hold_started': (f, c) => `Marked occupied · held by ${c.name(f.hold) || 'a hold'}`,
-    'occupied:timer_expired': () => 'Marked empty · timer ran out',
+    'occupied:timer_expired': (f) => `Marked empty · no one seen for ${fmtMinutes(f.minutes)}`,
   };
   // Decisions homerun stores without a declaration (decisions with actions only, from automations that
   // declare no reasons): worded from the decision verb and the reason slug, in this table so there is one
@@ -868,16 +896,16 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       notify: { verb: 'notification sent' },
       join: { verb: 'joined the speaker group' },
       unjoin: { verb: 'left the speaker group' },
-      exit_sleep: { verb: 'left sleep mode' },
+      exit_sleep: { verb: 'house set to at home' },
       clear_recent_auto_off: { verb: 'reset after switching off' },
       switch_theme: { verb: 'theme switched' },
       start_preview: { verb: 'preview started' },
       set_mode: { verb: 'mode changed', note: { heating: 'heating changed' } },
-      blocked: { verb: 'blocked by its automation switch' },
+      blocked: { verb: 'blocked' },
       suspend: { verb: 'suspended', note: { heating: 'heating suspended' } },
       restore: { verb: 'restored', note: { heating: 'heating restored' } },
       sync_window_external: { verb: 'window state synced' },
-      set_sleep: { verb: 'house set to sleep' },
+      set_sleep: { verb: 'house set to asleep' },
     },
     reasons: {
       occupancy_on: 'room occupied', kitchen_motion_detected: 'kitchen motion', end_of_day: 'end of day',
@@ -889,7 +917,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       parlour_active: 'parlour in use', overtemp_heater_on: 'too hot',
       safety_window_open: 'window open', safety_heating_disabled: 'heating switched off', manual_override: 'manual setting',
       schedule: 'schedule', schedule_occupied: 'schedule, room occupied', house_mode_away: 'house away', house_mode_sleep: 'house asleep',
-      house_mode_vacation: 'house on holiday', house_mode_normal: 'house at home', automation_disabled: 'automation off',
+      house_mode_vacation: 'house on holiday', house_mode_normal: 'house at home', automation_disabled: 'automation is off',
     },
     nouns: { lighting: 'Lights', occupied: 'Occupancy', heating: 'Heating' },
   };
@@ -1003,7 +1031,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     }
     return { rows, note: history.note };
   }
-  // House-wide rows say where: "Kitchen · Lights off · room emptied". Whole-house automations have no room.
+  // House-wide rows say where: "Kitchen · Lights off · room empty". Whole-house automations have no room.
   function placed(location, text) {
     if (!location || location === 'house') return text;
     return `${own(ROOMS, location) ? ROOMS[location].name : capFirst(pretty(location))} · ${text}`;
@@ -1631,7 +1659,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     else if (cw.status === 'upcoming') rows.push(row('Next cheapest 2 hours', `${esc(cw.text)}${cw.avg !== null ? ' · avg ' + esc(penceText(cw.avg)) : ''}`, '<span class="tag ok">Best</span>'));
     else rows.push(row('Next cheapest 2 hours', 'none upcoming', ''));
     if (Array.isArray(slots) && slots.length) {
-      for (const [kind, label] of [['negative', 'Negative'], ['cheap', 'Cheap']]) {
+      for (const [kind, label] of [['negative', 'Free power'], ['cheap', 'Cheap']]) {
         const ws = slotWindows(slots, kind);
         if (ws.length === 0) rows.push(row(label, 'none', ''));
         else for (const w of ws) rows.push(row(label, esc(windowRange(w)), `<div class="r" style="color:${priceColour(w.avg, { text: true })}">avg ${esc(penceText(w.avg))}</div>`));
@@ -2015,7 +2043,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   // history, and a hand change outranks an older automated action):
   //   1 automation off · 2 manual change newer than the last automated action · 3 lights off and room empty
   //   4 newest lighting entry is a decline, abort or failure and newer than the last act · 5 the last act.
-  // Presence holds keep a room occupied, so no "room emptied" event fires and the lights stay as they are until
+  // Presence holds keep a room occupied, so no "room empty" event fires and the lights stay as they are until
   // the last hold clears; a manual change persists the same way, because the controller only acts on triggers.
   // Indoor rooms only: gardens keep their own model (gardenModel), whose sub-line explains each state.
   // Returns {state, why, tone, holds}: tone is ok | muted | warn.
@@ -2061,7 +2089,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 
   function lightsTag(story) {
     switch (story.state) {
-      case 'disabled': return '<span class="tag">Automation off</span>';
+      case 'disabled': return '<span class="tag">Lights automation is off</span>';
       case 'manual': return '<span class="tag">Manual</span>';
       case 'problem': return '<span class="tag">Problem</span>';
       case 'declined': return "<span class=\"tag off\">Didn't act</span>";
@@ -2089,7 +2117,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const cause = safetyCause(m);
     const resumes = m.house_heating_off ? 'stays at minimum while house heating is off' : m.heat_labels.length ? 'normal heating resumes when it closes' : '';
     const sub = safety ? `Held at ${esc(m.mode_name || 'minimum')}${minT !== null ? ' ' + fmt1(minT) + '°' : ''}${cause ? ' · ' + esc(cause) : ''}${resumes ? ' · ' + resumes : ''}` : held ? `${esc(m.heat_labels.join(' · '))} · ${s}` : s;
-    const tag = differs ? `<span class="tag">${esc(m.target_reason.replace(/^./, (c) => c.toUpperCase()))}</span>` : safety ? '<span class="tag">Suspended</span>' : held ? '<span class="tag">Pending</span>' : m.heating_enabled === false ? '<span class="tag">Automation off</span>' : m.hvac_action === 'heating' ? '<span class="tag heat">Heating</span>' : m.hvac_action === 'idle' ? '<span class="tag off">Idle</span>' : '';
+    const tag = differs ? `<span class="tag">${esc(m.target_reason.replace(/^./, (c) => c.toUpperCase()))}</span>` : safety ? '<span class="tag">Suspended</span>' : held ? '<span class="tag">Pending</span>' : m.heating_enabled === false ? '<span class="tag">Heating automation is off</span>' : m.hvac_action === 'heating' ? '<span class="tag heat">Heating</span>' : m.hvac_action === 'idle' ? '<span class="tag off">Idle</span>' : '';
     return `<div class="item">${svg(ICON.flame, 18)}<div><div class="h">${esc(h)}</div><div class="s">${sub}</div></div>${tag}</div>`;
   }
   function sectionHeating(hass, key) {
@@ -2195,7 +2223,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     fan_holding_min_run: ['Minimum run', 'on'],
     fan_holding_humidity_high: ['Clearing steam', 'on'],
     fan_not_auto_started: ['Turned on by hand', 'on'],
-    automation_disabled: ['Automation off', 'any'],
+    automation_disabled: ['Fan automation is off', 'any'],
   };
   function deviceReason(reason, isOn) {
     const r = str(reason);
@@ -2487,8 +2515,8 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   const HOUSE_VACATION_HOURS = 'input_number.house_automation_vacation_threshold_hours';
   const MODIFIERS = {
     none: { label: 'None', sub: 'The house follows its modes and presence' },
-    guest: { label: 'Guest', sub: 'Home office held occupied, its lights stay on through sleep, cameras left alone when away' },
-    sitter: { label: 'Sitter', sub: 'The house stays in normal mode while empty, so it never goes to away or vacation' },
+    guest: { label: 'Guest', sub: 'Home office held occupied, its lights stay on while the house is asleep, cameras left alone when away' },
+    sitter: { label: 'Sitter', sub: 'The house stays in normal mode while empty, so it never goes to away or holiday' },
   };
   // Heating numbers: the page names a key from this table, never an entity id, so set_value can only reach these.
   const HOUSE_NUMBERS = {
@@ -2511,7 +2539,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       case 'away': {
         const h = num(state(hass, HOUSE_VACATION_HOURS));
         const left = since !== null && h !== null ? since + h * 3600000 - now : null;
-        const vac = left === null ? '' : left <= 0 ? ' · vacation heating is due' : ` · vacation heating in ${left >= 3600000 ? Math.round(left / 3600000) + ' h' : Math.max(1, Math.round(left / 60000)) + ' min'}`;
+        const vac = left === null ? '' : left <= 0 ? ' · holiday heating is due' : ` · holiday heating in ${left >= 3600000 ? Math.round(left / 3600000) + ' h' : Math.max(1, Math.round(left / 60000)) + ' min'}`;
         return { title: 'Away', body: `Heating at night baseline · cameras on${vac}` };
       }
       case 'vacation': return { title: 'On holiday', body: 'Heating at minimum' };
@@ -2541,7 +2569,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     }
     if (vac !== null) {
       const away = state(hass, 'sensor.house_active_mode') === 'away';
-      out += `<div class="card"><div class="tog"><div><div class="h">Vacation threshold</div><div class="s">${away ? 'Away now · counts from when the house went away' : 'How long away lasts before vacation heating'}</div></div><div style="display:flex;align-items:center;gap:6px"><button class="round" data-act="house-threshold" data-delta="-1" aria-label="Shorter">${svg('M5 12h14', 20)}</button><span style="min-width:44px;text-align:center;font-weight:600">${Math.round(vac)} h</span><button class="round" data-act="house-threshold" data-delta="1" aria-label="Longer">${svg('M12 5v14M5 12h14', 20)}</button></div></div></div>`;
+      out += `<div class="card"><div class="tog"><div><div class="h">Holiday threshold</div><div class="s">${away ? 'Away now · counts from when the house went away' : 'How long away lasts before holiday heating'}</div></div><div style="display:flex;align-items:center;gap:6px"><button class="round" data-act="house-threshold" data-delta="-1" aria-label="Shorter">${svg('M5 12h14', 20)}</button><span style="min-width:44px;text-align:center;font-weight:600">${Math.round(vac)} h</span><button class="round" data-act="house-threshold" data-delta="1" aria-label="Longer">${svg('M12 5v14M5 12h14', 20)}</button></div></div></div>`;
     }
     return out;
   }
@@ -2555,7 +2583,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return `<div class="tog"><div><div class="h">${d.title}</div><div class="s">${esc(sub)}</div></div><div style="display:flex;align-items:center;gap:6px">${btn(-1, 'lower', 'M5 12h14')}<span style="min-width:58px;text-align:center;font-weight:600">${shown}${d.unit}</span>${btn(1, 'higher', 'M12 5v14M5 12h14')}</div></div>`;
   }
 
-  // Same stepper as the vacation threshold, driven by a HOUSE_NUMBERS key.
+  // Same stepper as the holiday threshold, driven by a HOUSE_NUMBERS key.
   function numberRow(hass, key, sub) {
     const d = HOUSE_NUMBERS[key];
     const v = num(state(hass, d.id));
@@ -3181,7 +3209,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     }
   }
 
-  const api = { parsedAttr, setOptimise, trackHass, depsUnchanged, makeRenderGate, RENDER_MAX_AGE_MS, deriveScenes, sceneRegistry, ROOM_TABLE, lightsStory, lightsState, verdictFor, houseActivity, parseHistory, readHistory, sentenceFor, roomActivity, unexplainedReasons, REASON_TEXT, TILE, TILE_H, TILE_WIDE_H, tileNeededHeight, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, SETTINGS_PATH, takesTaps, coverNeed, topGuard, sheetFit, splitSheet, touchGuard, lockScroll, scrollTargets, SHEET_MARK, STILL, HEAD_MODES, TOP_GUARD_MAX, CAMERAS_PATH, PENDING_MS, cameraParts, cameraToggle, cameraPending, perform, pendingStart, pendingFor, pendingKey, markPending, ERROR_MS, parseClips, frigateClipsId, roomGroups, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, GARDEN_ORDER, ALL_ROOM_KEYS, THEME_LABELS, THEME_ICON, ICON, gardenModel, gardenSub, themeSource, shortDate, ALLOWED, writeAllowed, HOUSE_NUMBERS, HOUSE_MODIFIER, HOUSE_VACATION_HOURS, CAMERAS, PTZ_DIRS, DEVICE_REASONS, ROOM_SETTINGS, MO_TOGGLES, settingFor, settingsOpen, settingsClose, tabTarget, render, priceColour, PRICE_STOPS, PRICE_EXTREME_P, roomModel, attentionItems, handleAction, callService, num, parseList };
+  const api = { parsedAttr, setOptimise, trackHass, depsUnchanged, makeRenderGate, RENDER_MAX_AGE_MS, deriveScenes, sceneRegistry, ROOM_TABLE, lightsStory, lightsState, verdictFor, houseActivity, parseHistory, readHistory, sentenceFor, roomActivity, unexplainedReasons, REASON_TEXT, UNDECLARED, TILE, TILE_H, TILE_WIDE_H, tileNeededHeight, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, SETTINGS_PATH, takesTaps, coverNeed, topGuard, sheetFit, splitSheet, touchGuard, lockScroll, scrollTargets, SHEET_MARK, STILL, HEAD_MODES, TOP_GUARD_MAX, CAMERAS_PATH, PENDING_MS, cameraParts, cameraToggle, cameraPending, perform, pendingStart, pendingFor, pendingKey, markPending, ERROR_MS, parseClips, frigateClipsId, roomGroups, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, GARDEN_ORDER, ALL_ROOM_KEYS, THEME_LABELS, THEME_ICON, ICON, gardenModel, gardenSub, themeSource, shortDate, ALLOWED, writeAllowed, HOUSE_NUMBERS, HOUSE_MODIFIER, HOUSE_VACATION_HOURS, CAMERAS, PTZ_DIRS, DEVICE_REASONS, ROOM_SETTINGS, MO_TOGGLES, settingFor, settingsOpen, settingsClose, tabTarget, render, priceColour, PRICE_STOPS, PRICE_EXTREME_P, roomModel, attentionItems, handleAction, callService, num, parseList };
   root.PulseLib = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 

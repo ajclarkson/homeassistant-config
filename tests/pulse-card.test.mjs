@@ -199,14 +199,14 @@ ok('manual marker: the Lights card shows a Manual tag, and its story says who se
   const dark = histEntry(12, { location: 'parlour', decision: 'activate_scene', reason: 'lux_low', facts: { lux: 12, lux_threshold: 40 } });
   const auto = why({ manual: null, lights_on: 2 }, histSensor('parlour', [dark]));
   assert.match(auto, /<span class="tag ok">Auto<\/span>/);
-  assert.match(auto, /Scene set · getting dark \(12 lx, on below 40\) at 18:30 · off when the room empties/);
+  assert.match(auto, /Scene set · room occupied and dark \(12 lx, on at 40 or below\) at 18:30 · off when the room empties/);
   const hold = why({ manual: null, lights_on: 2, pres_labels: ['Monitor on'], labels: ['Monitor on'] });
   assert.match(hold, /<span class="tag off">Hold<\/span>/);
   assert.match(hold, /stays on while Monitor on/);
   const off = why({ manual: null, lights_on: 0, pres_labels: ['Monitor on'], labels: ['Monitor on'] });
   assert.doesNotMatch(off, /stays on while/, 'a held room with the lights off does not claim they stay on');
   const disabled = why({ manual, lights_enabled: false });
-  assert.match(disabled, /<span class="tag">Automation off<\/span>/);
+  assert.match(disabled, /<span class="tag">Lights automation is off<\/span>/);
   assert.match(disabled, /Lights automation is off · they change only by hand/);
   assert.doesNotMatch(disabled, /<span class="tag ok">Auto<\/span>/);
   assert.match(why({ manual: null }, histSensor('parlour', [])), /No lighting decision recorded yet/);
@@ -231,7 +231,7 @@ ok('lightsStory rule 2: a manual change wins only when newer than the last autom
   assert.match(newer.why, /^Wall button at 18:32 · stays until the room is empty$/);
   const older = story({ manual: manual(40), lights_on: 2 }, histSensor('kitchen', [acted]));
   assert.equal(older.state, 'acted', 'the automation acted after the hand change, so the hand change no longer explains the lights');
-  assert.match(older.why, /^Lights off · room emptied at 18:12 · off when the room empties$/);
+  assert.match(older.why, /^Lights off · room empty at 18:12 · off when the room empties$/);
   assert.equal(story({ manual: manual(10), lights_on: 2 }, histSensor('kitchen', [])).state, 'manual', 'no automated action on record');
 });
 
@@ -251,8 +251,8 @@ ok('lightsStory rule 3: lights off in an empty room says since when, notes a dis
 
 ok('lightsStory rule 4: a newer decline, abort or failure is explained in words; an older one is not', () => {
   const declined = story({}, histSensor('kitchen', [luxHigh(1), histEntry(30)]));
-  assert.deepEqual([declined.state, declined.tone, declined.why], ['declined', 'muted', 'Stayed off: bright enough (85 lx, on below 40) at 18:41']);
-  assert.match(story({}, histSensor('kitchen', [luxHigh(1, null)])).why, /bright enough \(no light reading, on below 40\)/);
+  assert.deepEqual([declined.state, declined.tone, declined.why], ['declined', 'muted', 'Stayed off: bright enough (85 lx, on at 40 or below) at 18:41']);
+  assert.match(story({}, histSensor('kitchen', [luxHigh(1, null)])).why, /bright enough \(no light reading, on at 40 or below\)/);
   const abort = histEntry(2, { kind: 'abort', decision: '', reason: '', outcome: undefined, detail: { abort_kind: 'unavailable_input', entity: 'sensor.kitchen_lux' } });
   const a = story({}, { ...histSensor('kitchen', [abort, histEntry(30)]), ...kitchenEntity('sensor.kitchen_lux', 'Lux sensor') });
   assert.deepEqual([a.state, a.tone, a.why], ['problem', 'warn', "Couldn't run: Lux sensor unavailable at 18:40"]);
@@ -262,7 +262,7 @@ ok('lightsStory rule 4: a newer decline, abort or failure is explained in words;
   const old = story({}, histSensor('kitchen', [histEntry(1), luxHigh(30)]));
   assert.equal(old.state, 'acted', 'the decline is older than the last act, so the act explains the lights');
   const heldOn = story({ lights_on: 2, pres_labels: ['Monitor on'] }, histSensor('kitchen', [luxHigh(1)]));
-  assert.match(heldOn.why, /\(85 lx, on below 40\) at 18:41 · stays on while Monitor on$/);
+  assert.match(heldOn.why, /\(85 lx, on at 40 or below\) at 18:41 · stays on while Monitor on$/);
   const other = story({}, histSensor('kitchen', [histEntry(1, { subsystem: 'occupied', decision: 'set_occupied', reason: 'motion_detected' })]));
   assert.equal(other.state, 'none', 'occupancy entries are not lighting explanations');
 });
@@ -300,8 +300,8 @@ ok('Recent activity rows by kind: acted plain, declined muted with the didn\'t g
   const failed = histEntry(5, { kind: 'action_failed', decision: '', reason: '', outcome: undefined, detail: { failure: 'error', action: 'scene.turn_on', entity: 'scene.kitchen_all' } });
   const entries = [histEntry(1), histEntry(2), luxHigh(3), abort, failed];
   const html = P.render('room-feed', { room: 'kitchen' }, mk(histSensor('kitchen', entries, {})), NOW);
-  assert.match(html, /<div class="feed ok"><span class="a">18:41<\/span><span>Lights off · room emptied <b>x2<\/b>/);
-  assert.match(html, /<div class="feed muted"><span class="a">18:39<\/span><span><span class="g"><svg[^>]*>[\s\S]*?<\/svg><\/span>Stayed off: bright enough \(85 lx, on below 40\)/);
+  assert.match(html, /<div class="feed ok"><span class="a">18:41<\/span><span>Lights off · room empty <b>x2<\/b>/);
+  assert.match(html, /<div class="feed muted"><span class="a">18:39<\/span><span><span class="g"><svg[^>]*>[\s\S]*?<\/svg><\/span>Stayed off: bright enough \(85 lx, on at 40 or below\)/);
   assert.match(html, /<div class="feed warn"><span class="a">18:38<\/span><span>Held back/);
   assert.match(html, /<div class="feed warn"><span class="a">18:37<\/span><span>scene\.kitchen_all couldn&#39;t be controlled \(turn on\)/);
   assert.equal((html.match(/class="feed /g) || []).length, 4, 'one row per distinct entry; homerun stores no plumbing, so the card has nothing to hide');
@@ -362,7 +362,7 @@ ok('device mode: fan row shows state and reason, taps toggle, hides when blank, 
   assert.match(on, /On · Shower started/);
   assert.match(on, /data-act="toggle" data-entity="switch.bathroom_fan_extractor" aria-pressed="true"/);
   assert.match(P.render('device', cfg, hass('off', 'fan_off_humidity_normal'), NOW), /Off · Humidity back to normal/);
-  const words = { fan_off_max_run: ['off', 'Ran its maximum time'], fan_run_extended: ['on', 'Another shower started'], fan_holding_min_run: ['on', 'Minimum run'], fan_holding_humidity_high: ['on', 'Clearing steam'], fan_not_auto_started: ['on', 'Turned on by hand'], automation_disabled: ['off', 'Automation off'] };
+  const words = { fan_off_max_run: ['off', 'Ran its maximum time'], fan_run_extended: ['on', 'Another shower started'], fan_holding_min_run: ['on', 'Minimum run'], fan_holding_humidity_high: ['on', 'Clearing steam'], fan_not_auto_started: ['on', 'Turned on by hand'], automation_disabled: ['off', 'Fan automation is off'] };
   for (const [r, [st, text]] of Object.entries(words)) assert.match(P.render('device', cfg, hass(st, r), NOW), new RegExp(`${st === 'on' ? 'On' : 'Off'} · ${text}`), r);
   assert.deepEqual(Object.keys(P.DEVICE_REASONS).sort(), ['automation_disabled', 'fan_holding_humidity_high', 'fan_holding_min_run', 'fan_not_auto_started', 'fan_off_humidity_normal', 'fan_off_max_run', 'fan_on_shower_started', 'fan_run_extended']);
   // A stale reason that contradicts the switch, an ignored reason and a missing reason all show state only.
@@ -482,7 +482,7 @@ ok('House feed reads sensor.house_history, says where, and a stored info_decisio
   const stale = { 'sensor.info_decision_feed': { state: 'x', attributes: { entries: JSON.stringify([{ loc: 'kitchen', ts: '2026-10-25T18:20:00+00:00', sentence: 'OLD FEED SENTENCE' }]) } } };
   const hass = mk({ ...histSensor('house', [histEntry(1, { location: 'kitchen' }), histEntry(5, { location: 'house', subsystem: 'energy', decision: 'spin', reason: 'wheels_spun', automation_id: 'house:wheel' })]), ...stale });
   const feed = P.render('feed', {}, hass, NOW);
-  assert.match(feed, /<span class="a">18:41<\/span><span>Kitchen · Lights off · room emptied/);
+  assert.match(feed, /<span class="a">18:41<\/span><span>Kitchen · Lights off · room empty/);
   assert.match(feed, /<span class="a">18:37<\/span><span>Spun the Octopus wheels/, 'whole-house entries carry no place');
   assert.doesNotMatch(feed, /OLD FEED SENTENCE/, 'the old feed sensor is no longer read');
   assert.match(P.render('feed', {}, house([]), NOW), /Nothing recorded yet/);
@@ -490,7 +490,7 @@ ok('House feed reads sensor.house_history, says where, and a stored info_decisio
   assert.match(P.render('feed', {}, house([], { schema: 'nope' }), NOW), /History unreadable/);
   const declined = P.render('feed', {}, house([luxHigh(2)]), NOW);
   assert.match(declined, /class="feed muted"[\s\S]*Kitchen · Stayed off: bright enough/, 'a rule that chose not to act reads muted, as on the room page');
-  assert.match(P.render('room-feed', { room: 'kitchen' }, mk({ ...histSensor('kitchen', [histEntry(1)]) }), NOW), /Lights off · room emptied/);
+  assert.match(P.render('room-feed', { room: 'kitchen' }, mk({ ...histSensor('kitchen', [histEntry(1)]) }), NOW), /Lights off · room empty/);
 });
 
 ok('unknown room and unknown mode fail loudly', () => {
@@ -890,7 +890,7 @@ ok('Now v2 groups are a partition of the rooms for every occupied/attention comb
   const keys = P.ROOM_ORDER;
   for (let occMask = 0; occMask < 256; occMask += 17) for (let attMask = 0; attMask < 256; attMask += 29) {
     const rooms = keys.map((k, i) => quietRoom(k, { occupied: !!(occMask & (1 << i)) }));
-    const items = keys.filter((k, i) => attMask & (1 << i)).map((k) => attn(k, k, 'automation_disabled', 'Lights automation off'));
+    const items = keys.filter((k, i) => attMask & (1 << i)).map((k) => attn(k, k, 'automation_disabled', 'Lights automation is off'));
     const g = P.roomGroups(withRooms(rooms, items));
     const all = [...g.attention, ...g.occupied, ...g.other];
     assert.deepEqual([...all].sort(), [...keys].sort(), `mask ${occMask}/${attMask}`);
@@ -1079,17 +1079,17 @@ ok('windows: tomorrow (46 slots), ordinary 48-slot day, empty, one slot, thresho
 ok('windows card renders them for the selected day with graded colour; none / empty days honest', () => {
   const hass = energyHass();
   const t = P.render('energy-day', {}, hass, NOW, {});
-  assert.equal(count(t, />Negative</g), 1, 'one negative run, not a scrambled list');
-  assert.match(t, /Negative<\/div><div class="m">23:00 → 14:30<\/div>[\s\S]*?avg −\d/); // TZ=UTC here; London shows 00:00 → 14:30 (child-process test)
+  assert.equal(count(t, />Free power</g), 1, 'one negative run, not a scrambled list');
+  assert.match(t, /Free power<\/div><div class="m">23:00 → 14:30<\/div>[\s\S]*?avg −\d/); // TZ=UTC here; London shows 00:00 → 14:30 (child-process test)
   assert.match(t, /Cheap<\/div><div class="m">/);
   assert.equal(count(t, /→ 01:00/g), 0);
   const m = P.render('energy-day', {}, hass, NOW, { day: 'tomorrow' });
-  assert.ok(/Negative<\/div><div class="m">none/.test(m) || /Negative<\/div><div class="m">\d\d:\d\d → \d\d:\d\d/.test(m));
+  assert.ok(/Free power<\/div><div class="m">none/.test(m) || /Free power<\/div><div class="m">\d\d:\d\d → \d\d:\d\d/.test(m));
   const e = P.render('energy-day', {}, energyHass({}, real, []), NOW, { day: 'tomorrow' });
-  assert.doesNotMatch(e, />Negative<|>Cheap</);
+  assert.doesNotMatch(e, />Free power<|>Cheap</);
   const quiet = day('2026-03-02T00:00:00Z', 48);
   const q = P.render('energy-day', {}, energyHass({}, quiet, quiet), Date.parse('2026-03-02T12:00:00Z'), {});
-  assert.match(q, /Negative<\/div><div class="m">none/);
+  assert.match(q, /Free power<\/div><div class="m">none/);
   assert.match(q, /Cheap<\/div><div class="m">none/);
 });
 
@@ -1541,7 +1541,7 @@ ok('held-occupied wording has no redundancy', () => {
   assert.match(head, /Occupied · lights on/);
   assert.doesNotMatch(head, /Occupied \(/);
   assert.doesNotMatch(head, /held occupied/i);
-  const att = P.render('rooms', {}, withRooms([m], [attn('Parlour', 'parlour', 'automation_disabled', 'Lights automation off')]), NOW);
+  const att = P.render('rooms', {}, withRooms([m], [attn('Parlour', 'parlour', 'automation_disabled', 'Lights automation is off')]), NOW);
   assert.match(att, /<b>Held occupied<\/b><span>Sofa occupied<\/span>/);
   const fact = (over) => P.verdictFor({ ...P.roomModel(withRooms([quietRoom('parlour', over)], []), 'parlour') }, '');
   assert.equal(fact({ occupied: true, lights_on: 2, pres_labels: ['Monitor on'] }), 'Occupied (Monitor on) · lights on', 'a hold that does not say occupied folds into the first clause');
@@ -1563,7 +1563,7 @@ ok('rooms without a climate sensor show no temperature at all; rooms with one bu
   const occCard = occ.match(/<a class="card oc tap"[\s\S]*?<\/a>/)[0];
   assert.doesNotMatch(occCard, /–/);
   assert.match(occCard, />no climate</);
-  const att = P.render('rooms', {}, withRooms(calmRooms({ hallway_upstairs: { temp: null } }), [attn('Hallway upstairs', 'hallway_upstairs', 'automation_disabled', 'Lights automation off')]), NOW);
+  const att = P.render('rooms', {}, withRooms(calmRooms({ hallway_upstairs: { temp: null } }), [attn('Hallway upstairs', 'hallway_upstairs', 'automation_disabled', 'Lights automation is off')]), NOW);
   assert.match(att.match(/<div class="card warn pad">[\s\S]*?details ›/)[0], />no climate</);
 });
 
@@ -1663,7 +1663,7 @@ ok('attention labels: sensor_stale names the entity and age; the original four l
   const stale = withRooms(calmRooms({ bedroom: { occupied: true } }), [attn('Bedroom', 'bedroom', 'sensor_stale', 'climate.bedroom_trv: no update for 5 h 12 min')]);
   assert.match(P.render('status', {}, stale, NOW), /Bedroom<\/b> · Sensor not updating/);
   assert.match(P.render('rooms', {}, stale, NOW), /climate\.bedroom_trv: no update for 5 h 12 min/);
-  const four = [['window_open_heating_on', 'Window open, heating on'], ['automation_disabled', 'Automation off'], ['hold_active', 'Override on'], ['sensor_unavailable', 'Sensor unavailable']];
+  const four = [['window_open_heating_on', 'Window open, heating on'], ['automation_disabled', 'Automation is off'], ['hold_active', 'Override on'], ['sensor_unavailable', 'Sensor unavailable']];
   for (const [kind, label] of four) {
     const h = withRooms(calmRooms({ bedroom: { occupied: true } }), [attn('Bedroom', 'bedroom', kind, 'detail text')]);
     assert.match(P.render('status', {}, h, NOW), new RegExp(`Bedroom</b> · ${label}`));
@@ -2340,7 +2340,7 @@ ok('attention feed labels a motion sensor left off', () => {
   assert.doesNotMatch(P.render('rooms', {}, hass, NOW), /Motion disabled/);
 });
 
-ok('house page: mode banner, modifier picker and vacation threshold write only to their fixed helpers', () => {
+ok('house page: mode banner, modifier picker and holiday threshold write only to their fixed helpers', () => {
   const b = (st, extra = {}) => ({ state: st, attributes: {}, ...extra });
   const hass = mk({
     'sensor.house_active_mode': b('away', { last_changed: '2026-10-29T10:00:00+00:00' }),
@@ -2352,12 +2352,12 @@ ok('house page: mode banner, modifier picker and vacation threshold write only t
   const head = P.render('house-head', {}, hass, at);
   assert.match(head, />Settings</);
   assert.match(head, /Away/);
-  assert.match(head, /vacation heating in 44 h/);
+  assert.match(head, /holiday heating in 44 h/);
   assert.match(head, /Sitter modifier/);
   const mode = P.render('house-mode', {}, hass, at);
   assert.match(mode, /data-option="sitter"/);
   assert.match(mode, /seg on" data-act="house-modifier" data-option="sitter"/);
-  assert.match(mode, /never goes to away or vacation/);
+  assert.match(mode, /never goes to away or holiday/);
   assert.match(mode, /48 h/);
   const people = P.render('house-people', {}, hass, at);
   assert.match(people, /data-entity="input_boolean\.wfh_adam"[^>]*aria-pressed="true"/);
@@ -2892,7 +2892,7 @@ ok('wording table: every acted or declined reason in the catalogue snapshot has 
 });
 
 ok('wording table: sentences read only declared facts, never print a placeholder, and survive null facts', () => {
-  const SAMPLE = { lux: 85, lux_threshold: 40, source: 'input_boolean.kitchen_cooking', hold: 'binary_sensor.kitchen_monitor', theme: 'halloween', minutes: 30, scene: 'cosy_evening', mode: 'baseline_night', rooms: 'parlour,home_office', skipped: 'bedroom', room: 'home_office', temp: 31.26, target: 21, clamped_from: 27, credited: 120, balance: 3400, count: 2, indoor: 26.4, outdoor: 18.2, problem: 'unreadable', modifier: 'guest' };
+  const SAMPLE = { lux: 85, lux_threshold: 40, source: 'input_boolean.kitchen_cooking', hold: 'binary_sensor.kitchen_monitor', theme: 'halloween', minutes: 30, scene: 'cosy_evening', mode: 'baseline_night', rooms: 'parlour,home_office', skipped: 'bedroom', room: 'home_office', temp: 31.26, target: 21, clamped_from: 27, credited: 120, balance: 3400, count: 2, indoor: 26.4, outdoor: 18.2, problem: 'unreadable', modifier: 'guest', cause: 'boundary', privacy: 'on', person: 'adam', time: '07:15', hours: 12 };
   const hass = mk({ 'binary_sensor.kitchen_monitor': { state: 'on', attributes: { friendly_name: 'Kitchen monitor' } } });
   const strict = (declaredKeys, values) => new Proxy(Object.fromEntries(declaredKeys.map((k) => [k, values(k)])), {
     get(target, prop) { if (typeof prop === 'string' && !(prop in target)) throw new Error(`reads undeclared fact "${prop}"`); return target[prop]; },
@@ -2911,18 +2911,18 @@ ok('wording table: sentences read only declared facts, never print a placeholder
     }
   }
   const text = (key, facts) => P.sentenceFor({ ts: histEntry(1).ts, location: 'k', automation_id: 'k', subsystem: key.split(':')[0], kind: 'decision', decision: 'd', reason: key.split(':')[1], outcome: declared.get(key).outcome, facts, detail: {} }, hass).text;
-  assert.equal(text('lighting:lux_high', { lux: 85, lux_threshold: 40 }), 'Stayed off: bright enough (85 lx, on below 40)');
-  assert.equal(text('lighting:lux_high', { lux: null, lux_threshold: 40 }), 'Stayed off: bright enough (no light reading, on below 40)');
-  assert.equal(text('lighting:lux_high', { lux: 1e12, lux_threshold: -5 }), 'Stayed off: bright enough (200000 lx, on below 0)', 'formatted numbers are clamped');
+  assert.equal(text('lighting:lux_high', { lux: 85, lux_threshold: 40 }), 'Stayed off: bright enough (85 lx, on at 40 or below)');
+  assert.equal(text('lighting:lux_high', { lux: null, lux_threshold: 40 }), 'Stayed off: bright enough (no light reading, on at 40 or below)');
+  assert.equal(text('lighting:lux_high', { lux: 1e12, lux_threshold: -5 }), 'Stayed off: bright enough (200000 lx, on at 0 or below)', 'formatted numbers are clamped');
   assert.equal(text('lighting:external_suppress_active', { source: 'binary_sensor.kitchen_monitor' }), 'Stayed off: held off by Kitchen monitor', 'entities are worded by friendly name');
   assert.equal(text('lighting:external_suppress_active', { source: 'input_boolean.unknown_thing' }), 'Stayed off: held off by input_boolean.unknown_thing', 'falls back to the id');
   assert.equal(text('occupied:strong_hold_started', { hold: 'binary_sensor.kitchen_monitor' }), 'Marked occupied · held by Kitchen monitor');
   assert.equal(text('occupied:strong_hold_active', { hold: 'binary_sensor.kitchen_monitor' }), 'Stayed occupied: held by Kitchen monitor');
-  assert.equal(text('lighting:on_outside_evening_window', { minutes: 30 }), 'Preview started · turned on outside the evening (off after 30 min)');
+  assert.equal(text('lighting:on_outside_evening_window', { minutes: 30 }), 'Off in 30 min · turned on by hand outside lighting hours');
 });
 
 ok('wording table: the garden and feed sentences carry over, so the wording does not change', () => {
-  const carried = { 'lighting:calendar_boundary': 'calendar', 'lighting:calendar_boundary_catch_up': 'calendar, after a restart', 'lighting:on_outside_evening_window': 'turned on outside the evening', 'lighting:preview_ended': 'preview over', 'lighting:theme_scene_missing': 'no scene for this theme', 'lighting:lux_low': 'getting dark', 'lighting:lux_high': 'bright enough', 'lighting:recent_auto_off': 'back soon after lights went off', 'occupied:containment_failsafe_expired': 'closed-door timeout ended', 'lighting:house_sleep_mode': 'house asleep', 'lighting:sunset': 'sunset', 'lighting:sunrise': 'sunrise', 'lighting:schedule_off': 'scheduled off', 'occupied:motion_detected': 'motion detected', 'occupied:timer_expired': 'timer ran out', 'lighting:button_cycle': 'button pressed' };
+  const carried = { 'lighting:calendar_boundary': 'calendar', 'lighting:calendar_boundary_catch_up': 'calendar, after a restart', 'lighting:on_outside_evening_window': 'turned on by hand outside lighting hours', 'lighting:preview_ended': 'preview over', 'lighting:theme_scene_missing': 'no x scene set up', 'lighting:lux_low': 'room occupied and dark', 'lighting:lux_high': 'bright enough', 'lighting:recent_auto_off': 'back soon after lights went off', 'occupied:containment_failsafe_expired': 'door shut but no movement', 'lighting:house_sleep_mode': 'house set to asleep', 'lighting:sunset': 'sunset', 'lighting:sunrise': 'sunrise', 'lighting:schedule_off': 'end of the evening', 'occupied:motion_detected': 'motion detected', 'occupied:timer_expired': 'no one seen for', 'lighting:button_cycle': 'button pressed' };
   for (const [key, phrase] of Object.entries(carried)) {
     const raw = P.REASON_TEXT[key]({ lux: 1, lux_threshold: 2, theme: 'x', minutes: 1, scene: '', hold: '' }, { name: () => '' });
     assert.ok(raw.toLowerCase().includes(phrase.toLowerCase()), `${key} keeps "${phrase}": ${raw}`);
@@ -2938,18 +2938,18 @@ ok('wording table: sentences for the garden, heating, house, energy and cat reas
   assert.equal(text('heating:demand_started', { rooms: null }), 'Boiler on · a room calling for heat');
   assert.equal(text('heating:trvs_not_set', { skipped: 'hallway_downstairs' }), 'Radiators left as they are: no temperature for the mode in Hallway downstairs');
   assert.equal(text('heating:trvs_not_set', { skipped: null }), 'Radiators left as they are: no temperature for the mode in some rooms');
-  assert.equal(text('heating:valve_characteristic_lost', { room: 'home office' }), 'Home office radiator valve needs an adaptation run · notification sent');
-  assert.equal(text('heating:valve_characteristic_lost', { room: null }), 'A radiator valve needs an adaptation run · notification sent');
+  assert.equal(text('heating:valve_characteristic_lost', { room: 'home office' }), 'Notification sent · home office radiator valve needs recalibrating');
+  assert.equal(text('heating:valve_characteristic_lost', { room: null }), 'Notification sent · a radiator valve needs recalibrating');
   assert.equal(text('heating:overtemp_heater_on', { temp: 31.26 }), 'Heater off · too hot (31.3°)');
   assert.equal(text('heating:overtemp_heater_on', { temp: 1e9 }), 'Heater off · too hot (50°)', 'clamped');
   assert.equal(text('heating:overtemp_heater_on', { temp: null }), 'Heater off · too hot');
-  assert.equal(text('heating:temperature_set_arbitrage', { mode: 'comfort', target: 21, clamped_from: 27 }), 'Heating set to comfort (21°) · cheap power, limited from 27°');
-  assert.equal(text('heating:temperature_set_arbitrage', { mode: 'comfort', target: null, clamped_from: null }), 'Heating set to comfort · cheap power');
-  assert.equal(text('house_mode:parlour_active', {}), 'Sleep mode not started: parlour in use');
-  assert.equal(text('lighting:theme_scene_settled', { theme: 'halloween' }), 'Light effects started · halloween theme scene');
-  assert.equal(text('lighting:theme_scene_settled', { theme: null }), 'Light effects started · new theme scene');
+  assert.equal(text('heating:temperature_set_arbitrage', { mode: 'comfort', target: 21, clamped_from: 27 }), 'Heating set to comfort (21°) · free power, room empty, limited from 27°');
+  assert.equal(text('heating:temperature_set_arbitrage', { mode: 'comfort', target: null, clamped_from: null }), 'Heating set to comfort · free power, room empty');
+  assert.equal(text('house_mode:parlour_active', {}), 'Not set to asleep: parlour in use');
+  assert.equal(text('lighting:theme_scene_settled', { theme: 'halloween' }), 'Light effects started · Halloween scene on');
+  assert.equal(text('lighting:theme_scene_settled', { theme: null }), 'Light effects started · theme scene on');
   assert.equal(text('lighting:no_lights_in_theme_roles', { theme: null }), 'Effects not started: no lights set up for this theme');
-  assert.equal(text('lighting:automation_disabled_restore', {}), 'Automation switched off · porch look restored');
+  assert.equal(text('lighting:automation_disabled_restore', {}), 'Porch light back to its look · porch automation is off');
   assert.equal(text('energy:points_increased', { credited: 120, balance: 3400 }), 'Octopus points credited (+120) · balance 3400');
   assert.equal(text('energy:points_increased', { credited: null, balance: null }), 'Octopus points credited');
   assert.equal(text('energy:sessions_joined', { count: 1 }), 'Joined 1 power down session');
@@ -2959,6 +2959,115 @@ ok('wording table: sentences for the garden, heating, house, energy and cat reas
   assert.equal(text('mo:spotted', { room: null }), 'Mo spotted');
   assert.equal(text('thermal:open_door', { indoor: 26.4, outdoor: 18.2 }), 'Told to open the door · inside 26.4°, outside 18.2°');
   assert.equal(text('thermal:close_door', { indoor: null, outdoor: null }), 'Told to close the door · outside warmer');
+});
+
+ok('wording table: audit wording for lighting, occupancy, house, cameras, wfh and the rest, with missing facts handled', () => {
+  const text = (key, facts) => P.sentenceFor({ ts: histEntry(1).ts, location: 'k', automation_id: 'k', subsystem: key.split(':')[0], kind: 'decision', decision: 'd', reason: key.split(':')[1], outcome: declared.get(key).outcome, facts, detail: {} }, mk()).text;
+  assert.equal(text('lighting:lux_low', { lux: 12, lux_threshold: 30, scene: 'cosy_evening' }), 'Scene set (cosy evening) · room occupied and dark (12 lx, on at 30 or below)');
+  assert.equal(text('lighting:lux_low', { lux: 12, lux_threshold: 30, scene: null }), 'Scene set · room occupied and dark (12 lx, on at 30 or below)');
+  assert.equal(text('lighting:lux_low', { lux: null, lux_threshold: 30, scene: null }), 'Scene set · room occupied (no light reading)');
+  assert.equal(text('lighting:recent_auto_off', { scene: 'cosy_evening' }), 'Scene set (cosy evening) · back soon after lights went off');
+  assert.equal(text('lighting:recent_auto_off', { scene: null }), 'Scene set · back soon after lights went off');
+  assert.equal(text('lighting:theme_scene_missing', { theme: 'halloween' }), 'Normal scene used · no Halloween scene set up');
+  assert.equal(text('lighting:theme_scene_missing', { theme: null }), 'Normal scene used · no scene set up for this theme');
+  assert.equal(text('lighting:theme_effects_stopped', { theme: 'bonfire' }), 'Light effects stopped · Bonfire scene replaced');
+  assert.equal(text('lighting:theme_effects_stopped', { theme: null }), 'Light effects stopped · theme scene replaced');
+  assert.equal(text('lighting:theme_scene_settled', { theme: 'halloween' }), 'Light effects started · Halloween scene on');
+  assert.equal(text('lighting:theme_scene_settled', { theme: null }), 'Light effects started · theme scene on');
+  assert.equal(text('lighting:on_outside_evening_window', { minutes: null }), 'Off in a few minutes · turned on by hand outside lighting hours');
+  assert.equal(text('lighting:guest_room_sleep_bypass', {}), 'Not switched off at bedtime: room kept for a guest');
+  assert.equal(text('lighting:button_off', {}), 'Lights off · button held');
+  assert.equal(text('lighting:schedule_off', {}), 'Lights off · end of the evening');
+  assert.equal(text('lighting:automation_disabled_restore', {}), 'Porch light back to its look · porch automation is off');
+  assert.equal(text('lighting:restore_look_missing', {}), 'Porch light left warm: no saved look to go back to');
+  assert.equal(text('lighting:halloween_scene_activated', {}), 'Halloween animation started · Halloween scene on');
+  assert.equal(text('lighting:no_feature_lights', {}), 'Halloween effects not started: no lights labelled for them');
+  assert.equal(text('occupied:timer_expired', { minutes: 5 }), 'Marked empty · no one seen for 5 min');
+  assert.equal(text('occupied:timer_expired', { minutes: null }), 'Marked empty · no one seen for a few minutes');
+  assert.equal(text('occupied:containment_failsafe_expired', { hours: 12 }), 'Marked empty · door shut but no movement for 12 h');
+  assert.equal(text('occupied:containment_failsafe_expired', { hours: null }), 'Marked empty · door shut but no movement for a long time');
+  assert.equal(text('wfh_inference:home_at_inference_time', { person: 'sarah', time: '07:15' }), 'Sarah marked as working from home · home at 07:15');
+  assert.equal(text('wfh_inference:home_at_inference_time', { person: null, time: null }), 'Marked as working from home · home when checked');
+  assert.equal(text('wfh_inference:home_at_inference_time', { person: 'adam', time: 'soon' }), 'Adam marked as working from home · home when checked', 'a time that is not HH:MM is not printed');
+  assert.equal(text('wfh_inference:always_wfh_wed_fri', { person: 'adam' }), 'Adam marked as working from home · always Wed to Fri');
+  assert.equal(text('wfh_inference:always_wfh_wed_fri', { person: null }), 'Marked as working from home · always Wed to Fri');
+  assert.equal(text('cameras:button_double_press', { privacy: 'on' }), 'Cameras off · button double-pressed', 'privacy on means cameras off');
+  assert.equal(text('cameras:button_double_press', { privacy: 'off' }), 'Cameras on · button double-pressed');
+  assert.equal(text('cameras:button_double_press', { privacy: null }), 'Cameras switched on or off · button double-pressed');
+  assert.equal(text('cameras:guest_arrived_while_away', {}), 'Cameras off · guest arrived while away');
+  assert.equal(text('cameras:away_but_guest_present', {}), 'Cameras left off: house away, guest staying');
+  assert.equal(text('modifier:guest_present', { modifier: 'guest' }), 'Home office kept occupied · guest staying');
+  assert.equal(text('modifier:guest_absent', { modifier: 'normal' }), 'Home office released · guest mode off');
+  assert.equal(text('heating:door_open_heating_on', {}), 'House heating paused · patio door left open');
+  assert.equal(text('heating:door_closed_was_suspended', {}), 'House heating back on · patio door closed');
+  assert.equal(text('heating:heating_disabled', {}), 'Boiler off · house heating switched off');
+  assert.equal(text('heating:safety_heating_disabled', { mode: 'minimum' }), 'Heating set to minimum · house heating switched off');
+  assert.equal(text('house_mode:bed_occupied', {}), 'Stayed asleep: bed occupied');
+  assert.equal(text('house_mode:bed_not_occupied', {}), 'Not set to asleep: bed empty');
+  assert.equal(text('house_mode:guest_mode_active', {}), 'Stayed asleep: guest mode');
+  assert.equal(text('house_mode:button_hold_bed_occupied', {}), 'House set to asleep · button held, bed occupied');
+  assert.equal(text('house_mode:double_press_bypass', {}), 'House set to asleep · button double-pressed, bed sensor skipped');
+  assert.equal(text('house_mode:button_pressed', {}), 'House set to at home · button pressed');
+  assert.equal(text('house_mode:kitchen_motion_detected', {}), 'House set to at home · kitchen in use in the morning');
+  assert.equal(text('fan:automation_disabled', {}), 'Fan not started: fan automation is off');
+  assert.equal(text('fan:fan_not_auto_started', {}), 'Fan left alone: already on by hand');
+  assert.equal(text('sonos:automation_enabled', {}), 'Joined the speaker group · grouping switched on');
+  assert.equal(text('sonos:automation_disabled', {}), 'Left the speaker group · grouping switched off');
+  assert.equal(text('shower:shower_started', {}), 'Shower detected · humidity rising fast');
+  assert.equal(text('shower:shower_ended', {}), 'Shower over · humidity falling');
+  assert.equal(text('shower:shower_max_duration', {}), 'Shower marked over · on longer than any real shower');
+});
+
+ok('wording table: every heating cause is worded, `other` and a missing cause say nothing, and a cause never repeats its reason', () => {
+  const text = (key, facts) => P.sentenceFor({ ts: histEntry(1).ts, location: 'k', automation_id: 'k', subsystem: 'heating', kind: 'decision', decision: 'd', reason: key, outcome: 'acted', facts, detail: {} }, mk()).text;
+  const expected = {
+    boundary: 'schedule time reached', window_closed: 'window closed', house_mode: 'house mode changed', manual_ended: 'manual setting ended',
+    manual_set: 'set by hand', occupancy: 'room occupancy changed', heating_on: 'heating switched on', wfh: 'working from home', startup: 'after a restart',
+  };
+  for (const [cause, words] of Object.entries(expected)) assert.equal(text('schedule', { mode: 'comfort', cause }), `Heating set to comfort · schedule, ${words}`, cause);
+  assert.equal(text('schedule', { mode: 'comfort', cause: 'other' }), 'Heating set to comfort · schedule');
+  assert.equal(text('schedule', { mode: 'comfort', cause: null }), 'Heating set to comfort · schedule');
+  assert.equal(text('schedule', { mode: 'comfort', cause: 'surprise' }), 'Heating set to comfort · schedule', 'an unknown cause is not printed');
+  assert.equal(text('schedule_occupied', { mode: 'comfort', cause: 'occupancy' }), 'Heating set to comfort · schedule, room occupied, room occupancy changed');
+  assert.equal(text('house_mode_sleep', { mode: 'baseline_night', cause: 'house_mode' }), 'Heating set to night baseline · house asleep', 'a house-mode cause repeats its reason');
+  assert.equal(text('house_mode_sleep', { mode: 'baseline_night', cause: 'startup' }), 'Heating set to night baseline · house asleep, after a restart');
+  assert.equal(text('house_mode_vacation', { mode: 'minimum', cause: 'house_mode' }), 'Heating set to minimum · house on holiday');
+  assert.equal(text('house_mode_away', { mode: 'minimum', cause: 'wfh' }), 'Heating set to minimum · house away, working from home');
+  assert.equal(text('manual_override', { mode: 'comfort', cause: 'manual_set' }), 'Heating set to comfort · manual setting', 'a manual set repeats its reason');
+  assert.equal(text('manual_override', { mode: 'comfort', cause: 'window_closed' }), 'Heating set to comfort · manual setting, window closed');
+});
+
+ok('wording table: every key the catalogue adds for the audit is either worded or ignored, never the other way round', () => {
+  for (const k of ['lighting:occupancy_off_already_off', 'lighting:house_sleep_mode_already_off', 'lighting:sunrise_already_off', 'lighting:schedule_off_already_off', 'lighting:sleep_mode_idle', 'lighting:scene_without_effects_activated', 'modifier:not_guest', 'thermal:nobody_home']) {
+    assert.equal(declared.get(k).outcome, 'ignored', `${k} is ignored, so it appears in no history and has no wording`);
+    assert.equal(P.REASON_TEXT[k], undefined, k);
+  }
+  for (const k of ['lighting:theme_effects_stopped', 'cameras:guest_arrived_while_away']) assert.equal(declared.get(k).outcome, 'acted', k);
+  assert.equal(declared.has('lighting:sleep_mode_button'), false, 'no button split: buttons are not declined in sleep');
+  assert.equal(declared.get('lighting:sleep_mode').outcome, 'declined');
+});
+
+ok('terms: no visible string says vacation, sleep mode, getting dark or emptied', () => {
+  const banned = /vacation|sleep mode|getting dark|emptied/i;
+  // Entity ids and the card's own identifiers keep their names; only what a reader sees is scanned.
+  const strip = (t) => t.replace(/[a-z_]+\.[a-z0-9_]+/g, '');
+  const seen = [];
+  const facts = { lux: 12, lux_threshold: 30, scene: 'cosy_evening', theme: 'bonfire', minutes: 5, hours: 12, hold: '', source: '', mode: 'comfort', rooms: 'parlour', skipped: 'parlour', room: 'parlour', temp: 30, target: 21, clamped_from: 27, credited: 1, balance: 2, count: 2, indoor: 25, outdoor: 18, modifier: 'guest', person: 'adam', time: '07:15', privacy: 'on', cause: 'house_mode' };
+  for (const key of Object.keys(P.REASON_TEXT)) {
+    for (const f of [facts, {}, ...['boundary', 'window_closed', 'house_mode', 'manual_ended', 'manual_set', 'occupancy', 'heating_on', 'wfh', 'startup', 'other'].map((cause) => ({ ...facts, cause })), { ...facts, privacy: 'off' }]) seen.push(P.REASON_TEXT[key](f, { name: () => '' }));
+  }
+  for (const d of Object.values(P.UNDECLARED.decisions)) seen.push(d.verb, ...Object.values(d.note || {}));
+  seen.push(...Object.values(P.UNDECLARED.reasons));
+  const hass = mk({
+    'input_number.house_automation_vacation_threshold_hours': { state: '48', attributes: {} }, 'sensor.house_active_mode': { state: 'away', attributes: {}, last_changed: '2026-10-29T10:00:00+00:00' },
+    'input_select.house_active_mode_modifier': { state: 'sitter', attributes: {} },
+  });
+  const at = Date.parse('2026-10-29T14:00:00+00:00');
+  for (const sec of ['house-head', 'house-mode', 'house-people', 'house-heating', 'house-mo']) seen.push(P.render(sec, {}, hass, at));
+  seen.push(JSON.stringify(P.ROOM_SETTINGS), JSON.stringify(P.HOUSE_NUMBERS));
+  for (const t of seen) assert.doesNotMatch(strip(t).replace(/<[^>]*>/g, ' '), banned, t.slice(0, 120));
+  assert.ok(seen.length > 100);
+  assert.match(P.render('house-mode', {}, hass, at), /Holiday threshold/);
 });
 
 ok('unexplained_reason: a catalogue reason with no wording raises attention; the real catalogue raises none', () => {
