@@ -1,1 +1,1 @@
-{ "name": "pulse-tests", "private": true, "type": "module", "devDependencies": { "js-yaml": "^4.1.0" } }
+{ "name": "pulse-tests", "private": true, "type": "module", "scripts": { "test": "node pulse-card.test.mjs" }, "engines": { "node": ">=24" }, "devDependencies": { "js-yaml": "^4.1.0" } }
