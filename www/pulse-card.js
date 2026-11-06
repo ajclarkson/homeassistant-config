@@ -17,8 +17,12 @@
  *  - Style tokens live once, in TOKENS / STYLE.
  *  - Every write gives feedback (see Tap feedback): the control shows busy until its entity moves or
  *    8 s pass, and a failed call shows an error on the card.
- *  - Write paths are whitelisted in ALLOWED. HA is a read-only consumer of homerun events: this
- *    card never publishes to MQTT and never calls anything but the services below.
+ *  - Write paths are whitelisted per entity in ALLOWED ({domain: {service: [entity patterns]}}) and
+ *    callService throws on any call whose entity_id matches none of them (or has none). Lights,
+ *    switches, media players and camera buttons are exact ids taken from the room table, CAMERAS and
+ *    the fan row; scenes are built from the room keys; helpers match the patterns listed there.
+ *    HA is a read-only consumer of homerun events: this card never publishes to MQTT and never calls
+ *    anything but the services allowed there. Every write goes through callService (a test checks).
  */
 (function (root) {
   'use strict';
@@ -293,7 +297,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       climate: '', temp: '', hum: '',
       lights: [['light.hallway_upstairs_light_ceiling', 'Ceiling']],
       media: [],
-      settings: indoor('hallway_upstairs'),
+      settings: [lightsGroup('hallway_upstairs', []), presenceGroup('hallway_upstairs')], // no heating automation or helper here
     },
     {
       key: 'bedroom', kind: 'room', order: 5, area: 'bedroom',
@@ -387,18 +391,6 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 
   // Wall-button and other manual sources, in plain words.
   const SOURCE_WORDS = { dashboard: 'dashboard', switch: 'wall switch', wall_button: 'wall button' };
-
-  // Write paths. Anything not listed here is refused loudly.
-  const ALLOWED = {
-    scene: ['turn_on'],
-    light: ['turn_on', 'turn_off'],
-    switch: ['turn_on', 'turn_off'],
-    media_player: ['media_play_pause', 'volume_set', 'turn_on', 'turn_off'],
-    button: ['press'],
-    input_boolean: ['turn_on', 'turn_off'],
-    input_select: ['select_option'],
-    input_number: ['set_value'],
-  };
 
   const ACTIVITY_ROWS = 10;
   const FEED_ROWS = 3; // House shows the latest few; the room pages hold the rest
@@ -2908,8 +2900,8 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     if (config.mode === 'device' && !(config.entity === '' && config.decision === '')) {
       const ok = (v) => typeof v === 'string' && /^[a-z_]+\.[a-z0-9_]+$/.test(v);
       if (!ok(config.entity) || !ok(config.decision)) throw new Error(`pulse-card: mode "device" needs an entity and a decision sensor, got "${config.entity}" and "${config.decision}"`);
-      const allowed = ALLOWED[config.entity.split('.')[0]];
-      if (!allowed || !allowed.includes('turn_on') || !allowed.includes('turn_off')) throw new Error(`pulse-card: mode "device" cannot switch "${config.entity}"`);
+      const domain = config.entity.split('.')[0];
+      if (!writeAllowed(domain, 'turn_on', config.entity) || !writeAllowed(domain, 'turn_off', config.entity)) throw new Error(`pulse-card: mode "device" cannot switch "${config.entity}"`);
     }
     if (ROOM_MODES.includes(config.mode) && !(typeof config.room === 'string' && Object.prototype.hasOwnProperty.call(ROOMS, config.room))) throw new Error(`pulse-card: mode "${config.mode}" needs a known room, got "${config.room}"`);
     if (GARDEN_MODES.includes(config.mode) && !isGarden(config.room)) throw new Error(`pulse-card: mode "${config.mode}" is for gardens, got "${config.room}"`);
@@ -2925,9 +2917,43 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   }
 
   // ── Service calls ────────────────────────────────────────────────────────────────────────────
+  // Write paths: {domain: {service: [entity patterns]}}. A call must name an entity_id that matches one of the
+  // patterns of its domain and service; anything else throws. Defined here, after the tables it reads.
+  // Exact ids (escaped, anchored) come from the room table, CAMERAS and PTZ_DIRS, never from a hand list.
+  // The fan switch is not in the room table (the bathroom view passes it to the device row), so it is named here.
+  const exact = (ids) => ids.map((id) => new RegExp(`^${id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`));
+  const FAN_SWITCHES = ['switch.bathroom_fan_extractor'];
+  const roomIds = (domain, field) => ROOM_TABLE.flatMap((r) => (r[field] || []).map((x) => x[0])).filter((id) => id.startsWith(`${domain}.`));
+  const SCENE_PATTERN = new RegExp(`^scene\\.(${ALL_ROOM_KEYS.join('|')})_[a-z0-9_]+$`);
+  const BOOLEAN_PATTERN = /^input_boolean\.(\w+_automation_(lights|heating|sonos|fan)_enabled|\w+_automation_presence_override|\w+_sensor_motion_enabled|\w+_light_theme_calendar_enabled|wfh_(adam|sarah)|house_heating_enabled|mo_notifications_(spotted|eating)_enabled)$/;
+  const NUMBER_PATTERN = /^input_number\.(\w+_automation_(lux_threshold_dark|fan_(min_run|max_run|humidity_margin)|door_\w+|vacation_threshold_hours)|global_temperature_(minimum|baseline_night|baseline_day|comfort)|global_heating_window_open_grace_minutes)$/;
+  const SELECT_PATTERN = /^input_select\.(house_active_mode_modifier|\w+_light_theme)$/;
+  const lightIds = exact(roomIds('light', 'lights'));
+  const mediaIds = exact(roomIds('media_player', 'media'));
+  const ALLOWED = {
+    scene: { turn_on: [SCENE_PATTERN] },
+    light: { turn_on: lightIds, turn_off: lightIds },
+    switch: (() => {
+      const ids = exact([...roomIds('switch', 'lights'), ...CAMERAS.map((c) => cameraSwitch(c.k)), ...FAN_SWITCHES]);
+      return { turn_on: ids, turn_off: ids };
+    })(),
+    media_player: { media_play_pause: mediaIds, volume_set: mediaIds, turn_on: mediaIds, turn_off: mediaIds },
+    button: { press: exact(CAMERAS.flatMap((c) => Object.keys(PTZ_DIRS).map((d) => `button.${c.k}_move_${d}`))) },
+    input_boolean: { turn_on: [BOOLEAN_PATTERN], turn_off: [BOOLEAN_PATTERN] },
+    input_select: { select_option: [SELECT_PATTERN] },
+    input_number: { set_value: [NUMBER_PATTERN] },
+  };
+
+  // True when a call to domain.service on this entity is allowed.
+  function writeAllowed(domain, service, entity) {
+    const patterns = Object.prototype.hasOwnProperty.call(ALLOWED, domain) && Object.prototype.hasOwnProperty.call(ALLOWED[domain], service) ? ALLOWED[domain][service] : null;
+    return !!patterns && typeof entity === 'string' && patterns.some((p) => p.test(entity));
+  }
+
   function callService(hass, domain, service, data) {
-    if (!ALLOWED[domain] || !ALLOWED[domain].includes(service)) {
-      throw new Error(`pulse-card: service ${domain}.${service} is not an allowed write path`);
+    const entity = isObj(data) ? data.entity_id : undefined;
+    if (!writeAllowed(domain, service, entity)) {
+      throw new Error(`pulse-card: ${domain}.${service} on ${typeof entity === 'string' ? `"${entity}"` : 'no entity_id'} is not an allowed write path`);
     }
     return hass.callService(domain, service, data);
   }
@@ -3021,7 +3047,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     }
   }
 
-  const api = { deriveScenes, sceneRegistry, ROOM_TABLE, lightsStory, lightsState, verdictFor, houseActivity, parseHistory, readHistory, sentenceFor, roomActivity, unexplainedReasons, REASON_TEXT, TILE, TILE_H, TILE_WIDE_H, tileNeededHeight, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, SETTINGS_PATH, takesTaps, coverNeed, topGuard, sheetFit, splitSheet, touchGuard, lockScroll, scrollTargets, SHEET_MARK, HEAD_MODES, TOP_GUARD_MAX, CAMERAS_PATH, PENDING_MS, cameraParts, cameraToggle, cameraPending, perform, pendingStart, pendingFor, pendingKey, markPending, ERROR_MS, parseClips, frigateClipsId, roomGroups, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, GARDEN_ORDER, ALL_ROOM_KEYS, THEME_LABELS, THEME_ICON, ICON, gardenModel, gardenSub, themeSource, shortDate, ALLOWED, DEVICE_REASONS, ROOM_SETTINGS, MO_TOGGLES, settingFor, settingsOpen, settingsClose, tabTarget, render, priceColour, PRICE_STOPS, PRICE_EXTREME_P, roomModel, attentionItems, handleAction, callService, num, parseList };
+  const api = { deriveScenes, sceneRegistry, ROOM_TABLE, lightsStory, lightsState, verdictFor, houseActivity, parseHistory, readHistory, sentenceFor, roomActivity, unexplainedReasons, REASON_TEXT, TILE, TILE_H, TILE_WIDE_H, tileNeededHeight, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, SETTINGS_PATH, takesTaps, coverNeed, topGuard, sheetFit, splitSheet, touchGuard, lockScroll, scrollTargets, SHEET_MARK, HEAD_MODES, TOP_GUARD_MAX, CAMERAS_PATH, PENDING_MS, cameraParts, cameraToggle, cameraPending, perform, pendingStart, pendingFor, pendingKey, markPending, ERROR_MS, parseClips, frigateClipsId, roomGroups, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, GARDEN_ORDER, ALL_ROOM_KEYS, THEME_LABELS, THEME_ICON, ICON, gardenModel, gardenSub, themeSource, shortDate, ALLOWED, writeAllowed, HOUSE_NUMBERS, HOUSE_MODIFIER, HOUSE_VACATION_HOURS, CAMERAS, PTZ_DIRS, DEVICE_REASONS, ROOM_SETTINGS, MO_TOGGLES, settingFor, settingsOpen, settingsClose, tabTarget, render, priceColour, PRICE_STOPS, PRICE_EXTREME_P, roomModel, attentionItems, handleAction, callService, num, parseList };
   root.PulseLib = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 
