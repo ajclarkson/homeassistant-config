@@ -216,89 +216,162 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 .mrow span:last-child{font-size:11.5px;color:${TOKENS.text2};line-height:1.4}
 `;
 
-  // ── Room configuration (entity ids from views/*.yaml and packages/groups.yaml) ──────────────
-  // `report` is the key in sensor.info_rooms. Gardens (kind 'garden') have no report, climate, scenes or
-  // lights here: their lights come from sensor.<garden>_lighting_scenes and their look from `theme`, the
-  // theme helper ('' when the garden has none). Gap, reported rather than guessed: foreign_office has no
-  // media player in views/foreign-office.yaml.
+
+  // ── Room settings ────────────────────────────────────────────────────────────────────────────
+  // The settings panel (a sheet opened from the gear in the room banner) holds what means "this room should
+  // behave differently from now on": automation switches and their tuning, by subsystem. What a person changes
+  // because of something happening right now (scenes, lights, the fan on/off, keep-room-occupied) stays on the page.
+  //
+  // Rows are either a toggle or a stepper with a fixed min/max/step. A write names a room, group and key from
+  // this table, never an entity id, so turn_on/turn_off/set_value can only reach the helpers listed here. A row
+  // whose helper is missing or unusable is left out when rendering, and a group left empty is not shown.
+  //
+  // Stepper ranges equal the clamp in the automation that reads the helper (a test holds the numbers to a list of
+  // expected clamps, so a change on one side has to be made on both). Where the automation does not clamp, the
+  // range is the helper's own min/max/step in packages/helpers.yaml. Sources:
+  //   fan: homerun-automations lib/bathroom/steam.ts (MIN/MAX_FAN_MIN_RUN_MIN, MIN/MAX_FAN_MAX_RUN_MIN, MIN/MAX_FAN_MARGIN)
+  //   lux threshold, foreign office door ventilation: no clamp in the automation, so the helper's range.
+  // Not exposed on purpose: calibration that silently breaks a rule when wrong, such as the bathroom shower
+  // detection thresholds (shower_rise, above_baseline, end_drop, end_confirm). Those stay in HA settings.
+  const toggleRow = (key, id, title, sub) => ({ kind: 'toggle', key, id, title, sub });
+  const stepRow = (key, id, title, sub, min, max, step, unit) => ({ kind: 'number', key, id, title, sub, min, max, step, unit });
+  const luxRow = (k) => stepRow('lux_dark', `input_number.${k}_automation_lux_threshold_dark`, 'Dark below', 'Lux reading under which the room counts as dark', 0, 500, 1, ' lx');
+  const lightsGroup = (k, extra) => ({ key: 'lights', title: 'Lights', rows: [toggleRow('automation', `input_boolean.${k}_automation_lights_enabled`, 'Lights automation', 'Decides lights from presence and time of day'), luxRow(k), ...extra] });
+  const presenceGroup = (k) => ({ key: 'presence', title: 'Presence', rows: [toggleRow('motion', `input_boolean.${k}_sensor_motion_enabled`, 'Motion sensor', 'Off means movement is ignored and the room relies on holds')] });
+  const heatingGroup = (k, extra) => ({ key: 'heating', title: 'Heating', rows: [toggleRow('automation', `input_boolean.${k}_automation_heating_enabled`, 'Heating automation', 'Sets the target from mode, windows and schedule'), ...extra] });
+  const sonosGroup = (k) => ({ key: 'media', title: 'Media', rows: [toggleRow('sonos', `input_boolean.${k}_automation_sonos_enabled`, 'Follow the speaker group', 'Joins the parlour speaker group when the room is occupied')] });
+  const indoor = (k, ...more) => [lightsGroup(k, []), heatingGroup(k, []), presenceGroup(k), ...more];
+  const DOOR = 'input_number.foreign_office_automation_door';
+
+  // ── Room registry: the one hand-written room table ─────────────────────────────────────────
+  // One entry per room and garden. `order` is the display order within its kind. `area` is the HA area id
+  // whose scenes the card reads from the registry (see sceneRegistry); lights, climate and media are written
+  // here because the registry cannot give them (room areas also hold camera switches, fans and LEDs, some lights
+  // have no area, and no climate entity has one). `report` means sensor.info_rooms has an entry for the room.
+  // Gardens (kind 'garden') have no report, climate or lights here: their lights come from
+  // sensor.<garden>_lighting_scenes and their look from `theme`, the theme helper ('' when the garden has none).
+  // `settings` are the settings panel rows (the header above says what belongs there). Gap, reported rather than
+  // guessed: foreign_office has no media player in views/foreign-office.yaml. Room keys must match the
+  // `room-<key>` views and sensor.info_rooms (a test holds all three together).
   const SCENE_LABELS = {
     off: 'Off', all: 'All', all_full: 'Full', full: 'Full', lamps: 'Lamps', dining: 'Dining',
     cabinets: 'Cabinets', low: 'Low', daylight: 'Daylight', autumn: 'Autumn', halloween: 'Halloween',
   };
 
-  const ROOMS = {
-    parlour: {
+  const ROOM_TABLE = [
+    {
+      key: 'parlour', kind: 'room', order: 1, area: 'parlour',
       name: 'Parlour', short: 'Parlour', report: true,
       climate: 'climate.parlour_trv', temp: 'sensor.parlour_sensor_climate_temperature', hum: 'sensor.parlour_sensor_climate_humidity',
-      scenes: ['all', 'lamps', 'dining', 'off'],
       lights: [
         ['light.parlour_light_floor_lamp', 'Floor lamp'], ['light.parlour_light_ceiling_sofa', 'Sofa ceiling'],
         ['light.parlour_light_ceiling_dining', 'Dining ceiling'], ['switch.parlour_plug_table_lamp', 'Table lamp'],
         ['switch.parlour_plug_donut_lamp', 'Donut lamp'],
       ],
       media: [['media_player.parlour', 'Soundbar', 'player'], ['media_player.parlour_tv', 'TV', 'tv']],
+      settings: indoor('parlour'),
     },
-    kitchen: {
+    {
+      key: 'kitchen', kind: 'room', order: 2, area: 'kitchen',
       name: 'Kitchen', short: 'Kitchen', report: true,
       climate: 'climate.kitchen_trv', temp: 'sensor.kitchen_sensor_climate_temperature', hum: 'sensor.kitchen_sensor_climate_humidity',
-      scenes: ['all', 'cabinets', 'off'],
       lights: [['light.kitchen_light_ceiling', 'Ceiling'], ['light.kitchen_light_cooker', 'Cooker'], ['switch.kitchen_light_cabinets', 'Cabinets']],
       media: [['media_player.kitchen', 'Kitchen speaker', 'player']],
+      settings: indoor('kitchen', sonosGroup('kitchen')),
     },
-    hallway_downstairs: {
+    {
+      key: 'hallway_downstairs', kind: 'room', order: 3, area: 'hallway_downstairs',
       name: 'Hallway downstairs', short: 'Hallway down', report: true,
       climate: 'climate.hallway_downstairs_trv', temp: 'sensor.hallway_downstairs_sensor_climate_temperature', hum: 'sensor.hallway_downstairs_sensor_climate_humidity',
-      scenes: ['daylight', 'low', 'off'],
       lights: [['light.hallway_downstairs_light_ceiling', 'Ceiling']],
       media: [],
+      settings: indoor('hallway_downstairs'),
     },
-    hallway_upstairs: {
+    {
+      key: 'hallway_upstairs', kind: 'room', order: 4, area: 'hallway_upstairs',
       name: 'Hallway upstairs', short: 'Hallway up', report: true,
       climate: '', temp: '', hum: '',
-      scenes: ['daylight', 'low', 'off'],
       lights: [['light.hallway_upstairs_light_ceiling', 'Ceiling']],
       media: [],
+      settings: indoor('hallway_upstairs'),
     },
-    bedroom: {
+    {
+      key: 'bedroom', kind: 'room', order: 5, area: 'bedroom',
       name: 'Bedroom', short: 'Bedroom', report: true,
       climate: 'climate.bedroom_trv', temp: 'sensor.bedroom_sensor_climate_temperature', hum: 'sensor.bedroom_sensor_climate_humidity',
-      scenes: ['all', 'all_full', 'lamps', 'off'],
       lights: [['light.bedroom_light_sarah_lamp', "Sarah's lamp"], ['light.bedroom_light_adam_lamp', "Adam's lamp"], ['light.bedroom_light_ceiling', 'Ceiling']],
       media: [],
+      settings: indoor('bedroom'),
     },
-    bathroom: {
+    {
+      key: 'bathroom', kind: 'room', order: 6, area: 'bathroom',
       name: 'Bathroom', short: 'Bathroom', report: true,
       climate: 'climate.bathroom_trv', temp: 'sensor.bathroom_sensor_climate_temperature', hum: 'sensor.bathroom_sensor_climate_humidity',
-      scenes: ['full', 'low', 'off'],
       lights: [['light.bathroom_light_ceiling', 'Ceiling']],
       media: [],
+      settings: [
+        lightsGroup('bathroom', []), heatingGroup('bathroom', []), presenceGroup('bathroom'),
+        {
+          key: 'fan', title: 'Fan', rows: [
+            toggleRow('automation', 'input_boolean.bathroom_automation_fan_enabled', 'Fan automation', 'Runs the extractor fan after a shower until the steam clears'),
+            stepRow('min_run', 'input_number.bathroom_automation_fan_min_run', 'Minimum run', 'After the last shower ends', 5, 30, 5, ' min'),
+            stepRow('max_run', 'input_number.bathroom_automation_fan_max_run', 'Maximum run', 'Off by then, whatever the humidity', 15, 120, 15, ' min'),
+            stepRow('margin', 'input_number.bathroom_automation_fan_humidity_margin', 'Stops within', 'Humidity points above the room\'s normal level', 2, 30, 1, '%'),
+          ],
+        },
+      ],
     },
-    home_office: {
+    {
+      key: 'home_office', kind: 'room', order: 7, area: 'home_office',
       name: 'Home office', short: 'Home office', report: true,
       climate: 'climate.home_office_trv', temp: 'sensor.home_office_sensor_climate_temperature', hum: 'sensor.home_office_sensor_climate_humidity',
-      scenes: ['all', 'lamps', 'off'],
       lights: [['light.home_office_light_desk_lamp', 'Desk lamp'], ['light.home_office_light_floor_lamp', 'Floor lamp'], ['light.home_office_light_ceiling', 'Ceiling']],
       media: [['media_player.home_office', 'Office speaker', 'player']],
+      settings: indoor('home_office', sonosGroup('home_office')),
     },
-    foreign_office: {
+    {
+      key: 'foreign_office', kind: 'room', order: 8, area: 'foreign_office',
       name: 'Foreign office', short: 'Foreign office', report: true,
       climate: 'climate.foreign_office', temp: 'sensor.foreign_office_sensor_climate_temperature', hum: 'sensor.foreign_office_sensor_climate_humidity',
-      scenes: ['all', 'off'],
       lights: [['light.dig_uno_v3', 'Lights']],
       media: [],
+      settings: [
+        lightsGroup('foreign_office', []),
+        heatingGroup('foreign_office', [
+          stepRow('door_delta', `${DOOR}_open_delta`, 'Door open delta', 'Suggest opening the door when outside is this much cooler than the room', 0.5, 10, 0.5, '°'),
+          stepRow('door_min_outdoor', `${DOOR}_open_min_outdoor`, 'Door open minimum outdoors', 'No suggestion when outside is colder than this', 0, 20, 0.5, '°'),
+          stepRow('door_comfort', `${DOOR}_indoor_comfort_threshold`, 'Door indoor comfort', 'No suggestion until the room is at least this warm', 18, 28, 0.5, '°'),
+          stepRow('door_cooldown', `${DOOR}_notification_cooldown_mins`, 'Door alert cooldown', 'Minimum time between door alerts', 15, 240, 15, ' min'),
+        ]),
+        presenceGroup('foreign_office'),
+      ],
     },
-    back_garden: { kind: 'garden', name: 'Back garden', short: 'Back garden', theme: '' },
-    front_garden: { kind: 'garden', name: 'Front garden', short: 'Front garden', theme: 'input_select.front_garden_light_theme' },
-  };
-  const GARDEN_ORDER = ['front_garden', 'back_garden'];
+    {
+      key: 'front_garden', kind: 'garden', order: 1, area: 'front_garden', name: 'Front garden', short: 'Front garden', theme: 'input_select.front_garden_light_theme',
+      settings: [{
+        key: 'lights', title: 'Lights', rows: [
+          toggleRow('automation', 'input_boolean.front_garden_automation_lights_enabled', 'Lights automation', 'On from sunset; off when the house goes to sleep'),
+          toggleRow('calendar', 'input_boolean.front_garden_light_theme_calendar_enabled', 'Follow calendar', 'Switches theme on the days it changes'),
+        ],
+      }],
+    },
+    {
+      key: 'back_garden', kind: 'garden', order: 2, area: 'back_garden', name: 'Back garden', short: 'Back garden', theme: '',
+      settings: [{
+        key: 'lights', title: 'Lights', rows: [toggleRow('automation', 'input_boolean.back_garden_automation_lights_enabled', 'Lights automation', 'On from sunset; off when the house goes to sleep')],
+      }],
+    },
+  ];
+
+  const ROOMS = Object.fromEntries(ROOM_TABLE.map((r) => [r.key, r]));
+  const ROOM_SETTINGS = Object.fromEntries(ROOM_TABLE.map((r) => [r.key, r.settings]));
+  const byOrder = (kind) => ROOM_TABLE.filter((r) => r.kind === kind).sort((a, b) => a.order - b.order).map((r) => r.key);
+  const ROOM_ORDER = byOrder('room');
+  const GARDEN_ORDER = byOrder('garden');
   const isGarden = (key) => Object.prototype.hasOwnProperty.call(ROOMS, key) && ROOMS[key].kind === 'garden';
   // What the shared room code may read from a garden: nothing it would otherwise mistake for a room feature.
-  const GARDEN_ROOM_DEFAULTS = { report: false, climate: '', temp: '', hum: '', scenes: [], lights: [], media: [] };
-  const ROOM_ORDER = [
-    'parlour', 'kitchen', 'hallway_downstairs', 'hallway_upstairs', 'bedroom', 'bathroom',
-    'home_office', 'foreign_office',
-  ];
-  const ALL_ROOM_KEYS = Object.keys(ROOMS);
+  const GARDEN_ROOM_DEFAULTS = { report: false, climate: '', temp: '', hum: '', lights: [], media: [] };
+  const ALL_ROOM_KEYS = ROOM_TABLE.map((r) => r.key);
 
   // Where the dashboard is registered (url_path in configuration.yaml). Defined once: an unknown
   // path silently falls back to the default dashboard, which is exactly the bug this avoids.
@@ -421,6 +494,8 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     for (const k of Object.keys(BLANK_ROOM)) if (e[k] !== undefined && e[k] !== null) m[k] = e[k];
     m.key = key;
     m.cfg = cfg.kind === 'garden' ? { ...GARDEN_ROOM_DEFAULTS, ...cfg } : cfg;
+    // Gardens take their scenes from sensor.<garden>_lighting_scenes, not from tiles.
+    m.scenes = cfg.kind === 'garden' ? [] : (sceneRegistry(hass).rooms[key] || { ids: [] }).ids;
     m.window_off = cfg.kind === 'garden' ? windowOff(hass, key) : '';
     m.hasReport = !!roomEntry(hass, key);
     m.temp = num(e.temp);
@@ -465,6 +540,11 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       const shown = gaps.slice(0, 3).join(', ') + (gaps.length > 3 ? ` +${gaps.length - 3} more` : '');
       items.push({ room: 'Pulse', key: '', kind: 'unexplained_reason', text: `No wording for ${shown}`, nav: '' });
     }
+    const bad = sceneProblems(hass);
+    if (bad.length) {
+      const shown = bad.slice(0, 2).join('; ') + (bad.length > 2 ? ` +${bad.length - 2} more` : '');
+      items.push({ room: 'Pulse', key: '', kind: 'scene_registry', text: `Scene labels need fixing: ${shown}`, nav: '' });
+    }
     return items;
   }
 
@@ -484,6 +564,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       case 'motion_disabled': return 'Motion sensor off';
       case 'garden_theme_config': return 'Theme setup';
       case 'unexplained_reason': return 'Reason not worded';
+      case 'scene_registry': return 'Scene labels';
       case 'sensor_unavailable': return 'Sensor unavailable';
       case 'sensor_stale': return 'Sensor not updating';
       case 'cold_not_heating': return 'Too cold, heating off';
@@ -505,6 +586,90 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return s.startsWith(`${key}_`) ? s.slice(key.length + 1) : s;
   }
   const sceneLabel = (id) => SCENE_LABELS[id] || id.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
+
+  // ── Scenes from the HA registry ───────────────────────────────────────────────────────────────
+  // A room's scenes are the `scene.*` entities in its area (the entity's own area, else its device's), by label:
+  // `scene_order_N` puts the scene in the tile list at position N, `scene_control_off` marks the scene that
+  // switches the room off (shown last), and `scene_theme_<theme>` marks a garden's theme look (not a tile); other `scene_control_<name>` labels are the automations' and ignored. The
+  // scene id the card shows is the entity id without `scene.<room>_`. Anything under `scene_` that is none of
+  // these, a scene whose id does not start with its room key, two scenes at one position, or a room without
+  // exactly one off scene is a problem: it is returned, surfaced as an attention item and logged, never skipped.
+  // A hass without `entities` (the registry has not arrived) yields nothing and no problems.
+  const SCENE_ORDER_LABEL = /^scene_order_([1-9]\d{0,2})$/;
+  const SCENE_THEME_LABEL = /^scene_theme_([a-z][a-z0-9_]*)$/;
+  const SCENE_OFF_LABEL = 'scene_control_off';
+  const SCENE_CONTROL_LABEL = /^scene_control_[a-z][a-z0-9_]*$/;
+  const registryCache = new WeakMap();
+
+  function sceneArea(devices, e) {
+    const own = e.area_id;
+    if (typeof own === 'string' && own) return own;
+    const dev = e.device_id && devices ? devices[e.device_id] : null;
+    return dev && typeof dev.area_id === 'string' ? dev.area_id : '';
+  }
+
+  // Pure: the registry in, `{rooms: {key: {ids, off, themes}}, problems}` out.
+  function deriveScenes(entities, devices) {
+    const problems = [];
+    const rooms = {};
+    const byArea = new Map(ROOM_TABLE.map((r) => [r.area, r.key]));
+    const found = {};
+    for (const key of ALL_ROOM_KEYS) { rooms[key] = { ids: [], off: '', themes: {} }; found[key] = { ordered: [], offs: [] }; }
+    for (const [eid, e] of Object.entries(entities)) {
+      if (!eid.startsWith('scene.') || !isObj(e)) continue;
+      const key = byArea.get(sceneArea(devices, e));
+      if (!key) continue;
+      const labels = Array.isArray(e.labels) ? e.labels.filter((l) => typeof l === 'string' && l.startsWith('scene_')) : [];
+      if (!labels.length) continue;
+      const prefix = `scene.${key}_`;
+      const id = eid.startsWith(prefix) ? eid.slice(prefix.length) : '';
+      if (!/^[a-z0-9_]+$/.test(id)) { problems.push(`${eid} is in ${key} but its id does not start with ${prefix}`); continue; }
+      for (const l of labels) {
+        const order = SCENE_ORDER_LABEL.exec(l);
+        const theme = SCENE_THEME_LABEL.exec(l);
+        if (order) found[key].ordered.push({ n: Number(order[1]), id });
+        else if (l === SCENE_OFF_LABEL) found[key].offs.push(id);
+        else if (theme) rooms[key].themes[theme[1]] = id;
+        // Other control labels (scene_control_daylight, ...) belong to the lighting automations; Pulse ignores them.
+        else if (SCENE_CONTROL_LABEL.test(l)) continue;
+        else problems.push(`${eid} has label "${l}" which is not scene_order_N, scene_control_<name> or scene_theme_<name>`);
+      }
+    }
+    for (const key of ALL_ROOM_KEYS) {
+      const { ordered, offs } = found[key];
+      if (offs.length !== 1) problems.push(`${key}: expected one scene labelled ${SCENE_OFF_LABEL}, found ${offs.length}`);
+      else rooms[key].off = offs[0];
+      ordered.sort((a, b) => a.n - b.n || (a.id < b.id ? -1 : 1));
+      for (let i = 1; i < ordered.length; i += 1) if (ordered[i].n === ordered[i - 1].n) problems.push(`${key}: scenes ${ordered[i - 1].id} and ${ordered[i].id} are both scene_order_${ordered[i].n}`);
+      // The off scene is always the last tile, whatever position it carries.
+      rooms[key].ids = ordered.map((o) => o.id).filter((id) => id !== rooms[key].off);
+      if (rooms[key].off) rooms[key].ids.push(rooms[key].off);
+    }
+    return { rooms, problems };
+  }
+
+  // Memoised on the registry object: HA replaces `hass.entities` when it changes.
+  function sceneRegistry(hass) {
+    const entities = hass && hass.entities;
+    if (!isObj(entities)) return { rooms: {}, problems: [] };
+    const devices = isObj(hass.devices) ? hass.devices : null;
+    const hit = registryCache.get(entities);
+    if (hit && hit.devices === devices) return hit.value;
+    const value = deriveScenes(entities, devices);
+    registryCache.set(entities, { devices, value });
+    return value;
+  }
+
+  const loggedProblems = new Set();
+  function sceneProblems(hass) {
+    const { problems } = sceneRegistry(hass);
+    for (const p of problems) {
+      if (loggedProblems.has(p) || typeof console === 'undefined') continue;
+      loggedProblems.add(p);
+      console.error(`pulse-card: scene registry: ${p}`);
+    }
+    return problems;
+  }
 
   // ── Wording: homerun history entries in plain words ──────────────────────────────────────────
   // homerun publishes only structured data (reason keys, outcomes, facts); every sentence on screen is
@@ -1937,8 +2102,8 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   function sectionLights(hass, key, now, ui) {
     const m = roomModel(hass, key);
     const active = activeScene(hass, key);
-    const cols = Math.min(4, Math.max(1, m.cfg.scenes.length));
-    const tiles = m.cfg.scenes.map((id) => {
+    const cols = Math.min(4, Math.max(1, m.scenes.length));
+    const tiles = m.scenes.map((id) => {
       const on = id === active;
       const ic = ICON[SCENE_ICON[id] || 'bulb'];
       return `<button class="tile${on ? ' on' : ''}" data-act="scene" data-entity="scene.${key}_${id}" aria-pressed="${on}">${svg(ic, 20)}<span>${esc(sceneLabel(id))}</span></button>`;
@@ -2002,70 +2167,6 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     if (!hit) return '';
     return hit[1] === 'any' || hit[1] === (isOn ? 'on' : 'off') ? hit[0] : '';
   }
-
-  // ── Room settings ────────────────────────────────────────────────────────────────────────────
-  // The settings panel (a sheet opened from the gear in the room banner) holds what means "this room should
-  // behave differently from now on": automation switches and their tuning, by subsystem. What a person changes
-  // because of something happening right now (scenes, lights, the fan on/off, keep-room-occupied) stays on the page.
-  //
-  // Rows are either a toggle or a stepper with a fixed min/max/step. A write names a room, group and key from
-  // this table, never an entity id, so turn_on/turn_off/set_value can only reach the helpers listed here. A row
-  // whose helper is missing or unusable is left out when rendering, and a group left empty is not shown.
-  //
-  // Stepper ranges equal the clamp in the automation that reads the helper (a test holds the numbers to a list of
-  // expected clamps, so a change on one side has to be made on both). Where the automation does not clamp, the
-  // range is the helper's own min/max/step in packages/helpers.yaml. Sources:
-  //   fan: homerun-automations lib/bathroom/steam.ts (MIN/MAX_FAN_MIN_RUN_MIN, MIN/MAX_FAN_MAX_RUN_MIN, MIN/MAX_FAN_MARGIN)
-  //   lux threshold, foreign office door ventilation: no clamp in the automation, so the helper's range.
-  // Not exposed on purpose: calibration that silently breaks a rule when wrong, such as the bathroom shower
-  // detection thresholds (shower_rise, above_baseline, end_drop, end_confirm). Those stay in HA settings.
-  const toggleRow = (key, id, title, sub) => ({ kind: 'toggle', key, id, title, sub });
-  const stepRow = (key, id, title, sub, min, max, step, unit) => ({ kind: 'number', key, id, title, sub, min, max, step, unit });
-  const luxRow = (k) => stepRow('lux_dark', `input_number.${k}_automation_lux_threshold_dark`, 'Dark below', 'Lux reading under which the room counts as dark', 0, 500, 1, ' lx');
-  const lightsGroup = (k, extra) => ({ key: 'lights', title: 'Lights', rows: [toggleRow('automation', `input_boolean.${k}_automation_lights_enabled`, 'Lights automation', 'Decides lights from presence and time of day'), luxRow(k), ...extra] });
-  const presenceGroup = (k) => ({ key: 'presence', title: 'Presence', rows: [toggleRow('motion', `input_boolean.${k}_sensor_motion_enabled`, 'Motion sensor', 'Off means movement is ignored and the room relies on holds')] });
-  const heatingGroup = (k, extra) => ({ key: 'heating', title: 'Heating', rows: [toggleRow('automation', `input_boolean.${k}_automation_heating_enabled`, 'Heating automation', 'Sets the target from mode, windows and schedule'), ...extra] });
-  const sonosGroup = (k) => ({ key: 'media', title: 'Media', rows: [toggleRow('sonos', `input_boolean.${k}_automation_sonos_enabled`, 'Follow the speaker group', 'Joins the parlour speaker group when the room is occupied')] });
-  const indoor = (k, ...more) => [lightsGroup(k, []), heatingGroup(k, []), presenceGroup(k), ...more];
-  const DOOR = 'input_number.foreign_office_automation_door';
-  const ROOM_SETTINGS = {
-    parlour: indoor('parlour'),
-    kitchen: indoor('kitchen', sonosGroup('kitchen')),
-    hallway_downstairs: indoor('hallway_downstairs'),
-    hallway_upstairs: indoor('hallway_upstairs'),
-    bedroom: indoor('bedroom'),
-    bathroom: [
-      lightsGroup('bathroom', []), heatingGroup('bathroom', []), presenceGroup('bathroom'),
-      {
-        key: 'fan', title: 'Fan', rows: [
-          toggleRow('automation', 'input_boolean.bathroom_automation_fan_enabled', 'Fan automation', 'Runs the extractor fan after a shower until the steam clears'),
-          stepRow('min_run', 'input_number.bathroom_automation_fan_min_run', 'Minimum run', 'After the last shower ends', 5, 30, 5, ' min'),
-          stepRow('max_run', 'input_number.bathroom_automation_fan_max_run', 'Maximum run', 'Off by then, whatever the humidity', 15, 120, 15, ' min'),
-          stepRow('margin', 'input_number.bathroom_automation_fan_humidity_margin', 'Stops within', 'Humidity points above the room\'s normal level', 2, 30, 1, '%'),
-        ],
-      },
-    ],
-    home_office: indoor('home_office', sonosGroup('home_office')),
-    foreign_office: [
-      lightsGroup('foreign_office', []),
-      heatingGroup('foreign_office', [
-        stepRow('door_delta', `${DOOR}_open_delta`, 'Door open delta', 'Suggest opening the door when outside is this much cooler than the room', 0.5, 10, 0.5, '°'),
-        stepRow('door_min_outdoor', `${DOOR}_open_min_outdoor`, 'Door open minimum outdoors', 'No suggestion when outside is colder than this', 0, 20, 0.5, '°'),
-        stepRow('door_comfort', `${DOOR}_indoor_comfort_threshold`, 'Door indoor comfort', 'No suggestion until the room is at least this warm', 18, 28, 0.5, '°'),
-        stepRow('door_cooldown', `${DOOR}_notification_cooldown_mins`, 'Door alert cooldown', 'Minimum time between door alerts', 15, 240, 15, ' min'),
-      ]),
-      presenceGroup('foreign_office'),
-    ],
-    front_garden: [{
-      key: 'lights', title: 'Lights', rows: [
-        toggleRow('automation', 'input_boolean.front_garden_automation_lights_enabled', 'Lights automation', 'On from sunset; off when the house goes to sleep'),
-        toggleRow('calendar', 'input_boolean.front_garden_light_theme_calendar_enabled', 'Follow calendar', 'Switches theme on the days it changes'),
-      ],
-    }],
-    back_garden: [{
-      key: 'lights', title: 'Lights', rows: [toggleRow('automation', 'input_boolean.back_garden_automation_lights_enabled', 'Lights automation', 'On from sunset; off when the house goes to sleep')],
-    }],
-  };
 
   // Fails at load, not at the first tap: every room has a table, each row's helper is in the domain its kind
   // writes to, keys are unique within a group, and every stepper has a sane range.
@@ -2920,7 +3021,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     }
   }
 
-  const api = { lightsStory, lightsState, verdictFor, houseActivity, parseHistory, readHistory, sentenceFor, roomActivity, unexplainedReasons, REASON_TEXT, TILE, TILE_H, TILE_WIDE_H, tileNeededHeight, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, SETTINGS_PATH, takesTaps, coverNeed, topGuard, sheetFit, splitSheet, touchGuard, lockScroll, scrollTargets, SHEET_MARK, HEAD_MODES, TOP_GUARD_MAX, CAMERAS_PATH, PENDING_MS, cameraParts, cameraToggle, cameraPending, perform, pendingStart, pendingFor, pendingKey, markPending, ERROR_MS, parseClips, frigateClipsId, roomGroups, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, GARDEN_ORDER, ALL_ROOM_KEYS, THEME_LABELS, THEME_ICON, ICON, gardenModel, gardenSub, themeSource, shortDate, ALLOWED, DEVICE_REASONS, ROOM_SETTINGS, MO_TOGGLES, settingFor, settingsOpen, settingsClose, tabTarget, render, priceColour, PRICE_STOPS, PRICE_EXTREME_P, roomModel, attentionItems, handleAction, callService, num, parseList };
+  const api = { deriveScenes, sceneRegistry, ROOM_TABLE, lightsStory, lightsState, verdictFor, houseActivity, parseHistory, readHistory, sentenceFor, roomActivity, unexplainedReasons, REASON_TEXT, TILE, TILE_H, TILE_WIDE_H, tileNeededHeight, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, SETTINGS_PATH, takesTaps, coverNeed, topGuard, sheetFit, splitSheet, touchGuard, lockScroll, scrollTargets, SHEET_MARK, HEAD_MODES, TOP_GUARD_MAX, CAMERAS_PATH, PENDING_MS, cameraParts, cameraToggle, cameraPending, perform, pendingStart, pendingFor, pendingKey, markPending, ERROR_MS, parseClips, frigateClipsId, roomGroups, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, GARDEN_ORDER, ALL_ROOM_KEYS, THEME_LABELS, THEME_ICON, ICON, gardenModel, gardenSub, themeSource, shortDate, ALLOWED, DEVICE_REASONS, ROOM_SETTINGS, MO_TOGGLES, settingFor, settingsOpen, settingsClose, tabTarget, render, priceColour, PRICE_STOPS, PRICE_EXTREME_P, roomModel, attentionItems, handleAction, callService, num, parseList };
   root.PulseLib = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 

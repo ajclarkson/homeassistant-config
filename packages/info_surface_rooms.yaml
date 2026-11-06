@@ -2,8 +2,8 @@
 #
 # `sensor.info_rooms`      one entry per room in attribute `rooms`: occupancy, climate, lights,
 #                          heating, automation flags, `holds` (every reason currently true),
-#                          `reason_text` and the last meaningful decision. The Pulse card words the room's
-#                          one-line state itself from these facts.
+#                          `reason_text`. The Pulse card words the room's one-line state itself from these
+#                          facts and reads lights, scenes and media from its own room table and the HA registry.
 # `sensor.info_attention`  state = number of exceptions, attribute `items` = [{room, key, kind, text, nav}].
 #                          Each kind is flagged only after its state has held past a duration (thresholds at the top of
 #                          `info_attention_calc`; the stale limit in `info_stale_sensors`).
@@ -110,25 +110,12 @@ template:
               {% elif differs %}{% set target_reason = 'differs from mode' %}
               {% else %}{% set target_reason = '' %}{% endif %}
               {% set scene = states('sensor.' ~ k ~ '_active_scene') %}
-              {# Last decision and the lights reason come from homerun's retained history for this room (newest first).
-                 Raw keys only: the Pulse card words them itself, this prettified form is for the classic views. #}
-              {% set hx = state_attr('sensor.' ~ k ~ '_history', 'entries') %}
-              {% set hist = hx | from_json if hx is string else (hx or []) %}
-              {% set lasts = namespace(v=none) %}
-              {% for f in hist if lasts.v is none and f.get('kind') == 'decision' and f.get('decision') not in ['update_external_temp', 'record'] and 'room_temp_feed' not in (f.get('automation_id') or '') %}
-                {% set lasts.v = f %}
-              {% endfor %}
-              {% set last = lasts.v %}
-              {% set last_sentence = ((last.get('decision') or '') | replace('_', ' ')) ~ ((' · ' ~ (last.get('reason') | replace('_', ' '))) if last.get('reason') else '') if last else '' %}
-              {# Effective state: only said when the TRV target is not what the mode implies; otherwise the mode is noise. #}
               {% set mn = namespace(v=none) %}
               {% for m in manual_feed if mn.v is none and m.get('room') == k %}{% set mn.v = m %}{% endfor %}
               {# Light counts come from the room's light group members (kitchen ceiling is itself a group: counted once). #}
               {% set members = state_attr('group.' ~ k ~ '_lights', 'entity_id') or [] %}
               {% set lc = namespace(on=0) %}
               {% for m in members %}{% if is_state(m, 'on') %}{% set lc.on = lc.on + 1 %}{% endif %}{% endfor %}
-              {% set lw = namespace(v=none) %}
-              {% for f in hist if lw.v is none and f.get('kind') == 'decision' and f.get('subsystem') == 'lighting' %}{% set lw.v = f %}{% endfor %}
               {% set pres_labels = hs.items | selectattr('s', 'eq', 'presence') | map(attribute='label') | list %}
               {% set heat_labels = hs.items | selectattr('s', 'eq', 'heating') | map(attribute='label') | list %}
               {% set out.items = out.items + [{
@@ -155,11 +142,7 @@ template:
                 'labels': labels,
                 'manual': {'source': mn.v.get('source'), 'ts': mn.v.get('ts'), 'what': mn.v.get('what')} if mn.v and mn.v.get('source') else none,
                 'lights_on': lc.on,
-                'lights_total': members | length,
-                'lights_why': (lw.v.get('reason') or '') | replace('_', ' ') if lw.v else '',
-                'lights_ts': (lw.v.get('ts') or '') if lw.v else '',
-                'last': last_sentence,
-                'last_ts': last.get('ts') if last else ''
+                'lights_total': members | length
               }] %}
             {% endfor %}
             {{ out.items | tojson }}
