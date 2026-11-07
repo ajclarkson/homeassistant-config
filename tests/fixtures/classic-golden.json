@@ -1,5 +1,5 @@
 {
- "style": "4b6e057672b30a0e5554bc9aa9c450aaa435802b72fc3c213f0f0f5b88a40390",
+ "style": "a295cebb88e3266d251203725af99f72fc1813c1a0f63931c0d7ac0c781b0319",
  "pages": {
   "attention/now-header": "50fffd0345d6168aacf3994ebdd289b17362e76d3f529187905aaf2b68eeb287",
   "attention/status": "9b9c1f4994fe1e072cb1708a80a22a11f89051cf737772348adc665c443c561f",
@@ -341,10 +341,10 @@
   "rich/room-feed:back_garden": "29069b2f340d11204ec94eebe691fd0fc106d304a643c4ab51845f24801d3a6a",
   "rich/garden-lights:back_garden": "353b7d60a029e81de60e98afceae1f684778b75061f0442a68e767aa9eea66c3",
   "rich/garden-theme:back_garden": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "rich/camera:parlour": "3733f08008fa91589e8508b10dbf193f511fd0b2949c995fad35aa249ec34491",
-  "rich/camera:kitchen": "d4808f4dd420268314bb0f07809a6b94e271074fd6d1748ae84ba98bff7eb3bb",
-  "rich/camera:home_office": "ebcc31ff0038ed5b4454d7b16403fc8e223bfbc0c9b80debb26416e854087f2c",
-  "rich/cameras-head": "14fd5a779aa76bb0ad14d2fd754be3e70fcd0b8e42efdf34274b9181bf6a777c",
+  "rich/camera:parlour": "f8bf54e1548c66d80e0ea1f8db85f896b7f0297aedf8654191a36f48649d5278",
+  "rich/camera:kitchen": "9196c3809db5ba3cdbc4088d5845cf027cc3fdea3279d7861f4d8736314f5245",
+  "rich/camera:home_office": "5f39f0bbe1b1cae3f3cdd65a24c27fb5766c92daa5b06930fc17591f51a02ec7",
+  "rich/cameras-head": "0fe8ddc05905011c7b98b728c8f730e2b74394e58b5cd8469363e670e2031f69",
   "rich/house-head": "973ae40fbb86c65bca671d26a48f2d39ce8bac49798cf0142121a8ee499af93a",
   "rich/house-mode": "6305d317a6862459225cd68e5e12d0b8c7d434c437cfd3912d31c3b5ddd3d1ff",
   "rich/house-people": "51440fbcaacecee2a217003569522c71f0f6ecaf3207066abb629fb3341bb856",

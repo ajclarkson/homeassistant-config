@@ -73,7 +73,7 @@
   //     low alpha over a surface: primary text and a tint icon sit on it); link; on / off toggle tracks
   //     with knob / knobOff; sliderTrack the unfilled part of a slider (the fill is tint); ok good status; heat boiler
   //     firing.
-  //   Attention: attention text and dots; attentionBg, attentionBorder, attentionChip, attentionRow fills.
+  //   Attention: attention text and dots; attentionBg, attentionBorder, attentionRow fills.
   //   Chrome: tabBar translucent tab bar; scrimFull the clip player's backdrop; streamWell / videoBg
   //     behind camera pictures.
   //   Tiles (the rounded squares that lead a list row): each fill has an Ink, the glyph colour on it, held to
@@ -90,8 +90,8 @@
       text: '#e8ebef', textSoft: '#cfd5dd', textSecondary: '#a3adba', textTertiary: '#8f9aa8',
       tint: '#f2c46b', tintInk: '#1d1708', tintFill: 'rgba(242,196,107,.16)', link: '#7aa7ff',
       on: '#3a8f63', off: '#3a424d', knob: '#fff', knobOff: '#c4ccd6', sliderTrack: '#3a424d',
-      ok: '#6fcf97', okBg: '#14281d', heat: '#f08a4b', heatBg: '#2a1a10',
-      attention: '#f2b84b', attentionBg: '#221d10', attentionBorder: '#4a3d1c', attentionChip: '#2b2415', attentionRow: '#201c10',
+      ok: '#6fcf97', heat: '#f08a4b',
+      attention: '#f2b84b', attentionBg: '#221d10', attentionBorder: '#4a3d1c', attentionRow: '#201c10',
       tabBar: 'rgba(18,21,26,.82)', scrimFull: 'rgba(0,0,0,.94)',
       streamWell: '#0c0e12', videoBg: '#000',
       priceNegative: '#2ee6c8', priceExtreme: '#c2003b', priceNeutral: '#6b7684',
@@ -114,8 +114,8 @@
       text: '#e0def4', textSoft: '#e0def4', textSecondary: '#908caa', textTertiary: '#6e6a86',
       tint: '#c4a7e7', tintInk: '#191724', tintFill: 'rgba(196,167,231,.16)', link: '#7aa2f7',
       on: '#31748f', off: '#403d52', knob: '#e0def4', knobOff: '#908caa', sliderTrack: '#403d52',
-      ok: '#9ccfd8', okBg: '#1f2b35', heat: '#ebbcba', heatBg: '#2e2230',
-      attention: '#eb6f92', attentionBg: '#2b1f33', attentionBorder: '#5c3550', attentionChip: '#3a2640', attentionRow: '#251c2e',
+      ok: '#9ccfd8', heat: '#ebbcba',
+      attention: '#eb6f92', attentionBg: '#2b1f33', attentionBorder: '#5c3550', attentionRow: '#251c2e',
       tabBar: 'rgba(25,23,36,.82)', scrimFull: 'rgba(0,0,0,.94)',
       streamWell: '#14121f', videoBg: '#000',
       priceNegative: '#7dcfff', priceExtreme: '#b4637a', priceNeutral: '#6e6a86',
@@ -301,7 +301,11 @@
       dailyCostDays: (n) => `Daily cost, ${n} ${plural(n, 'day', 'days')}`,
     },
     cameras: {
-      master: 'Cameras', cameraOn: 'Camera on', recordings: 'Recordings', tryAgain: 'Try again',
+      title: 'Cameras', master: 'Cameras', cameraOn: 'Camera on', recordings: 'Recordings', tryAgain: 'Try again',
+      recordingsHint: 'Clips of people and movement', loadingRecordings: 'Loading recordings…', recordingsError: "Couldn't load recordings", noRecordings: 'No recordings yet',
+      live: 'Live', privacyOn: 'Privacy on', offlineWord: 'Offline', turningOn: 'Turning on…', turningOff: 'Turning off…', noResponse: 'No response',
+      personInView: 'Person in view', noOneInView: 'No one in view', cameraIsOff: 'Camera is off', waiting: 'Waiting for the camera', didNotChange: 'It did not change, tap to try again',
+      byHand: 'Set by hand', usually: (rule) => `Usually ${rule}`, wentOffline: (ago) => `Went offline ${ago}`,
       recent: (n) => `${n} recent`,
       offline: (names) => `${names} offline`,
     },
@@ -655,17 +659,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 .t{font-size:17px;font-weight:600;text-align:right}
 .err{background:${TOKENS.attentionBg};border:1px solid ${TOKENS.attentionBorder};color:${TOKENS.attention};border-radius:12px;padding:10px 14px;font-size:13px;font-weight:600}
 [aria-busy="true"]{opacity:.55;cursor:progress}
-.tag{font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:${TOKENS.attentionChip};color:${TOKENS.attention};white-space:nowrap}
-.tag.ok{background:${TOKENS.okBg};color:${TOKENS.ok}}
-.tag.off{background:${TOKENS.control};color:${TOKENS.textSecondary}}
-.tag.heat{background:${TOKENS.heatBg};color:${TOKENS.heat}}
 .link{display:flex;align-items:center;min-height:44px;font-size:13px;font-weight:600;color:${TOKENS.link}}
-.feed{display:grid;grid-template-columns:44px 16px minmax(0,1fr);gap:8px;font-size:12.5px;line-height:1.4;padding:8px 14px;border-top:1px solid ${TOKENS.separator}}
-.feed:first-child{border-top:0}
-.feed .a{color:${TOKENS.textTertiary}}
-.feed.muted{color:${TOKENS.textSecondary}}
-.feed.warn{color:${TOKENS.attention}}
-.feed .si{display:flex;align-items:center;justify-content:center;height:1.4em;color:${TOKENS.textTertiary}}
 .h{font-size:14px;font-weight:600}
 .s{font-size:12.5px;color:${TOKENS.textSecondary};margin-top:2px;line-height:1.4}
 .tog{display:flex;align-items:center;gap:12px;justify-content:space-between;min-height:56px;padding:6px 14px;border-top:1px solid ${TOKENS.separator};width:100%;background:none;border-left:0;border-right:0;border-bottom:0;color:inherit;font:inherit;text-align:left}
@@ -678,15 +672,13 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 .seg{border:0;font:inherit;font-size:14px;font-weight:600;min-height:44px;border-radius:12px;cursor:pointer;flex:1;background:transparent;color:${TOKENS.textSoft}}
 .seg.on{background:${TOKENS.tint};color:${TOKENS.tintInk}}
 .stream{background:${TOKENS.streamWell};aspect-ratio:16/9;display:flex;align-items:center;justify-content:center}
+.stream[hidden]{display:none}
 .stream ha-camera-stream{display:block;width:100%}
-.ptz{display:grid;grid-template-columns:repeat(3,48px);grid-template-rows:repeat(3,48px);gap:6px;justify-content:center;padding:12px 14px;border-top:1px solid ${TOKENS.separator}}
+.ptz{display:grid;grid-template-columns:repeat(3,48px);grid-template-rows:repeat(3,48px);gap:6px;justify-content:center;padding:12px ${HM_ROW_INSET}px;border-top:.5px solid ${TOKENS.separator}}
 .ptz button{border:0;border-radius:12px;background:${TOKENS.control};color:${TOKENS.text};cursor:pointer;display:flex;align-items:center;justify-content:center;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 .ptz button:active{transform:scale(.96)}
 .ptz button:disabled{opacity:.35;cursor:default}
-.clip{display:flex;align-items:center;gap:12px;padding:8px 14px;border-top:1px solid ${TOKENS.separator};width:100%;background:none;border-left:0;border-right:0;border-bottom:0;color:inherit;font:inherit;text-align:left;cursor:pointer;min-height:62px}
-.clip img{width:72px;height:48px;object-fit:cover;border-radius:8px;background:${TOKENS.control};flex:none}
-.clip .t{font-size:14px;font-weight:600}
-.clip .w{font-size:12px;color:${TOKENS.textSecondary};margin-top:2px}
+.hm-thumb{width:72px;height:48px;object-fit:cover;border-radius:8px;background:${TOKENS.control};flex:none}
 .hm{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;color:${TOKENS.text};display:flex;flex-direction:column;margin-top:max(0px,calc(${HM_SECTION_GAP}px - var(--row-gap,8px)))}
 .hm>*+*{margin-top:${HM_SECTION_GAP}px}
 .hm.hm-first{margin-top:0}
@@ -1508,9 +1500,9 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   // Native-style controls: the one definition every control on the room and garden pages uses.
   // Switch: 51x31, knob 27. It is decoration inside a row button, which carries aria-pressed and the title.
   const hmSwitch = (on) => `<span class="hm-sw${on ? '' : ' off'}" aria-hidden="true"></span>`;
-  function hmToggleRow({ title, sub, on, act, data, disabled }) {
+  function hmToggleRow({ title, sub, on, act, data, disabled, tile }) {
     const ctl = `data-act="${act}" ${dataAttrs(data)} aria-pressed="${on}"${disabled ? ' disabled' : ''}`;
-    return hmRow({ title, sub, ctl, trailing: hmSwitch(on) });
+    return hmRow({ tile, title, sub, ctl, trailing: hmSwitch(on) });
   }
   // Stepper: a 94x32 pill, "−" | "+" either side of a hairline. The current value is in the row's title. The
   // buttons are 44px tall, taller than the pill, so the target is large and the pill stays slim.
@@ -3140,10 +3132,10 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   function cameraStatus(hass, c, now) {
     const sw = stateObj(hass, cameraSwitch(c.k));
     const s = sw && typeof sw.state === 'string' ? sw.state : '';
-    if (!usable(s)) return { key: 'offline', tag: 'Offline', live: false, offline: true, since: ago(sw && sw.last_changed, now) };
-    if (s === 'on') return { key: 'private', tag: 'Privacy on', live: false, offline: false };
+    if (!usable(s)) return { key: 'offline', word: COPY.cameras.offlineWord, live: false, offline: true, since: ago(sw && sw.last_changed, now) };
+    if (s === 'on') return { key: 'private', word: COPY.cameras.privacyOn, live: false, offline: false };
     const person = state(hass, `binary_sensor.${c.k}_person_occupancy`) === 'on';
-    return { key: 'live', tag: person ? 'Live · person' : 'Live', live: true, offline: false, person };
+    return { key: 'live', word: COPY.cameras.live, live: true, offline: false, person };
   }
 
   // A camera toggle uses the shared pending mark (see Tap feedback), which also remembers which way it asked.
@@ -3220,14 +3212,16 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return `Changed by hand · usually ${sum.rule.reason.replace(/^./, (c) => c.toLowerCase())}`;
   }
 
+  // Title, the camera state as the subtitle, then one list: the master switch (its sub-line says which rule of the
+  // house mode applies), and only when true, "Set by hand" and which cameras are offline.
   function sectionCamerasHead(hass, now) {
     const sum = camerasSummary(hass, now);
-    const notes = [sum.rule.text, sum.byHand ? 'set by hand' : '', sum.offline.length ? `${sum.offline.map((x) => x.c.name).join(' · ')} offline` : ''].filter(Boolean);
-    const warn = sum.offline.length > 0;
-    const banner = `<div class="card pad${warn ? ' warn' : ''}" style="display:flex;gap:10px;align-items:flex-start"><span class="dot${warn ? ' warn' : sum.live.length ? '' : ' dim'}" style="margin-top:5px"></span><div><div style="font-size:15px;font-weight:700">${esc(sum.title)}</div><div style="font-size:13px;color:${TOKENS.textSecondary};margin-top:3px;line-height:1.45">${esc(notes.join(' · '))}</div></div></div>`;
-    const usableCams = sum.st.filter((x) => !x.s.offline).length;
-    const master = usableCams ? `<div class="card"><button class="tog tap" data-act="cameras-all" aria-pressed="${sum.live.length > 0}"><div><div class="h">${COPY.cameras.master}</div><div class="s">${sum.live.length ? 'Tap to turn all off' : 'Tap to turn all on'}</div></div><span class="sw${sum.live.length ? '' : ' off'}" role="img" aria-label="${sum.live.length ? COPY.common.on : COPY.common.off}"></span></button></div>` : '';
-    return `${pageTitle('Cameras')}${banner}${master}`;
+    const rows = [];
+    if (sum.st.some((x) => !x.s.offline)) rows.push(hmToggleRow({ title: COPY.cameras.master, sub: sum.rule.text, on: sum.live.length > 0, act: 'cameras-all', data: {} }));
+    if (sum.byHand) rows.push(hmRow({ title: COPY.cameras.byHand, sub: COPY.cameras.usually(lowerFirst(sum.rule.reason)) }));
+    if (sum.offline.length) rows.push(hmRow({ title: COPY.cameras.offline(sum.offline.map((x) => x.c.name).join(', ')), titleColour: TOKENS.attention }));
+    const list = rows.length ? `<section class="hm-sec hm-tight">${hmList(rows.join(''), true)}</section>` : '';
+    return `<div class="hm hm-first">${pageHead(COPY.cameras.title, sum.title)}${list}</div>`;
   }
 
   // `live` says whether a stream belongs above `rest`. The element draws the stream in a slot of its own that
@@ -3237,20 +3231,22 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const st = cameraStatus(hass, c, now);
     const pend = cameraPending(ui, hass, c.k, now);
     const waiting = !!pend && pend.waiting;
-    let tag = st.tag;
-    let cls = st.key === 'live' ? 'tag ok' : st.key === 'private' ? 'tag off' : 'tag';
-    if (waiting) { tag = pend.want === 'live' ? 'Turning on…' : 'Turning off…'; cls = 'tag off'; }
-    else if (pend) { tag = 'No response'; cls = 'tag'; }
-    const sub = st.offline ? `Offline${st.since ? ' · ' + st.since : ''}` : waiting ? 'Waiting for the camera' : pend ? 'It did not change · tap to try again' : st.live ? (st.person ? 'Person in view' : 'No one in view') : 'Camera is off';
-    const head = `<div class="tog"><div style="display:flex;align-items:center;gap:10px">${svg(ICON.camera, 20)}<div><div class="h">${c.name}</div><div class="s">${esc(sub)}</div></div></div><span class="${cls}">${esc(tag)}</span></div>`;
-    const toggle = st.offline ? '' : `<button class="tog tap" data-act="camera-toggle" data-camera="${c.k}" aria-pressed="${st.live}"><div><div class="h">${COPY.cameras.cameraOn}</div><div class="s">${waiting ? 'Waiting for the camera' : st.live ? 'Tap to turn off' : 'Tap to turn on'}</div></div><span class="sw${st.live ? '' : ' off'}" role="img" aria-label="${st.live ? COPY.common.on : COPY.common.off}"></span></button>`;
+    let word = st.word;
+    if (waiting) word = pend.want === 'live' ? COPY.cameras.turningOn : COPY.cameras.turningOff;
+    else if (pend) word = COPY.cameras.noResponse;
+    const person = st.person ? COPY.cameras.personInView : COPY.cameras.noOneInView;
+    const sub = st.offline ? (st.since ? COPY.cameras.wentOffline(st.since) : COPY.cameras.offlineWord) : waiting ? COPY.cameras.waiting : pend ? COPY.cameras.didNotChange : st.live ? person : COPY.cameras.cameraIsOff;
+    const head = hmRow({ tile: hmTile(TOKENS.subCameras, TOKENS.subCamerasInk, ICON.camera), title: c.name, sub, value: word });
+    const toggle = st.offline ? '' : hmToggleRow({ title: COPY.cameras.cameraOn, on: st.live, act: 'camera-toggle', data: { camera: c.k } });
     const pad = st.live ? ptzPad(hass, c) : '';
     return { live: st.live, rest: markPending(`${head}${toggle}${pad}${recordingsBlock(hass, c, now, ui)}`, ui, hass, now) };
   }
 
+  // A camera is one inset list: the picture (natural size, clipped to the list's rounded corners) on top, then its
+  // name and state, the switch, pan/tilt and recordings as rows.
   function sectionCamera(hass, camera, now, ui) {
     const parts = cameraParts(hass, camera, now, ui);
-    return `<div class="card">${parts.live ? `<div class="stream" data-stream="${camera}"></div>` : ''}${parts.rest}</div>`;
+    return `<div class="hm"><div class="hm-list">${parts.live ? `<div class="stream" data-stream="${camera}"></div>` : ''}${parts.rest}</div></div>`;
   }
 
   // Pan/tilt: hidden altogether while the camera has none of its four buttons (they are unavailable when the
@@ -3263,20 +3259,22 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return `<div class="ptz"><div></div>${b('up')}<div></div>${b('left')}<div></div>${b('right')}<div></div>${b('down')}<div></div></div>`;
   }
 
+  // Recordings: a disclosure row (the shared chevron turns when open), then a row per clip with its thumbnail.
   function recordingsBlock(hass, c, now, ui) {
     const r = camUi(ui).rec[c.k] || { open: false };
-    const toggle = `<button class="tog tap" data-act="camera-rec" data-camera="${c.k}" aria-expanded="${!!r.open}"><div><div class="h">${COPY.cameras.recordings}</div><div class="s">${r.open && r.status === 'ok' ? COPY.cameras.recent(r.items.length) : 'Clips of people and movement'}</div></div><span style="color:${TOKENS.textSecondary};display:flex;transform:rotate(${r.open ? 180 : 0}deg)">${svg(ICON.chev, 20)}</span></button>`;
+    const sub = r.open && r.status === 'ok' ? COPY.cameras.recent(r.items.length) : COPY.cameras.recordingsHint;
+    const toggle = hmRow({ title: COPY.cameras.recordings, sub, ctl: `data-act="camera-rec" data-camera="${c.k}" aria-expanded="${!!r.open}"`, trailing: `<span class="hm-chev" aria-hidden="true">${svg(ICON.next, 14)}</span>` });
     if (!r.open) return toggle;
-    const msg = (t) => `<div class="feed"><span class="a"></span><span class="si"></span><span style="color:${TOKENS.textSecondary}">${t}</span></div>`;
     let body;
-    if (r.status === 'loading' || !r.status) body = msg('Loading recordings…');
-    else if (r.status === 'error') body = msg("Couldn't load recordings") + `<button class="tog tap" data-act="camera-rec-refresh" data-camera="${c.k}"><div><div class="h">${COPY.cameras.tryAgain}</div></div></button>`;
-    else if (!r.items.length) body = msg('No recordings yet');
+    if (r.status === 'loading' || !r.status) body = quietFeedRow(COPY.cameras.loadingRecordings);
+    else if (r.status === 'error') body = quietFeedRow(COPY.cameras.recordingsError) + hmRow({ title: COPY.cameras.tryAgain, titleColour: TOKENS.link, ctl: `data-act="camera-rec-refresh" data-camera="${c.k}"` });
+    else if (!r.items.length) body = quietFeedRow(COPY.cameras.noRecordings);
     else body = r.items.map((it) => {
-      const what = [it.label.replace(/^./, (x) => x.toUpperCase()), it.zones.join(', ')].filter(Boolean).join(' · ');
-      return `<button class="clip" data-act="camera-clip" data-camera="${c.k}" data-clip="${esc(it.id)}"><img src="/api/frigate/notifications/${encodeURIComponent(it.id)}/snapshot.jpg" alt="" loading="lazy"><div style="flex:1;min-width:0"><div class="t">${esc(clipWhen(it.start, now))}</div><div class="w">${esc(what)}</div></div><span style="color:${TOKENS.textSecondary};display:flex">${svg(ICON.play, 18)}</span></button>`;
+      const what = [it.label.replace(/^./, (x) => x.toUpperCase()), it.zones.join(', ')].filter(Boolean).join(', ');
+      const thumb = `<img class="hm-thumb" src="/api/frigate/notifications/${encodeURIComponent(it.id)}/snapshot.jpg" alt="" loading="lazy">`;
+      return hmRow({ tile: thumb, title: clipWhen(it.start, now), sub: what, ctl: `data-act="camera-clip" data-camera="${c.k}" data-clip="${esc(it.id)}"`, trailing: `<span class="hm-chev" aria-hidden="true">${svg(ICON.play, 18)}</span>` });
     }).join('');
-    return toggle + body;
+    return `${toggle}<div class="hm-dp">${body}</div>`;
   }
 
   // Activity: the same timeline as the House page. The page is the room, so rows lead with the subsystem noun.
@@ -3860,7 +3858,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
           parts = { live: false, rest: `<div class="pad warn"><b>${COPY.common.cardError}</b><div class="s">${esc(err && err.message)}</div></div>` };
         }
         if (!this._camShell) {
-          this._root.innerHTML = `<style>${styleFor(this._config)}</style><div class="p"><div class="card"><div class="stream" id="cam-stream" hidden></div><div id="cam-rest"></div></div></div>`;
+          this._root.innerHTML = `<style>${styleFor(this._config)}</style><div class="p"><div class="hm"><div class="hm-list"><div class="stream" id="cam-stream" hidden></div><div id="cam-rest"></div></div></div></div>`;
           this._camShell = true;
           this._html = null;
         }

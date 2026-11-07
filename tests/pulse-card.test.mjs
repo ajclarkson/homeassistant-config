@@ -2097,7 +2097,7 @@ ok('every fixed height or clipping rule is accounted for (a new one needs its ar
   const fixed = cssRules().filter((r) => px(decl(r.body, 'height'))).map((r) => r.sel).sort();
   // Fixed SHAPES that hold no text: dots, icons, avatars, tiles, bars, switch track and knob, slider track and
   // thumb, the 1px visually-hidden helper. No content box has a fixed height.
-  const shapes = ['.clip img', '.dot', '.sw', '.sw::after', '.sr', '.hm-sw', '.hm-sw::after', '.hm-step', '.hm-step-div', '.hm-slider', '.hm-slider::-webkit-slider-runnable-track', '.hm-slider::-webkit-slider-thumb', '.hm-slider::-moz-range-track', '.hm-slider::-moz-range-progress', '.hm-slider::-moz-range-thumb', '.hm-av', '.hm-pd', '.hm-tile', '.hm-bars', '.hm-row+.hm-row::before', '.hm-dp .hm-row::before', '.ptz button', '.tl-dot', '.tl-row:last-child .tl-rail::before'];
+  const shapes = ['.hm-thumb', '.dot', '.sw', '.sw::after', '.sr', '.hm-sw', '.hm-sw::after', '.hm-step', '.hm-step-div', '.hm-slider', '.hm-slider::-webkit-slider-runnable-track', '.hm-slider::-webkit-slider-thumb', '.hm-slider::-moz-range-track', '.hm-slider::-moz-range-progress', '.hm-slider::-moz-range-thumb', '.hm-av', '.hm-pd', '.hm-tile', '.hm-bars', '.hm-row+.hm-row::before', '.hm-dp .hm-row::before', '.ptz button', '.tl-dot', '.tl-row:last-child .tl-rail::before'];
   assert.deepEqual(fixed.filter((f) => f !== '.ptz button'), shapes.filter((f) => f !== '.ptz button').sort());
   const sw = px(decl(rule('.sw').body, 'height'));
   const knob = P.STYLE.match(/\.sw::after\{[^\n]*top:(\d+)px[^\n]*height:(\d+)px/);
@@ -2475,31 +2475,32 @@ ok('cameras: per-camera status from the privacy switch, master state ignores the
   assert.match(head, />Cameras</);
   assert.match(head, /All cameras off/, 'a lying group state does not make cameras look on');
   assert.match(head, /House is at home · cameras off/);
-  assert.doesNotMatch(head, /set by hand/);
+  assert.doesNotMatch(head, /Set by hand/);
   assert.match(head, /data-act="cameras-all"[^>]*aria-pressed="false"/);
   assert.match(P.render('camera', { camera: 'kitchen' }, allOff, NOW), /Privacy on/);
 
   const sleep = mk({ ...base, 'switch.kitchen_privacy': b('off'), 'binary_sensor.kitchen_person_occupancy': b('on'), 'sensor.house_active_mode': b('sleep') });
   assert.match(P.render('cameras-head', {}, sleep, NOW), /Kitchen on/);
   assert.match(P.render('cameras-head', {}, sleep, NOW), /only the kitchen camera is on, for Mo/);
-  assert.doesNotMatch(P.render('cameras-head', {}, sleep, NOW), /set by hand/);
+  assert.doesNotMatch(P.render('cameras-head', {}, sleep, NOW), /Set by hand/);
   const kitchen = P.render('camera', { camera: 'kitchen' }, sleep, NOW);
-  assert.match(kitchen, /Live · person/);
+  assert.match(kitchen, /Person in view<\/div><\/div><span class="hm-val num">Live</);
   assert.match(kitchen, /data-act="camera-toggle" data-camera="kitchen" aria-pressed="true"/);
   assert.match(kitchen, /data-stream="kitchen"/, 'a live camera has a stream slot');
   assert.doesNotMatch(P.render('camera', { camera: 'parlour' }, sleep, NOW), /data-stream/, 'no stream slot while privacy is on');
 
   const hand = mk({ ...base, 'switch.parlour_privacy': b('off'), 'sensor.house_active_mode': b('normal') });
-  assert.match(P.render('cameras-head', {}, hand, NOW), /set by hand/);
+  const handHead = P.render('cameras-head', {}, hand, NOW);
+  assert.match(handHead, /Set by hand<\/div><div class="hm-rs">Usually off while someone&#39;s home</, 'what the house mode would normally do is the second line');
 
   const guestAway = mk({ ...base, 'sensor.house_active_mode': b('away'), 'input_select.house_active_mode_modifier': b('guest') });
   assert.match(P.render('cameras-head', {}, guestAway, NOW), /guest is staying/);
-  assert.doesNotMatch(P.render('cameras-head', {}, guestAway, NOW), /set by hand/);
+  assert.doesNotMatch(P.render('cameras-head', {}, guestAway, NOW), /Set by hand/);
 
   const offline = mk({ ...base, 'switch.home_office_privacy': b('unavailable', { last_changed: '2026-10-26T12:00:00+00:00' }), 'sensor.house_active_mode': b('normal') });
   const oh = P.render('cameras-head', {}, offline, NOW);
   assert.match(oh, /Home office offline/);
-  assert.match(oh, /card pad warn/);
+  assert.match(oh, /class="hm-rt" style="color:#f2b84b;font-weight:600">Home office offline</, 'offline is said in the attention colour, not a banner');
   const oc = P.render('camera', { camera: 'home_office' }, offline, NOW);
   assert.match(oc, /Offline/);
   assert.doesNotMatch(oc, /data-act="camera-toggle"/, 'no switch for an offline camera');
@@ -2553,12 +2554,76 @@ ok('camera toggle is a request: pending until the state arrives, repeat taps ign
   // never arrives: after PENDING_MS it says so and a tap tries again
   const late = P.render('camera', { camera: 'kitchen' }, mkh('off'), T0 + P.PENDING_MS + 1, ui);
   assert.match(late, /No response/);
-  assert.match(late, /It did not change · tap to try again/);
+  assert.match(late, /It did not change, tap to try again/);
   P.cameraToggle(mkh('off'), ui, 'kitchen', T0 + P.PENDING_MS + 1);
   assert.equal(calls.length, 2);
   // an offline camera cannot be toggled; unknown cameras throw
   assert.equal(P.cameraToggle({ states: { 'switch.kitchen_privacy': b('unavailable') }, callService: () => assert.fail('called') }, { pending: {}, cam: { rec: {} } }, 'kitchen', T0), undefined);
   assert.throws(() => P.cameraToggle(mkh('off'), ui, 'garage', T0), /unknown camera/);
+});
+
+// The native rhythm of the Cameras page.
+const camHass = (over = {}) => {
+  const c = (st) => ({ state: st, attributes: {} });
+  return mk({ 'switch.parlour_privacy': c('on'), 'switch.kitchen_privacy': c('off'), 'switch.home_office_privacy': c('unavailable'), 'binary_sensor.kitchen_person_occupancy': c('off'), 'sensor.house_active_mode': c('normal'), 'button.kitchen_move_up': c('unknown'), 'button.kitchen_move_down': c('unknown'), ...over });
+};
+ok('cameras page: head is the large title with the camera state as its subtitle, then one grouped list; no banner, pill or uppercase label', () => {
+  const head = P.render('cameras-head', {}, camHass(), NOW);
+  assert.match(head, /^<div class="p"><div class="hm hm-first"><div class="hm-head"><div class="hm-hd"><h1 class="hm-big">Cameras<\/h1><span class="hm-line">Kitchen on<\/span><\/div><\/div><section class="hm-sec hm-tight"><div class="hm-list plain">/);
+  assert.doesNotMatch(head, /Back to House|data-act="nav"|class="card|class="tag|class="lbl|class="dot|text-transform/);
+  assert.match(head, /Cameras<\/div><div class="hm-rs">House is at home · cameras off/, 'the master switch says which rule of the house mode applies');
+  assert.match(head, /<span class="hm-sw" aria-hidden="true"><\/span>/, 'a native switch');
+  assert.doesNotMatch(head, /Tap to turn/, 'the switch needs no instructions');
+  assert.match(head, /Home office offline<\/div><\/div><\/div>/, 'offline is a row, in the attention colour');
+  // Every camera offline: no master switch to flip, but the title and the offline row stay.
+  const gone = { state: 'unavailable', attributes: {} };
+  const none = P.render('cameras-head', {}, mk({ 'switch.parlour_privacy': gone, 'switch.kitchen_privacy': gone, 'switch.home_office_privacy': gone }), NOW);
+  assert.doesNotMatch(none, /cameras-all/);
+  assert.match(none, /Parlour, Kitchen, Home office offline/);
+});
+
+ok('cameras page: each camera is one card, the picture first at its natural size, then name, state, switch, pan/tilt and recordings in list style', () => {
+  const live = P.render('camera', { camera: 'kitchen' }, camHass(), NOW);
+  assert.match(live, /^<div class="p"><div class="hm"><div class="hm-list"><div class="stream" data-stream="kitchen"><\/div><div class="hm-row">/, 'the stream is the first thing in the list; the list clips it to the card corners');
+  assert.match(live, /<div class="hm-rt">Kitchen<\/div><div class="hm-rs">No one in view<\/div><\/div><span class="hm-val num">Live<\/span>/);
+  assert.match(live, /<button type="button" class="hm-row hm-btn tap" data-act="camera-toggle" data-camera="kitchen" aria-pressed="true"><div class="hm-text"><div class="hm-rt">Camera on<\/div><\/div><span class="hm-sw" aria-hidden="true"><\/span><\/button>/, 'a native toggle with no instructions');
+  assert.match(live, /class="ptz"/);
+  assert.match(live, /data-act="camera-rec" data-camera="kitchen" aria-expanded="false"[^>]*><div class="hm-text"><div class="hm-rt">Recordings<\/div><div class="hm-rs">Clips of people and movement<\/div><\/div><span class="hm-chev"/);
+  const priv = P.render('camera', { camera: 'parlour' }, camHass(), NOW);
+  assert.doesNotMatch(priv, /data-stream|class="ptz"/);
+  assert.match(priv, /Camera is off<\/div><\/div><span class="hm-val num">Privacy on<\/span>/);
+  assert.match(priv, /<span class="hm-sw off" aria-hidden="true">/);
+  const off = P.render('camera', { camera: 'home_office' }, camHass(), NOW);
+  assert.match(off, /<span class="hm-val num">Offline<\/span>/);
+  assert.doesNotMatch(off, /camera-toggle/);
+  for (const html of [live, priv, off]) assert.doesNotMatch(html, /class="tag|class="card|class="tog|class="clip|class="lbl| · /);
+  // Layout, asserted from the CSS (there is no browser here): the stream clips to the list's radius, keeps a 16:9
+  // box until the picture is there and then grows to the picture's own shape, and the hidden slot really hides.
+  assert.equal(px(decl(rule('.hm-list').body, 'border-radius')), 12);
+  assert.match(decl(rule('.hm-list').body, 'overflow'), /hidden/);
+  assert.equal(decl(rule('.stream ha-camera-stream').body, 'width'), '100%');
+  assert.equal(decl(rule('.stream').body, 'aspect-ratio'), '16/9');
+  assert.equal(decl(rule('.stream[hidden]').body, 'display'), 'none');
+  assert.match(readFileSync(root + 'www/pulse-card.js', 'utf8'), /<div class="p"><div class="hm"><div class="hm-list"><div class="stream" id="cam-stream" hidden><\/div><div id="cam-rest"><\/div><\/div><\/div><\/div>/, 'the element shell matches the static markup');
+});
+
+ok('cameras page: recordings open in the same list, each clip a row with a thumbnail, a time, what was seen and a play arrow', () => {
+  const hass = camHass();
+  const clip = { id: 'a1', mediaId: 'x', start: NOW - 600000, label: 'person', zones: ['patio'] };
+  const open = P.render('camera', { camera: 'kitchen' }, hass, NOW, { cam: { pending: {}, rec: { kitchen: { open: true, status: 'ok', items: [clip] } } } });
+  assert.match(open, /aria-expanded="true"/);
+  assert.match(open, /<div class="hm-dp"><button type="button" class="hm-row hm-btn tap" data-act="camera-clip" data-camera="kitchen" data-clip="a1"><img class="hm-thumb"[^>]*><div class="hm-text"><div class="hm-rt">10 min ago<\/div><div class="hm-rs">Person, patio<\/div><\/div><span class="hm-chev"/);
+  assert.equal(px(decl(rule('.hm-thumb').body, 'width')), 72);
+  assert.equal(px(decl(rule('.hm-thumb').body, 'height')), 48);
+  assert.match(P.render('camera', { camera: 'kitchen' }, hass, NOW, { cam: { pending: {}, rec: { kitchen: { open: true, status: 'error', items: [] } } } }), /<div class="hm-dp"><div class="hm-row"><div class="hm-text"><div class="hm-rs">Couldn&#39;t load recordings<\/div><\/div><\/div><button[^>]*data-act="camera-rec-refresh"[^>]*><div class="hm-text"><div class="hm-rt" style="color:#7aa7ff;font-weight:600">Try again/);
+});
+
+ok('cameras page: cards are spaced by the shared section gap and only the title card is flush at the top', () => {
+  const html = ['parlour', 'kitchen', 'home_office'].map((k) => P.render('camera', { camera: k }, camHass(), NOW));
+  for (const h of html) assert.doesNotMatch(h, /hm-first/);
+  assert.match(P.render('cameras-head', {}, camHass(), NOW), /class="hm hm-first"/);
+  assert.match(P.STYLE, /\.hm\{[^}]*margin-top:max\(0px,calc\(36px - var\(--row-gap,8px\)\)\)/);
+  assert.match(P.STYLE, /\.ptz\{[^\n]*border-top:\.5px solid/, 'the pan/tilt pad uses the list hairline');
 });
 
 ok('camera pan/tilt writes only that camera\'s move buttons; the pad hides when none are available', () => {
@@ -2590,12 +2655,12 @@ ok('camera recordings: Frigate clips are parsed defensively and rendered as load
   assert.match(P.render('camera', { camera: 'parlour' }, hass, NOW), /aria-expanded="false"/);
   assert.match(at({ open: true, status: 'loading', items: [] }), /Loading recordings…/);
   assert.match(at({ open: true, status: 'ok', items: [] }), /No recordings yet/);
-  assert.match(at({ open: true, status: 'error', items: [] }), /Couldn't load recordings[\s\S]*data-act="camera-rec-refresh"/);
+  assert.match(at({ open: true, status: 'error', items: [] }), /Couldn&#39;t load recordings[\s\S]*data-act="camera-rec-refresh"/);
   const list = at({ open: true, status: 'ok', items: clips });
   assert.match(list, /2 recent/);
   assert.match(list, /data-act="camera-clip" data-camera="parlour" data-clip="a"/);
   assert.match(list, /10 min ago/);
-  assert.match(list, /Person · patio/);
+  assert.match(list, /Person, patio/);
   assert.match(list, /snapshot\.jpg/);
   assert.doesNotMatch(list, /<script/i);
 });
@@ -4100,7 +4165,7 @@ ok('room feed rows: the timeline, led by the subsystem the entry is about', () =
   assert.doesNotMatch(html, /hm-tile|<svg/, 'no subsystem tiles on activity rows');
   const quiet = P.render('room-feed', { room: 'kitchen' }, mk(), NOW);
   assert.match(quiet, /<div class="hm-row"><div class="hm-text"><div class="hm-rs">Nothing recorded for this room yet<\/div>/);
-  assert.match(P.STYLE, /\.feed\{[^\n]*grid-template-columns:44px 16px minmax\(0,1fr\)/, 'the camera card still uses the older feed line');
+  assert.doesNotMatch(P.STYLE, /\.feed[{ .]|\.tag[{ .]/, 'the older feed line and the pills are gone from the stylesheet');
 });
 
 ok('House activity rows: subject, verb part, reason part; dot in the subsystem colour', () => {
@@ -4727,7 +4792,6 @@ ok('every theme is readable: text and textSecondary 4.5:1 on bg and surface, tin
     assert.ok(ratio(t.tint, t.surface) >= 3, `${name}: tint on surface ${ratio(t.tint, t.surface).toFixed(2)}`);
     assert.ok(ratio(t.tintInk, t.tint) >= 4.5, `${name}: tintInk on tint ${ratio(t.tintInk, t.tint).toFixed(2)}`);
     assert.ok(ratio(t.attention, t.attentionBg) >= 4.5, `${name}: attention on attentionBg ${ratio(t.attention, t.attentionBg).toFixed(2)}`);
-    assert.ok(ratio(t.attention, t.attentionChip) >= 4.5, `${name}: attention on attentionChip ${ratio(t.attention, t.attentionChip).toFixed(2)}`);
     assert.ok(ratio(t.text, t.control) >= 4.5, `${name}: text on control`);
     assert.ok(ratio(t.textSoft, t.control) >= 4.5, `${name}: textSoft on control`);
   }
