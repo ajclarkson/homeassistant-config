@@ -132,7 +132,7 @@ ok('calm state: no attention, All good', () => {
   const rooms = P.ROOM_ORDER.map((k) => ({ ...FULL(k), target_reason: '', labels: [], pres_labels: [], heat_labels: [], ext_open: false, }));
   const out = renderAll(withRooms(rooms, []));
   noNoise(out, 'calm');
-  assert.match(out.status, /All good/);
+  assert.match(out.status, /Nothing needs attention/);
   assert.doesNotMatch(out.rooms, /details ›/);
   assert.match(out['room-head:parlour'], /All good/);
   assert.match(out['heating:parlour'], /class="lbl">Target<\/div>/);
@@ -301,7 +301,7 @@ ok('Recent activity rows by kind: acted plain, declined muted with the didn\'t g
   const entries = [histEntry(1), histEntry(2), luxHigh(3), abort, failed];
   const html = P.render('room-feed', { room: 'kitchen' }, mk(histSensor('kitchen', entries, {})), NOW);
   assert.match(html, /<div class="feed ok"><span class="a">18:41<\/span><span>Lights off · room empty <b>x2<\/b>/);
-  assert.match(html, /<div class="feed muted"><span class="a">18:39<\/span><span><span class="g"><svg[^>]*>[\s\S]*?<\/svg><\/span>Stayed off: bright enough \(85 lx, on at 40 or below\)/);
+  assert.match(html, /<div class="feed muted"><span class="a">18:39<span class="g"><svg[^>]*>[\s\S]*?<\/svg><\/span><\/span><span>Stayed off: bright enough \(85 lx, on at 40 or below\)/);
   assert.match(html, /<div class="feed warn"><span class="a">18:38<\/span><span>Held back/);
   assert.match(html, /<div class="feed warn"><span class="a">18:37<\/span><span>scene\.kitchen_all couldn&#39;t be controlled \(turn on\)/);
   assert.equal((html.match(/class="feed /g) || []).length, 4, 'one row per distinct entry; homerun stores no plumbing, so the card has nothing to hide');
@@ -821,8 +821,8 @@ ok('Now v2 all calm: status card not amber, no attention/occupied groups, 8 comp
   const hass = withRooms(calmRooms(), []);
   const status = P.render('status', {}, hass, NOW);
   const rooms = P.render('rooms', {}, hass, NOW);
-  assert.match(status, /All good/);
-  assert.match(status, /0 rooms occupied · heating idle/);
+  assert.match(status, /Nothing needs attention/);
+  assert.doesNotMatch(status, /occupied|heating idle/, 'the Occupied now section and Heating card already say it');
   assert.doesNotMatch(status, /card pad warn/);
   assert.doesNotMatch(status, /\d home/);
   assert.doesNotMatch(rooms, /Needs attention|Occupied now|Other rooms/);
@@ -847,7 +847,7 @@ ok('Now v2 one occupied: Occupied now card with filled icon, lights badge, reaso
   assert.match(card, /20\.4°/);
   assert.match(card, />Sofa occupied</);
   assert.doesNotMatch(card, /Manual|%|humidity/);
-  assert.match(P.render('status', {}, hass, NOW), /1 room occupied/);
+  assert.match(P.render('status', {}, hass, NOW), /Nothing needs attention/);
   assert.doesNotMatch(rooms.replace(card, ''), /Parlour/);
 });
 
@@ -856,7 +856,7 @@ ok('Now v2 all rooms occupied: no Other rooms group', () => {
   const rooms = P.render('rooms', {}, hass, NOW);
   assert.equal(count(rooms, /class="card oc tap"/g), 8);
   assert.doesNotMatch(rooms, /Other rooms|class="rt tap[" ]/);
-  assert.match(P.render('status', {}, hass, NOW), /8 rooms occupied/);
+  assert.match(P.render('status', {}, hass, NOW), /Nothing needs attention/);
 });
 
 ok('Now v2 attention: Bathroom (steamy) and Bedroom (window open) sit in Needs attention, once, and nowhere else; status is amber', () => {
@@ -936,7 +936,8 @@ ok('recent action note is a phrase with its verb ("lights off 7 min ago"), under
   for (const m of [0.2, 4, 14.5, 30]) assert.doesNotMatch(rec(m), /<span>\d+ min<\/span>|<span>just now<\/span>/);
   // occupied card carries it too
   const occ = P.render('rooms', {}, withRooms(calmRooms({ kitchen: { occupied: true } }), [], feedOf(7)), NOW);
-  assert.match(occ, /<span>off 7 min ago<\/span>/);
+  assert.match(occ, /<span class="badge" style="color:#a3adba">off 7 min ago<\/span>/, 'the note is a muted pill, same shape as the other badges');
+  assert.doesNotMatch(occ.match(/<div class="sub">[\s\S]*?<\/a>/)[0], /<span>/, 'the sub row is all pills');
   assert.equal(P.recentNote({ states: {} }, 'kitchen', NOW), '');
 });
 
@@ -948,7 +949,7 @@ ok('Now v2 tiles: unavailable occupancy keeps the dashed amber icon; rooms with 
   assert.equal(count(missing, /No report/g), 8);
   assert.equal(count(missing, /color:#8f9aa8">–</g), 7, 'seven rooms with a climate sensor show a muted dash; the climate-less hallway shows none');
   const css = readFileSync(root + 'www/pulse-card.js', 'utf8');
-  assert.match(P.STYLE, /\.rt\{[^\n]*height:104px/);
+  assert.match(P.STYLE, /\.rt\{[^\n]*height:76px/);
   assert.match(css, /\.oc\{[^}]*min-height:64px/);
 });
 
@@ -1587,7 +1588,7 @@ ok('Now v3 header is the title and mode pill only; no "Updated" text anywhere on
 ok('Now v3 status card: verdict row with the sentence right-aligned, ONE chip row (nowrap, 30px), price strip link, cheapest line', () => {
   const hass = withRooms(calmRooms({ parlour: { occupied: true }, kitchen: { occupied: true }, bedroom: { occupied: true }, bathroom: { occupied: true } }), []);
   const st = P.render('status', {}, hass, NOW);
-  assert.match(st, /<div style="font-size:15px;font-weight:700">All good<\/div><div style="flex:1"><\/div><div style="font-size:12px;color:#a3adba;text-align:right">4 rooms occupied · heating idle<\/div>/);
+  assert.match(st, /<div style="font-size:15px;font-weight:700">Nothing needs attention<\/div><\/div><div style="margin-top:10px"><div class="chips">/);
   const chips = st.match(/<div class="chips">[\s\S]*?<\/div><\/div>/)[0];
   assert.equal(count(chips, /class="chip[" ]/g), 3, 'Adam, Sarah, Mo in one row');
   assert.doesNotMatch(chips, /flex-wrap:wrap/);
@@ -1611,7 +1612,7 @@ ok('Now v3 status card: verdict row with the sentence right-aligned, ONE chip ro
   assert.ok(strip.includes(`color:${P.priceColour(41.2, { text: true })}`));
   assert.match(strip, /M9 5l7 7-7 7/);
   assert.match(st, /<\/a><div style="font-size:12px;color:#a3adba;margin-top:2px">Cheapest 2h · <b[^>]*>Tomorrow 20:00 → 22:00<\/b><\/div>/);
-  assert.ok(st.indexOf('class="chips"') > st.indexOf('All good') && st.indexOf('pstrip') > st.indexOf('class="chips"'), 'verdict, chips, strip in that order');
+  assert.ok(st.indexOf('class="chips"') > st.indexOf('Nothing needs attention') && st.indexOf('pstrip') > st.indexOf('class="chips"'), 'verdict, chips, strip in that order');
 });
 
 ok('Now v3 calm / 4 occupied / attention: partition rules and the amber state', () => {
@@ -1625,11 +1626,11 @@ ok('Now v3 calm / 4 occupied / attention: partition rules and the amber state', 
   assert.equal(count(rooms, /class="rt tap[" ]/g), 4);
   assert.match(rooms, />Occupied now</);
   assert.match(rooms, />Other rooms</);
-  assert.match(P.render('status', {}, four, NOW), /4 rooms occupied · heating idle/);
+  assert.doesNotMatch(P.render('status', {}, four, NOW), /rooms occupied|heating idle/);
   const att = withRooms(calmRooms({ bathroom: { occupied: true, temp: 23.1, humidity: 88, lights_on: 1 }, bedroom: { occupied: true, target: 5, target_reason: 'window open', mode_name: 'baseline day', mode_target: 18, heat_labels: ['Window open'], labels: ['Window open'] } }), [attn('Bathroom', 'bathroom', 'warm_heating', '23.1° vs 18° target, heating on'), attn('Bedroom', 'bedroom', 'window_open_heating_on', 'Open window while heating is on')]);
   const status = P.render('status', {}, att, NOW);
   assert.match(status, /card pad warn/);
-  assert.match(status, /2 need attention<\/span><div style="flex:1"><\/div><div style="font-size:12px;color:#a3adba;text-align:right">2 rooms occupied · heating idle/);
+  assert.match(status, /2 need attention<\/span><\/div><a class="tap" data-act="nav"/);
   assert.match(status, /Bathroom<\/b> · Steamy/);
   assert.match(status, /class="chips"/);
   assert.match(status, /pstrip/);
@@ -1638,7 +1639,9 @@ ok('Now v3 calm / 4 occupied / attention: partition rules and the amber state', 
   assert.doesNotMatch(r, />Occupied now</);
   assert.equal(count(r, /class="rt tap[" ]/g), 6);
   const heating = withRooms(calmRooms({ kitchen: { hvac_action: 'heating' }, parlour: { hvac_action: 'heating' } }), []);
-  assert.match(P.render('status', {}, heating, NOW), /heating in 2 rooms/);
+  assert.doesNotMatch(P.render('status', {}, heating, NOW), /heating in/, 'the Heating card carries the room count');
+  assert.match(P.render('status', {}, withRooms(calmRooms(), []), NOW), /Nothing needs attention/);
+  assert.match(P.render('status', {}, { states: {} }, NOW), /No attention report/, 'missing data keeps its own wording');
 });
 
 ok('attention labels: temperature kinds say which way and whether heating is on; Steamy only for warm with shower evidence', () => {
@@ -1683,7 +1686,7 @@ ok('Now v3 occupied card is two lines: icon + name + temperature, then badges (a
   assert.match(card, /style="color:#f2b84b;background:#2b2415"[^>]*>[\s\S]*Wall button · 3 h ago/);
   assert.match(card, /Window<\/span>/);
   assert.match(card, /Sofa occupied/);
-  assert.match(card, /<span>on 1 min ago<\/span>/);
+  assert.match(card, /<span class="badge" style="color:#a3adba">on 1 min ago<\/span>/);
   const up = html.match(/<a class="card oc tap"[^>]*room-hallway_upstairs[\s\S]*?<\/a>/)[0];
   assert.match(up, /<div class="t"><div style="font-size:12px;font-weight:500;color:#8f9aa8">no climate<\/div><\/div>/);
   assert.doesNotMatch(up, /–/);
@@ -1711,11 +1714,11 @@ ok('Now v3 tiles: fixed height, name / temperature / status-line grid, identical
   assert.doesNotMatch(bedroom, /Dashboard/, 'a hold wins over the manual badge so the status line stays one line');
   assert.deepEqual(shape(b[4]).slice(0, 3), shape(a[4]).slice(0, 3));
   const css = readFileSync(root + 'www/pulse-card.js', 'utf8');
-  assert.match(P.STYLE, /\.rt\{[^\n]*grid-template-rows:auto 1fr auto[^\n]*height:104px/);
+  assert.match(P.STYLE, /\.rt\{[^\n]*grid-template-columns:minmax\(0,1fr\) auto;grid-template-rows:auto auto[^\n]*height:76px/);
   assert.doesNotMatch(P.STYLE.match(/\.rt\{[^\n]*/)[0], /overflow:hidden/, 'the tile itself never clips');
   assert.match(P.STYLE, /\.rt \.b\{[^\n]*flex-wrap:nowrap[^\n]*white-space:nowrap/);
   assert.doesNotMatch(P.STYLE.match(/\.rt \.b\{[^\n]*/)[0], /overflow:hidden/, 'the status line row does not clip; only text ellipsises');
-  assert.match(P.STYLE, /\.rt \.t\{align-self:center;text-align:left;/);
+  assert.match(P.STYLE, /\.rt \.t\{grid-column:2;grid-row:1;align-self:center;text-align:right;white-space:nowrap;/);
   assert.doesNotMatch(plain + busy, /%|humidity/);
   const kitchen = a.find((t) => t.includes('Kitchen'));
   assert.match(kitchen, /Off<\/span>/);
@@ -1999,21 +2002,18 @@ ok('tile height is at least what its rows need (arithmetic from the CSS itself, 
   const name = px(decl(rule('.rt .nm').body, 'line-height'));
   const temp = px(decl(rule('.rt .t').body, 'line-height'));
   const status = Math.max(px(decl(rule('.rt .b').body, 'line-height')), px(decl(rule('.rt .b').body, 'min-height')));
-  const needed = pad[0] * 2 + name + temp + status + 2 * gap;
+  // row 1 holds the name and the temperature side by side, so the taller of the two sets its height
+  const needed = pad[0] * 2 + Math.max(name, temp) + gap + status;
   const height = px(decl(rt, 'height'));
-  assert.equal(needed, 102);
+  assert.equal(needed, 76);
   assert.ok(height >= needed, `tile ${height}px must hold ${needed}px of content`);
   assert.equal(height, P.TILE_H);
-  assert.equal(P.tileNeededHeight(false), needed);
+  assert.equal(P.tileNeededHeight(), needed);
   // the temperature text itself is styled with the same line-height the arithmetic used
   assert.match(P.render('rooms', {}, withRooms(calmRooms(), []), NOW), new RegExp(`font-size:20px;font-weight:700;letter-spacing:-\\.3px;line-height:${temp}px`));
-  // wide tile: padding + the taller of name/temperature + gap + status line
-  const wide = rule('.rt.wide').body;
-  const wneeded = pad[0] * 2 + Math.max(name, temp) + gap + status;
-  assert.equal(wneeded, 76);
-  assert.ok(px(decl(wide, 'height')) >= wneeded);
-  assert.equal(px(decl(wide, 'height')), P.TILE_WIDE_H);
-  assert.ok(P.TILE_H >= P.tileNeededHeight(false) && P.TILE_WIDE_H >= P.tileNeededHeight(true));
+  // the wide (odd last) tile has the same height; it only spans both columns
+  assert.equal(decl(rule('.rt.wide').body, 'height'), null);
+  assert.match(rule('.rt.wide').body, /grid-column:1 \/ -1/);
   // the status line contents fit their line: 14px icon, 14px-line badges, 20px line
   assert.ok(14 <= status);
   assert.ok(px(decl(rule('.rt .b .badge').body, 'line-height')) + 2 * 3 <= status, 'badge (14px line + 3px padding) fits the 20px status line');
@@ -2036,10 +2036,10 @@ ok('tile never clips: no overflow hidden on the tile or its status row; only tex
 
 ok('every fixed height or clipping rule is accounted for (a new one needs its arithmetic)', () => {
   const fixed = cssRules().filter((r) => px(decl(r.body, 'height'))).map((r) => r.sel).sort();
-  // content boxes with a fixed height (need the arithmetic above): .rt and .rt.wide only. The rest are fixed SHAPES
+  // content boxes with a fixed height (need the arithmetic above): .rt only. The rest are fixed SHAPES
   // (dots, icons, switch track and knob, slider track and thumb, the 1px visually-hidden helper) that hold no text.
   const shapes = ['.clip img', '.dot', '.item svg,.ic', '.sw', '.sw::after', '.sr', '.lt input[type=range]', '.lt input[type=range]::-webkit-slider-runnable-track', '.lt input[type=range]::-webkit-slider-thumb', '.lt input[type=range]::-moz-range-track', '.lt input[type=range]::-moz-range-progress', '.lt input[type=range]::-moz-range-thumb'];
-  assert.deepEqual(fixed, [...shapes, '.rt', '.rt.wide'].sort());
+  assert.deepEqual(fixed, [...shapes, '.rt'].sort());
   // .sw: a 28px track holds a 22px knob with 3px above and below
   const sw = px(decl(rule('.sw').body, 'height'));
   const knob = P.STYLE.match(/\.sw::after\{[^\n]*top:(\d+)px[^\n]*height:(\d+)px/);
@@ -2055,11 +2055,13 @@ ok('every fixed height or clipping rule is accounted for (a new one needs its ar
   assert.equal(px(decl(rule('.chip').body, 'min-height')), 30);
 });
 
-ok('tile temperature is left-aligned with the name; no climate is left-aligned muted text in the same slot', () => {
-  assert.match(rule('.rt .t').body, /text-align:left/);
+ok('tile temperature sits top-right on the name row; no climate takes the same slot, muted', () => {
+  assert.match(rule('.rt .t').body, /text-align:right/);
   assert.match(rule('.rt .t').body, /align-self:center/);
-  assert.doesNotMatch(rule('.rt .t').body, /text-align:right/);
-  assert.match(rule('.rt.wide .t').body, /text-align:right/);
+  assert.match(rule('.rt .t').body, /grid-column:2;grid-row:1/);
+  assert.match(rule('.rt .nm').body, /grid-row:1/);
+  assert.match(rule('.rt .b').body, /grid-row:2/);
+  assert.match(rule('.rt .b').body, /grid-column:1 \/ -1/);
   const html = P.render('rooms', {}, withRooms(calmRooms({ hallway_upstairs: { temp: null } }), []), NOW);
   const up = html.match(/<a class="rt tap[^"]*"[^>]*room-hallway_upstairs"[\s\S]*?<\/a>/)[0];
   assert.match(up, /<div class="t"><div style="font-size:12px;font-weight:500;color:#8f9aa8">no climate<\/div><\/div>/);
@@ -2083,8 +2085,6 @@ ok('odd tile counts: the last tile spans both columns as a wide row; even counts
   assert.match(w, /^<a class="rt tap wide"[^>]*><div class="nm">[\s\S]*?<\/div><div class="t">[\s\S]*?<\/div><div class="b">[\s\S]*<\/div><\/a>$/);
   assert.match(w, /Foreign office/);
   assert.match(rule('.rt.wide').body, /grid-column:1 \/ -1/);
-  assert.match(rule('.rt.wide .b').body, /grid-column:1 \/ -1/);
-  assert.match(rule('.rt.wide .nm').body, /grid-column:1/);
   noNoise({ seven }, 'odd tiles');
 });
 
@@ -3822,7 +3822,102 @@ ok('render cost: the card only skips on a hass update', () => {
   assert.match(src, /!fromHass/);
 });
 
+// ── Pulse home-page UX tweaks ───────────────────────────────────────────────────────────────────
+ok('house label: bins-heating opens the House group (Bins, Heating, Cameras), after the rooms card that ends with Outside', () => {
+  const html = P.render('bins-heating', {}, mk(), NOW);
+  assert.match(html, /^<div class="p"><div class="lbl" style="margin:4px 4px -10px">House<\/div><div style="display:grid/);
+  const rooms = P.render('rooms', {}, withRooms(calmRooms(), []), NOW);
+  assert.ok(rooms.lastIndexOf('>Outside<') > -1 && !rooms.includes('>House<'));
+  const modes = yaml.load(readFileSync(root + 'views/info-house.yaml', 'utf8')).sections[0].cards.map((c) => c.mode);
+  assert.deepEqual(modes.slice(modes.indexOf('rooms'), modes.indexOf('cameras-card') + 1), ['rooms', 'bins-heating', 'cameras-card'], 'the label sits on the first card of the group');
+});
 
+ok('heating card: short title, room count leads the sub line only when heating is on and rooms are calling', () => {
+  const heat = (extra, rooms) => P.render('bins-heating', {}, withRooms(calmRooms(rooms), [], { 'sensor.house_average_temperature': { state: '17.7', attributes: {} }, 'weather.forecast_home': { state: 'cloudy', attributes: { temperature: 3.7 } }, ...extra }), NOW);
+  const three = heat({}, { kitchen: { hvac_action: 'heating' }, parlour: { hvac_action: 'heating' }, bedroom: { hvac_action: 'heating' } });
+  assert.match(three, /Boiler firing<\/div><div[^>]*>3 rooms · in 17\.7° · out 3\.7°</);
+  assert.doesNotMatch(three, /Boiler firing ·/);
+  assert.match(heat({}, { kitchen: { hvac_action: 'heating' } }), />1 room · in 17\.7°/);
+  assert.match(heat({}, {}), /Boiler firing<\/div><div[^>]*>in 17\.7° · out 3\.7°</, 'no count at 0');
+  const off = heat({ 'input_boolean.house_heating_enabled': { state: 'off', attributes: {} } }, { kitchen: { hvac_action: 'heating' } });
+  assert.match(off, /Heating off<\/div><div[^>]*>in 17\.7° · out 3\.7°</, 'no count when heating is off');
+  assert.match(heat({ 'input_boolean.patio_door_heating_suspended': { state: 'on', attributes: {} } }, { kitchen: { hvac_action: 'heating' } }), />1 room · in 17\.7° · out 3\.7° · patio open</);
+  assert.match(heat({ 'binary_sensor.house_heating_boiler_firing': { state: 'off', attributes: {} } }, {}), /Boiler idle/);
+});
+
+ok('feed: suppress sources get a plain phrase from a table, unknown sources keep the friendly name', () => {
+  assert.equal(P.SUPPRESS_SOURCES['binary_sensor.hallway_upstairs_bed_occupied_sync'], 'someone in bed');
+  const hass = mk({ 'binary_sensor.kitchen_monitor': { state: 'on', attributes: { friendly_name: 'Kitchen monitor' } } });
+  const text = (source) => P.sentenceFor(histEntry(1, { subsystem: 'lighting', decision: 'no_action', reason: 'external_suppress_active', outcome: 'declined', facts: { source } }), hass).text;
+  assert.equal(text('binary_sensor.hallway_upstairs_bed_occupied_sync'), 'Stayed off: someone in bed');
+  assert.equal(text('binary_sensor.kitchen_monitor'), 'Stayed off: held off by Kitchen monitor');
+  assert.equal(text('input_boolean.unknown_thing'), 'Stayed off: held off by input_boolean.unknown_thing');
+  assert.equal(text(undefined), 'Stayed off: held off by something else');
+  assert.equal(text('toString'), 'Stayed off: held off by toString', 'inherited object keys are not sources');
+});
+
+ok('feed: declined glyph lives in the time column so every row text starts alike; rows use the room short name', () => {
+  const house = [histEntry(1, { location: 'hallway_upstairs' }), luxHigh(2), histEntry(3, { location: 'hallway_downstairs' })];
+  const pages = [P.render('feed', {}, mk(histSensor('house', house)), NOW), P.render('room-feed', { room: 'kitchen' }, mk(histSensor('kitchen', [histEntry(1), luxHigh(2), histEntry(3, { reason: 'other' })])), NOW)];
+  for (const html of pages) {
+    const rows = html.split('<div class="feed ').slice(1).map((r) => r.replace(/^[^>]*>/, ''));
+    assert.equal(rows.length, 3);
+    for (const r of rows) assert.match(r, /^<span class="a">[\s\S]*?<\/span><span>[^<]/, 'the text column starts with text, never an icon');
+    assert.match(html, /<span class="a">\d\d:\d\d<span class="g"><svg/);
+    assert.equal(count(html, /class="g"/g), 1, 'only the declined row carries the glyph');
+    assert.match(html, /class="feed muted"/, 'declined rows stay muted');
+  }
+  assert.match(pages[0], /Hallway up · /);
+  assert.match(pages[0], /Hallway down · /);
+  assert.doesNotMatch(pages[0], /Hallway upstairs|Hallway downstairs/);
+  assert.match(P.STYLE, /\.feed\{[^\n]*grid-template-columns:60px 1fr/);
+  assert.match(P.STYLE, /\.feed \.a\{[^\n]*display:flex/);
+});
+
+ok('tiles narrow phone: long names ellipsize in their own column, the temperature never wraps or is pushed out', () => {
+  assert.match(rule('.rt').body, /grid-template-columns:minmax\(0,1fr\) auto/);
+  assert.match(rule('.rt .nm').body, /min-width:0/);
+  assert.match(rule('.rt .nm').body, /white-space:nowrap/);
+  assert.match(rule('.rt .nm span').body, /overflow:hidden;text-overflow:ellipsis/);
+  assert.match(rule('.rt .nm svg').body, /flex:none/);
+  assert.match(rule('.rt .t').body, /white-space:nowrap/);
+  // 360px phone: page padding 2 x 16, a column gap of 8, so a tile is 156px; padding 24 and the 8px column gap
+  // leave 124px. The longest name needs icon 15 + gap 6 + about 7px a character; its temperature takes ~46px.
+  const tile = (360 - 32 - 8) / 2;
+  assert.ok(tile - 24 - 8 - 46 > 0, 'the name column keeps room even beside a temperature');
+  const html = P.render('rooms', {}, withRooms(calmRooms(), []), NOW);
+  for (const name of ['Foreign office', 'Hallway down']) {
+    const t = html.match(new RegExp(`<a class="rt tap[^"]*"[^>]*>(?:(?!</a>)[\\s\\S])*<span>${name}</span>[\\s\\S]*?</a>`))[0];
+    assert.match(t, /<div class="nm">[\s\S]*?<span>[^<]+<\/span><\/div><div class="t">/, `${name}: temperature slot follows the name on the same row`);
+    assert.ok(t.indexOf('class="nm"') < t.indexOf('class="t"') && t.indexOf('class="t"') < t.indexOf('class="b"'));
+  }
+});
+
+ok('heating card title stays short enough for one line on 360px', () => {
+  for (const t of ['Boiler firing', 'Boiler idle', 'Heating off']) assert.ok(t.length <= 14);
+  const html = P.render('bins-heating', {}, mk(), NOW);
+  assert.match(html, /<div style="font-size:15px;font-weight:600;margin-top:4px">Boiler firing<\/div>/);
+});
+
+ok('cameras card sub line gives the reason per state, never restating the title', () => {
+  const b = (st) => ({ state: st, attributes: {} });
+  const privacy = (on, mode, extra = {}) => mk({ 'switch.parlour_privacy': b(on.parlour ? 'on' : 'off'), 'switch.kitchen_privacy': b(on.kitchen ? 'on' : 'off'), 'switch.home_office_privacy': b(on.home_office ? 'on' : 'off'), 'sensor.house_active_mode': b(mode), ...extra });
+  const allPriv = { parlour: 1, kitchen: 1, home_office: 1 };
+  const card = (hass) => P.render('cameras-card', {}, hass, NOW);
+  const sub = (hass) => card(hass).match(/<div style="font-size:12px;color:#a3adba">([^<]*)<\/div>/)[1];
+  assert.match(card(privacy(allPriv, 'normal')), /All cameras off<\/div>/);
+  assert.equal(sub(privacy(allPriv, 'normal')), 'Off while someone&#39;s home');
+  assert.equal(sub(privacy({}, 'away')), 'On while the house is away');
+  const guestAway = { 'input_select.house_active_mode_modifier': b('guest') };
+  assert.equal(sub(privacy(allPriv, 'away', guestAway)), 'Off while a guest is staying');
+  assert.equal(sub(privacy({}, 'away', guestAway)), 'Changed by hand · usually off while a guest is staying', 'cameras on with a guest while away is a deviation');
+  assert.match(P.render('cameras-head', {}, privacy(allPriv, 'away', guestAway), NOW), /House is away, but a guest is staying · cameras off/);
+  assert.equal(sub(privacy({ parlour: 1, home_office: 1 }, 'sleep')), 'Only the kitchen is on overnight, for Mo');
+  assert.equal(sub(privacy(allPriv, 'unknown_mode')), 'Following the house mode');
+  assert.equal(sub(privacy({ parlour: 1, kitchen: 1 }, 'normal')), 'Changed by hand · usually off while someone&#39;s home');
+  for (const hass of [privacy(allPriv, 'normal'), privacy({}, 'away'), privacy({}, 'normal')]) assert.doesNotMatch(sub(hass), /cameras (on|off)/i);
+  assert.match(P.render('cameras-head', {}, privacy(allPriv, 'normal'), NOW), /House is at home · cameras off/, 'the Cameras page keeps its fuller wording');
+});
 
 console.log(`\n${n} test groups passed`);
 
