@@ -1,24 +1,25 @@
-# Pulse "House" (v2): quiet by default, loud by exception. Header, one status card (verdict, people, prices),
-# room groups (needs attention / occupied now / other rooms), bins + heating, feed. The price strip in the
-# status card opens the Energy page (chart, windows, cost and usage live there).
-# Every section is `custom:pulse-card` (www/pulse-card.js, loaded via packages/frontend.yaml).
-# The price bars are drawn by pulse-card itself from the rates attribute (any slot count).
+# Pulse "House": a native-iOS style home page. Large title with the house mode and who is home, Needs attention
+# (only when there is something), an Electricity widget, Rooms and Outside lists, a House list (heating, cameras,
+# bins) and the latest Activity. The electricity widget opens the Energy page (chart, windows, cost and usage
+# live there). Every section is `custom:pulse-card` (www/pulse-card.js, loaded via packages/frontend.yaml).
+# `background` is the pulse-card theme's `bg` token (rose-pine by default); a view cannot read the card's
+# theme, so a card on `theme: classic` needs '#12151a' here (a test holds this value to the default theme).
 title: House
 path: house
 icon: mdi:home-heart
 type: sections
 max_columns: 1
-background: '#12151a'
+background: '#191724'
 sections:
   - type: grid
     cards:
       - {type: custom:pulse-card, mode: now-header}
-      # One status card: verdict, sentence, people/Mo chips and the Now/Next/Usage price strip.
+      # Needs attention (when there are items) and the Electricity widget.
       - {type: custom:pulse-card, mode: status}
-      # Needs attention (full width), Occupied now (full width), Other rooms (2-column tiles).
+      # Rooms (occupied first) and Outside.
       - {type: custom:pulse-card, mode: rooms}
-      - {type: custom:pulse-card, mode: bins-heating}
-      - {type: custom:pulse-card, mode: cameras-card}
+      # House: heating, cameras, bins.
+      - {type: custom:pulse-card, mode: house-list}
       - {type: custom:pulse-card, mode: feed}
       # Bottom tab bar: fixed when HA's ancestors allow it, otherwise an in-flow bar (see pulse-card.js).
       - {type: custom:pulse-card, mode: tabbar, active: house}

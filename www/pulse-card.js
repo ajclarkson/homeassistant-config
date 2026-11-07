@@ -9,8 +9,8 @@
  * for www-sync and reopen the dashboard; no ?v= bump, no HA restart.
  *
  * Config: `mode` (required), `room` / `camera` / `entity` / `decision` / `active` as each mode needs, and
- * `theme` (optional; `classic` when absent, an unknown name is a card error), e.g.
- *   {type: custom:pulse-card, mode: status, theme: rose-pine}
+ * `theme` (optional; `rose-pine` when absent, an unknown name is a card error), e.g.
+ *   {type: custom:pulse-card, mode: status, theme: classic}
  * Every card of a dashboard should name the same theme; a theme applies to the card that names it.
  *
  * To add a theme: copy the `classic` entry in THEMES, give it a new key, and change the values; every
@@ -39,11 +39,14 @@
 
   // Switch the bottom tab bar off in one line (renders nothing).
   const TABBAR_ENABLED = true;
+  // 49px of bar above the home-indicator area, which is at least 34px: 83px on a phone with a home indicator,
+  // taller where the safe area is.
+  const TABBAR_H = 'calc(49px + max(34px, env(safe-area-inset-bottom, 0px)))';
 
   // ── Themes (single definition of every colour) ───────────────────────────────────────────────
   // Tokens are named by role, not hue, so a theme can change a hue without a name lying. Every theme
-  // defines every token; the card picks one by `theme:` in its config (default `classic`, the original
-  // look). Colours reach CSS as custom properties (--pulse-<token>), set once on the card root, and
+  // defines every token; the card picks one by `theme:` in its config (default `rose-pine`; `classic` is the
+  // original look). Colours reach CSS as custom properties (--pulse-<token>), set once on the card root, and
   // reach JS (SVG attributes, price maths, the clip player outside the shadow root) through colour().
   // This block is the only place a colour literal may appear (a test greps for strays).
   //   Surfaces: bg page and sheet ground; surface cards; control chips, tiles, badges and tip fills;
@@ -55,6 +58,11 @@
   //   Attention: attention text and dots; attentionBg, attentionBorder, attentionChip, attentionRow fills.
   //   Chrome: tabBar translucent tab bar; scrim / scrimFull / shadow overlays; streamWell / videoBg
   //     behind camera pictures.
+  //   Tiles (the rounded squares that lead a list row): each fill has an Ink, the glyph colour on it, held to
+  //     3:1 by a test. sub<Subsystem> is one per homerun subsystem (activity rows); outside and bins lead those
+  //     rows; occupied is an occupied room's tile; tileIdle is an empty room's or a declined decision's tile;
+  //     attentionInk is the glyph on an attention tile (the fill is attention).
+  //   People: present and presenceAway are the avatar presence dots; chevron is the dim row arrow.
   //   Price: priceStops are [hue, saturation %, lightness %] for the five PRICE_AT prices, interpolated
   //     in HSL (hues may run below 0 to cross red); priceNegative, priceExtreme, priceNeutral.
   const THEMES = {
@@ -65,10 +73,21 @@
       on: '#3a8f63', off: '#3a424d', knob: '#fff', knobOff: '#c4ccd6',
       ok: '#6fcf97', okBg: '#14281d', heat: '#f08a4b', heatBg: '#2a1a10',
       attention: '#f2b84b', attentionBg: '#221d10', attentionBorder: '#4a3d1c', attentionChip: '#2b2415', attentionRow: '#201c10',
-      tabBar: 'rgba(18,21,26,.94)', scrim: 'rgba(0,0,0,.6)', scrimFull: 'rgba(0,0,0,.94)', shadow: 'rgba(0,0,0,.5)',
+      tabBar: 'rgba(18,21,26,.82)', scrim: 'rgba(0,0,0,.6)', scrimFull: 'rgba(0,0,0,.94)', shadow: 'rgba(0,0,0,.5)',
       streamWell: '#0c0e12', videoBg: '#000',
       priceNegative: '#2ee6c8', priceExtreme: '#c2003b', priceNeutral: '#6b7684',
       priceStops: [[142, 58, 46], [88, 62, 56], [52, 82, 60], [26, 88, 56], [4, 80, 50]],
+      // Tiles: a fill and the ink of the glyph on it. iOS system dark colours.
+      subLighting: '#ffd60a', subLightingInk: '#000000', subHeating: '#ff6b35', subHeatingInk: '#000000',
+      subOccupied: '#5e5ce6', subOccupiedInk: '#ffffff', subEnergy: '#ffd60a', subEnergyInk: '#000000',
+      subCameras: '#636366', subCamerasInk: '#ffffff', subFan: '#64d2ff', subFanInk: '#000000',
+      subShower: '#40c8e0', subShowerInk: '#000000', subSonos: '#bf5af2', subSonosInk: '#000000',
+      subHouseMode: '#0a84ff', subHouseModeInk: '#ffffff', subMo: '#ac8e68', subMoInk: '#000000',
+      subThermal: '#66d4cf', subThermalInk: '#000000', subWfh: '#ff375f', subWfhInk: '#000000',
+      subModifier: '#ff453a', subModifierInk: '#000000',
+      outside: '#30d158', outsideInk: '#000000', bins: '#32ade6', binsInk: '#000000', attentionInk: '#000000',
+      occupied: '#ff9f0a', occupiedInk: '#000000', present: '#30d158', presenceAway: '#48484a',
+      chevron: '#5a626d', tileIdle: '#2c2c2e',
     },
     // Rose Pine with Tokyo Night fill-ins.
     'rose-pine': {
@@ -78,14 +97,24 @@
       on: '#31748f', off: '#403d52', knob: '#e0def4', knobOff: '#908caa',
       ok: '#9ccfd8', okBg: '#1f2b35', heat: '#ebbcba', heatBg: '#2e2230',
       attention: '#eb6f92', attentionBg: '#2b1f33', attentionBorder: '#5c3550', attentionChip: '#3a2640', attentionRow: '#251c2e',
-      tabBar: 'rgba(25,23,36,.94)', scrim: 'rgba(0,0,0,.6)', scrimFull: 'rgba(0,0,0,.94)', shadow: 'rgba(0,0,0,.5)',
+      tabBar: 'rgba(25,23,36,.82)', scrim: 'rgba(0,0,0,.6)', scrimFull: 'rgba(0,0,0,.94)', shadow: 'rgba(0,0,0,.5)',
       streamWell: '#14121f', videoBg: '#000',
       priceNegative: '#7dcfff', priceExtreme: '#b4637a', priceNeutral: '#6e6a86',
       // Pine, Foam, Gold, a warm coral, Love (hue -17 = 343, so the last step runs through orange to red).
       priceStops: [[197, 49, 38], [189, 43, 73], [35, 88, 72], [14, 75, 70], [-17, 76, 68]],
+      subLighting: '#f6c177', subLightingInk: '#191724', subHeating: '#ebbcba', subHeatingInk: '#191724',
+      subOccupied: '#9ccfd8', subOccupiedInk: '#191724', subEnergy: '#ff9e64', subEnergyInk: '#191724',
+      subCameras: '#403d52', subCamerasInk: '#e0def4', subFan: '#7dcfff', subFanInk: '#191724',
+      subShower: '#2ac3de', subShowerInk: '#191724', subSonos: '#bb9af7', subSonosInk: '#191724',
+      subHouseMode: '#c4a7e7', subHouseModeInk: '#191724', subMo: '#9ece6a', subMoInk: '#191724',
+      subThermal: '#73daca', subThermalInk: '#191724', subWfh: '#c0caf5', subWfhInk: '#191724',
+      subModifier: '#f7768e', subModifierInk: '#191724',
+      outside: '#31748f', outsideInk: '#e0def4', bins: '#7aa2f7', binsInk: '#191724', attentionInk: '#191724',
+      occupied: '#9ccfd8', occupiedInk: '#191724', present: '#9ccfd8', presenceAway: '#524f67',
+      chevron: '#524f67', tileIdle: '#2a2740',
     },
   };
-  const DEFAULT_THEME = 'classic';
+  const DEFAULT_THEME = 'rose-pine';
   const PRICE_AT = [0, 15, 25, 35, 44.99]; // pence for each of a theme's priceStops
 
   // Every theme must define exactly the tokens classic does: a missing or extra key fails at load,
@@ -157,19 +186,37 @@
   // To change a word, edit it here; a test fails when a key is unused or a reference has no key.
   const COPY = {
     common: {
-      tabHouse: 'House', tabEnergy: 'Energy', tabCameras: 'Cameras', tabSettings: 'Settings',
+      tabHouse: 'Home', tabEnergy: 'Energy', tabCameras: 'Cameras', tabSettings: 'Settings',
       on: 'On', off: 'Off', notFound: 'Not found', unavailable: 'Unavailable',
       navLabel: 'Pulse', backToHouse: 'Back to House', closeSettings: 'Close settings', modeModifier: 'Mode modifier',
       openCameras: 'Open cameras', openEnergy: 'Open energy details', openSettings: 'Open settings', shorter: 'Shorter', longer: 'Longer',
       cardError: 'pulse-card error',
     },
     home: {
-      title: 'Pulse', house: 'House', bins: 'Bins', heatingCard: 'Heating', detailHeating: 'Heating',
-      needsAttention: 'Needs attention', occupiedNow: 'Occupied now', otherRooms: 'Other rooms', rooms: 'Rooms', outside: 'Outside',
-      noAttentionReport: 'No attention report', noClimate: 'no climate', heldOccupied: 'Held occupied',
-      personHome: 'Home', personAway: 'Away', personWfh: 'WFH',
-      needsAttentionCount: (n) => `${n} ${plural(n, 'needs', 'need')} attention`,
-      roomsOccupied: (n) => `${n} ${plural(n, 'room', 'rooms')}`,
+      title: 'Home', house: 'House', bins: 'Bins', needsAttention: 'Needs attention', rooms: 'Rooms', outside: 'Outside',
+      noAttentionReport: 'No attention report', mo: 'Mo', noReport: 'No report', noTemperatureSensor: 'no temperature sensor',
+      lightsOff: 'Lights off', lightsOn: 'Lights on', noCollectionData: 'No collection data',
+      heatingOff: 'Heating off', boilerFiring: 'Boiler firing', boilerIdle: 'Boiler idle',
+      roomsOccupiedCount: (n) => `${n} occupied`,
+      moreItems: (n) => `+${n} more`,
+      personLabel: (name, status) => `${name}, ${status}`,
+      // "At home · Guest · 2 rooms occupied": the house mode, the modifier if one is set, then how many rooms are in use.
+      headerLine: (mode, modifier, occupied) => [mode, modifier, `${occupied === 0 ? 'No' : occupied} ${plural(occupied, 'room', 'rooms')} occupied`].filter(Boolean).join(' · '),
+      // "Someone in bed" for the bed hold; any other hold keeps the label the report gives it.
+      holdLabel: (label) => (label === 'Bed occupied' ? 'Someone in bed' : label),
+      // The lights line, and a recent action of the house's own after it: "Lights off · 7 min ago", "Lamps · set 4 min ago".
+      lightsNote: (lights, note) => {
+        const when = str(note).replace(/^(lights|scene) /, '').replace(/^(on|off) (?=\d|just)/, '');
+        return when ? `${lights} · ${when}` : lights;
+      },
+      // "3 rooms heating · 17.7° in, 3.7° out · patio open"; the temperatures are already formatted ('' = no reading).
+      heatingLine: (rooms, inside, outside, patio) => {
+        const temps = [inside ? `${inside} in` : '', outside ? `${outside} out` : ''].filter(Boolean).join(', ') || 'no readings';
+        return [rooms > 0 ? `${rooms} ${plural(rooms, 'room', 'rooms')} heating` : '', temps, patio ? 'patio open' : ''].filter(Boolean).join(' · ');
+      },
+      // Bin names as a sentence: "Food", "Food and refuse", "Food, garden and refuse".
+      binNames: (names) => { const [first, ...rest] = names; const more = rest.map((n) => n.toLowerCase()); return more.length < 2 ? [first, ...more].join(' and ') : `${[first, ...more.slice(0, -1)].join(', ')} and ${more[more.length - 1]}`; },
+      collected: (days) => (days <= 0 ? 'Collected today' : days === 1 ? 'Collected tomorrow' : `Collected in ${Math.round(days)} days`),
     },
     room: {
       roomLabel: 'Room', targetLabel: 'Target', heating: 'Heating', presence: 'Presence', lights: 'Lights', media: 'Media', theme: 'Theme',
@@ -181,7 +228,7 @@
       individualLightsCount: (on, total) => ` · ${on} of ${total} on`,
     },
     energy: {
-      now: 'Now', next: 'Next', usage: 'Usage', perKwh: ' p/kWh', cheapest2h: 'Cheapest 2h', nextCheapest: 'Next cheapest 2 hours',
+      now: 'Now', next: 'Next', usage: 'Usage', perKwh: ' p/kWh', cheapestHeading: 'Cheapest 2 hours', nextCheapest: 'Next cheapest 2 hours',
       runningNowTag: 'Running now', bestTag: 'Best', windows: 'Windows',
       noPriceToday: 'No price data for today', ratesNotInYet: "Tomorrow's rates are not in yet",
       ratesPublishedLate: "Tomorrow's rates are published late afternoon", ratesEmpty: 'The rates list is empty or unavailable',
@@ -192,16 +239,20 @@
       dailyCost: 'Daily cost', electricity: 'Electricity', gas: 'Gas', usageLive: 'Usage (smart meter, live)',
       meterNote: "Live from the meter; the Octopus figures above are the supplier's, days late, and the two are not reconciled",
       runningNow: (until) => `Running now${until ? `, until ${until}` : ''}`,
-      runningNowShort: (until) => `running now${until ? `, until ${until}` : ''}`,
+      // "Next half hour 38.8p · using 188 W"; either part drops out when it is unknown.
+      nextHalfHour: (price, usage) => [price ? `Next half hour ${price}` : '', usage ? `using ${usage}` : ''].filter(Boolean).join(' · '),
+      // The cheapest window: "09:00 – 11:00" today, "Tomorrow 09:00 – 11:00" (or the weekday) on another day.
+      windowOn: (day, from, to) => `${day === 'Today' ? '' : `${day} `}${from} – ${to}`,
       avg: (price) => ` · avg ${price}`,
       dailyCostDays: (n) => `Daily cost, ${n} ${plural(n, 'day', 'days')}`,
     },
     cameras: {
       master: 'Cameras', cameraOn: 'Camera on', recordings: 'Recordings', tryAgain: 'Try again',
       recent: (n) => `${n} recent`,
+      offline: (names) => `${names} offline`,
     },
     feed: {
-      whatHouseDid: 'What the house did', recentActivity: 'Recent activity', historyUnavailable: 'History unavailable',
+      activity: 'Activity', nothingYet: 'Nothing recorded yet', recentActivity: 'Recent activity', historyUnavailable: 'History unavailable',
     },
     settings: {
       houseMode: 'House mode', holidayThreshold: 'Holiday threshold', centralHeating: 'Central heating', heating: 'Heating',
@@ -219,24 +270,24 @@
     });
   }
 
-  // The subject and icon of each homerun subsystem on the activity feeds: the one table. A test holds it to
+  // The subject, icon and tile colours (`tile` and `ink`, a THEMES token pair) of each homerun subsystem on the activity feeds: the one table. A test holds it to
   // the catalogue, so a new subsystem fails loudly here instead of showing up as a bare dot.
   const SUBSYSTEMS = {
-    lighting: { noun: 'Lights', icon: 'bulb' },
-    heating: { noun: 'Heating', icon: 'flame' },
-    occupied: { noun: 'Occupancy', icon: 'person' },
-    energy: { noun: 'Energy', icon: 'bolt' },
-    cameras: { noun: 'Cameras', icon: 'camera' },
-    fan: { noun: 'Fan', icon: 'fan' },
-    shower: { noun: 'Shower', icon: 'droplet' },
-    sonos: { noun: 'Speakers', icon: 'speaker' },
-    house_mode: { noun: 'House mode', icon: 'home' },
-    mo: { noun: 'Mo', icon: 'paw' },
-    thermal: { noun: 'Windows', icon: 'window' },
-    wfh_inference: { noun: 'Working from home', icon: 'laptop' },
-    modifier: { noun: 'Guest mode', icon: 'guest' },
+    lighting: { noun: 'Lights', icon: 'bulb', tile: 'subLighting', ink: 'subLightingInk' },
+    heating: { noun: 'Heating', icon: 'flame', tile: 'subHeating', ink: 'subHeatingInk' },
+    occupied: { noun: 'Occupancy', icon: 'person', tile: 'subOccupied', ink: 'subOccupiedInk' },
+    energy: { noun: 'Energy', icon: 'bolt', tile: 'subEnergy', ink: 'subEnergyInk' },
+    cameras: { noun: 'Cameras', icon: 'camera', tile: 'subCameras', ink: 'subCamerasInk' },
+    fan: { noun: 'Fan', icon: 'fan', tile: 'subFan', ink: 'subFanInk' },
+    shower: { noun: 'Shower', icon: 'droplet', tile: 'subShower', ink: 'subShowerInk' },
+    sonos: { noun: 'Speakers', icon: 'speaker', tile: 'subSonos', ink: 'subSonosInk' },
+    house_mode: { noun: 'House mode', icon: 'home', tile: 'subHouseMode', ink: 'subHouseModeInk' },
+    mo: { noun: 'Mo', icon: 'paw', tile: 'subMo', ink: 'subMoInk' },
+    thermal: { noun: 'Windows', icon: 'window', tile: 'subThermal', ink: 'subThermalInk' },
+    wfh_inference: { noun: 'Working from home', icon: 'laptop', tile: 'subWfh', ink: 'subWfhInk' },
+    modifier: { noun: 'Guest mode', icon: 'guest', tile: 'subModifier', ink: 'subModifierInk' },
   };
-  const subsystemOf = (id) => own(SUBSYSTEMS, id) || { noun: capFirst(pretty(id)), icon: 'dot' };
+  const subsystemOf = (id) => own(SUBSYSTEMS, id) || { noun: capFirst(pretty(id)), icon: 'dot', tile: '', ink: '' };
   // ── Wording: homerun history entries in plain words ──────────────────────────────────────────
   // homerun publishes only structured data (reason keys, outcomes, facts); every sentence on screen is
   // written here. REASON_TEXT is keyed `subsystem:reason`, the same key the catalogue declares. A test
@@ -503,14 +554,6 @@
     return { text: fn ? fn(e.facts, ctx) : `${capFirst(pretty(e.subsystem))} ${pretty(e.reason)}`, tone };
   }
 
-  // Room tile geometry in ONE place. The tile has a fixed height, so the height must be at least what its
-  // rows need: top+bottom padding, the taller of the name and temperature (they share row 1), the status line
-  // and the row gap (tileNeededHeight). Every line has an explicit line-height so the arithmetic is exact, and nothing in
-  // the tile clips: the status line only ellipsises text, never icons or badges.
-  const TILE = { padY: 12, nameLine: 20, tempLine: 26, statusLine: 20, gap: 6 };
-  const TILE_H = 76;
-  const tileNeededHeight = () => 2 * TILE.padY + Math.max(TILE.nameLine, TILE.tempLine) + TILE.gap + TILE.statusLine;
-
   const STYLE = `
 :host{display:block}
 *{box-sizing:border-box}
@@ -526,16 +569,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 .row{display:grid;grid-template-columns:10px 1fr auto;gap:12px;align-items:center;min-height:56px;padding:8px 14px;border-top:1px solid ${TOKENS.separator}}
 .row:first-child{border-top:0}
 .row.warn{background:${TOKENS.attentionRow};align-items:start}
-.nm{font-size:15px;font-weight:600}
-.sub{font-size:12px;color:${TOKENS.textSecondary};margin-top:2px;line-height:1.35}
 .t{font-size:17px;font-weight:600;text-align:right}
-.rh{font-size:11px;color:${TOKENS.textTertiary};text-align:right}
-.chip{display:inline-flex;align-items:center;gap:6px;padding:5px 9px;border-radius:999px;background:${TOKENS.control};font-size:12px;font-weight:600;min-height:30px;white-space:nowrap;flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
-.chips{display:flex;gap:6px;flex-wrap:nowrap;min-width:0}
-.pstrip{display:flex;align-items:center;gap:16px;min-height:56px;color:inherit}
-.det{grid-column:2 / 4;display:flex;flex-direction:column;gap:6px;padding:4px 0 6px}
-.det .l{display:flex;gap:8px;font-size:12.5px;color:${TOKENS.textSoft};line-height:1.4}
-.det .l b{color:${TOKENS.attention};font-weight:600}
 .err{background:${TOKENS.attentionBg};border:1px solid ${TOKENS.attentionBorder};color:${TOKENS.attention};border-radius:12px;padding:10px 14px;font-size:13px;font-weight:600}
 [aria-busy="true"]{opacity:.55;cursor:progress}
 .tag{font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:${TOKENS.attentionChip};color:${TOKENS.attention};white-space:nowrap}
@@ -566,22 +600,6 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 .tile.on{background:${TOKENS.tint};color:${TOKENS.tintInk}}
 .lt{display:grid;grid-template-columns:1fr 130px;gap:12px;align-items:center;min-height:56px;padding:6px 14px;border-top:1px solid ${TOKENS.separator}}
 .lt:first-child{border-top:0}
-.badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:${TOKENS.control};color:${TOKENS.textSoft};white-space:nowrap}
-.oc{display:grid;grid-template-columns:20px 1fr auto;column-gap:12px;row-gap:6px;align-items:center;padding:12px 14px;min-height:64px;box-sizing:border-box;text-decoration:none;color:inherit}
-.oc .nm{font-size:16px;font-weight:600}
-.oc .t{text-align:right}
-.oc .sub{grid-column:1 / 4;display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:12px;color:${TOKENS.textSecondary}}
-.rgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
-.rt{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-rows:auto auto;column-gap:8px;row-gap:${TILE.gap}px;padding:${TILE.padY}px 12px;height:${TILE_H}px;box-sizing:border-box;background:${TOKENS.surface};border-radius:14px;text-decoration:none;color:inherit}
-.rt .nm{grid-column:1;grid-row:1;display:flex;align-items:center;gap:6px;font-size:13.5px;font-weight:600;line-height:${TILE.nameLine}px;color:${TOKENS.textSoft};white-space:nowrap;min-width:0}
-.rt .nm span{overflow:hidden;text-overflow:ellipsis}
-.rt .nm svg{flex:none}
-.rt .t{grid-column:2;grid-row:1;align-self:center;text-align:right;white-space:nowrap;line-height:${TILE.tempLine}px}
-.rt .b{grid-column:1 / -1;grid-row:2;display:flex;gap:6px;align-items:center;flex-wrap:nowrap;color:${TOKENS.textTertiary};font-size:11.5px;line-height:${TILE.statusLine}px;min-height:${TILE.statusLine}px;white-space:nowrap;min-width:0}
-.rt .b>*{flex:none}
-.rt .b>span:not(.badge){flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
-.rt .b .badge{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;line-height:14px}
-.rt.wide{grid-column:1 / -1}
 .segs{display:flex;gap:8px;background:${TOKENS.surface};border-radius:14px;padding:4px}
 .seg{border:0;font:inherit;font-size:14px;font-weight:600;min-height:44px;border-radius:12px;cursor:pointer;flex:1;background:transparent;color:${TOKENS.textSoft}}
 .seg.on{background:${TOKENS.tint};color:${TOKENS.tintInk}}
@@ -606,10 +624,55 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 .u{padding:14px;flex:1;min-width:0}
 .u .v{font-size:22px;font-weight:700;letter-spacing:-.4px;margin-top:4px}
 .u .v span{font-size:12px;font-weight:500;color:${TOKENS.textSecondary}}
+.hm{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;color:${TOKENS.text};padding:0 16px;display:flex;flex-direction:column;gap:24px}
+.hm .num,.hm-price,.hm-val,.hm-time{font-family:ui-rounded,"SF Pro Rounded",-apple-system,system-ui,sans-serif;font-variant-numeric:tabular-nums}
+.hm-top{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:56px}
+.hm-hd{min-width:0}
+.hm-big{margin:0;font-size:34px;line-height:41px;font-weight:700;letter-spacing:.3px}
+.hm-line{display:block;font-size:15px;line-height:20px;color:${TOKENS.textSecondary};min-height:20px}
+.hm-avs{display:flex;flex:none;padding-right:4px}
+.hm-av{position:relative;box-sizing:border-box;width:36px;height:36px;border-radius:50%;background:${TOKENS.control};border:2px solid ${TOKENS.bg};display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;color:${TOKENS.text}}
+.hm-av+.hm-av{margin-left:-8px}
+.hm-pd{position:absolute;right:-4px;bottom:-4px;width:10px;height:10px;border-radius:50%;box-shadow:0 0 0 2px ${TOKENS.bg}}
+.hm-head{display:flex;flex-direction:column;gap:4px}
+.hm-mo{font-size:13px;line-height:18px;color:${TOKENS.textSecondary}}
+.hm-foot{margin:0;font-size:13px;line-height:18px;color:${TOKENS.textSecondary}}
+.hm-sec{display:flex;flex-direction:column;gap:8px}
+.hm-h{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+.hm-h h2{margin:0;font-size:20px;line-height:25px;font-weight:700}
+.hm-tr{font-size:15px;line-height:20px;font-weight:400;color:${TOKENS.textSecondary}}
+.hm-list{background:${TOKENS.surface};border-radius:12px;overflow:hidden}
+.hm-row{position:relative;display:flex;align-items:center;gap:12px;min-height:60px;padding:0 14px;color:inherit;text-decoration:none}
+.hm-row+.hm-row::before{content:'';position:absolute;top:0;left:56px;right:0;height:.5px;background:${TOKENS.separator}}
+.hm-row.act{align-items:flex-start;padding:12px 14px}
+.hm-tile{width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex:none}
+.hm-text{flex:1;min-width:0}
+.hm-rt{font-size:17px;line-height:22px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hm-rs{font-size:14px;line-height:19px;color:${TOKENS.textSecondary};overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hm-val{flex:none;font-size:17px;line-height:22px;color:${TOKENS.textSecondary}}
+.hm-chev{flex:none;display:flex;width:14px;color:${TOKENS.chevron}}
+.hm-l1{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.hm-subj{font-size:17px;line-height:22px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hm-time{flex:none;font-size:14px;line-height:19px;color:${TOKENS.textSecondary}}
+.hm-l2{font-size:15px;line-height:20px}
+.hm-row:focus-visible,.hm-card:focus-visible,.hm-line:focus-visible{outline:2px solid ${TOKENS.link};outline-offset:-2px}
+.hm-card{background:${TOKENS.surface};border-radius:20px;padding:16px;display:block;color:inherit;text-decoration:none}
+.hm-eh{display:flex;align-items:center;gap:6px;font-size:13px;line-height:18px;font-weight:600;color:${TOKENS.subEnergy}}
+.hm-eb{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-top:8px}
+.hm-ep{min-width:0}
+.hm-price{font-size:40px;line-height:44px;font-weight:700}
+.hm-price small{font-size:20px;font-weight:600;margin-left:2px;color:${TOKENS.textSecondary}}
+.hm-es{font-size:13px;line-height:18px;color:${TOKENS.textSecondary}}
+.hm-bars{display:flex;align-items:flex-end;gap:3px;height:44px;flex:none}
+.hm-bar{width:7px;border-radius:4px;opacity:.6}
+.hm-bar.now{opacity:1;box-shadow:0 0 0 1.5px ${TOKENS.text}}
+.hm-efoot{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-top:14px;padding-top:12px;border-top:.5px solid ${TOKENS.separator};font-size:15px;line-height:20px}
+.hm-efoot .hm-es{font-size:15px;line-height:20px}
+@media (max-width:359px){.hm-price{font-size:36px}}
 .tabbar-spacer{height:var(--tbh)}
-.tabs{--tbh:calc(58px + max(10px, env(safe-area-inset-bottom, 0px)));box-sizing:border-box;height:var(--tbh);padding:8px 16px max(10px, env(safe-area-inset-bottom, 0px));display:flex;background:${TOKENS.tabBar};-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);border-top:1px solid ${TOKENS.separator}}
+.tabs{--tbh:${TABBAR_H};box-sizing:border-box;height:var(--tbh);padding:0 8px max(34px, env(safe-area-inset-bottom, 0px));display:flex;background:${TOKENS.tabBar};-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);border-top:.5px solid ${TOKENS.separator}}
 .tabs.fixed{position:fixed;left:0;right:0;bottom:0;z-index:100}
-.tab{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font:inherit;font-size:10.5px;font-weight:600;color:${TOKENS.textTertiary};min-height:44px;background:none;border:0;cursor:pointer;padding:0}
+.tab{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font:inherit;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;font-size:10px;line-height:12px;font-weight:500;color:${TOKENS.textSecondary};min-height:44px;background:none;border:0;cursor:pointer;padding:0}
 .tab[aria-current=page]{color:${TOKENS.tint}}
 .tab:focus-visible{outline:2px solid ${TOKENS.link};outline-offset:-2px;border-radius:10px}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
@@ -639,7 +702,6 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 .sb>*{flex-shrink:0}
 @keyframes sheetup{from{transform:translateY(40px);opacity:0}to{transform:none;opacity:1}}
 @media (prefers-reduced-motion:reduce){.sheet{animation:none}}
-.rt.wide .t.gh{font-size:15px;font-weight:600;white-space:nowrap}
 .big{font-size:32px;font-weight:700;letter-spacing:-.6px;line-height:1.1;margin-top:4px}
 .two{display:flex;gap:10px}
 .two .card{flex:1}
@@ -1198,19 +1260,24 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       const text = withPlace ? placed(e.location, sentence.text, e.subsystem) : sentence.text;
       const last = rows[rows.length - 1];
       if (last && last.text === text && last.tone === sentence.tone && last.subsystem === e.subsystem) last.count += 1;
-      else rows.push({ ts: e.ts, text, tone: sentence.tone, subsystem: e.subsystem, count: 1 });
+      else rows.push({ ts: e.ts, text, sentence: sentence.text, subject: subjectOf(e.location, e.subsystem), tone: sentence.tone, subsystem: e.subsystem, count: 1 });
     }
     return { rows, note: history.note };
   }
   // House feed rows say what they are about: a room's short name, or for whole-house entries the subsystem
   // noun ("Energy · Spun 3 Octopus wheels"). The prefix is left off when the sentence already opens with that
   // noun (or its first word: "House mode" under "House set to away"), so nothing reads "Lights · Lights off".
+  // The subject of a feed row: a room's short name, or for whole-house entries the subsystem noun.
+  function subjectOf(location, subsystem) {
+    if (location && location !== 'house') return own(ROOMS, location) ? ROOMS[location].short : capFirst(pretty(location));
+    return subsystemOf(subsystem).noun;
+  }
   function placed(location, text, subsystem) {
-    if (location && location !== 'house') return `${own(ROOMS, location) ? ROOMS[location].short : capFirst(pretty(location))} · ${text}`;
-    const noun = subsystemOf(subsystem).noun;
-    const first = noun.split(' ')[0].toLowerCase();
+    const subject = subjectOf(location, subsystem);
+    if (location && location !== 'house') return `${subject} · ${text}`;
+    const first = subject.split(' ')[0].toLowerCase();
     const lead = text.toLowerCase();
-    return lead === first || lead.startsWith(first + ' ') ? text : `${noun} · ${text}`;
+    return lead === first || lead.startsWith(first + ' ') ? text : `${subject} · ${text}`;
   }
   function roomActivity(hass, key) {
     return activityOf(hass, readHistory(hass, `sensor.${key}_history`), false);
@@ -1258,16 +1325,16 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     fan: 'M12 12c0-4 1-7 3.5-7S18 8 12 12zM12 12c4 0 7 1 7 3.5S16 18 12 12zM12 12c0 4-1 7-3.5 7S6 16 12 12zM12 12c-4 0-7-1-7-3.5S8 6 12 12z',
     guest: 'M10 4.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7zM3 20a7 7 0 0 1 14 0M19 8v6M16 11h6',
     dot: 'M12 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4z',
+    next: 'M9 5l7 7-7 7',
+    warn: 'M12 4l9 16H3zM12 10v4M12 17h.01',
+    sunset: 'M3 19h18M7 19a5 5 0 0 1 10 0M12 7v3M5.5 11.5l1.4 1.4M18.5 11.5l-1.4 1.4M12 3l-2 2M12 3l2 2',
+    bin: 'M5 7h14M10 7V4.5h4V7M7 7l1 13h8l1-13M10 11v6M14 11v6',
+    // Filled variants for the selected tab; closed shapes, so they take a fill.
+    homeFill: 'M12 3L2 12h3v8h5v-5h4v5h5v-8h3z',
   };
   const svg = (path, size, extra) => `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"${extra || ''}><path d="${path}"/></svg>`;
-  // Occupancy indicator (the dot stays health): filled person = occupied, outlined dim = empty,
-  // dashed amber = occupancy sensor unavailable.
-  function occIcon(m, px) {
-    const size = px || 15;
-    if (!m.hasReport) return '';
-    const [label, fill, color, dash] = m.occupancy_unavailable ? ['Occupancy unavailable', 'none', TOKENS.attention, ' stroke-dasharray="2 2"'] : m.occupied ? ['Occupied', 'currentColor', TOKENS.text, ''] : ['Empty', 'none', TOKENS.textTertiary, ''];
-    return `<svg class="occ" role="img" aria-label="${label}" viewBox="0 0 24 24" width="${size}" height="${size}" fill="${fill}" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="color:${color};flex:none"${dash}><circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/></svg>`;
-  }
+  // The same glyph as a solid shape (evenodd, so a hole in the path stays a hole).
+  const svgFilled = (path, size) => `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="currentColor" fill-rule="evenodd" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${path}"/></svg>`;
   const SCENE_ICON = { off: 'power', lamps: 'lamp', low: 'moon', full: 'sun', all_full: 'sun', daylight: 'sun' };
 
   // ── Wording ──────────────────────────────────────────────────────────────────────────────────
@@ -1318,24 +1385,36 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   }
 
   // ── Sections ─────────────────────────────────────────────────────────────────────────────────
-  function sectionNowHeader(hass) {
+  // ── House page: the native list design ──────────────────────────────────────────────────────
+  // Every section on the House page is built from the same few parts: a section header, an inset grouped list,
+  // and rows (a tile, a title with one subtitle line, an optional trailing value, a chevron). Rows are real links
+  // (<a>) wherever they lead somewhere. Glyphs are decoration (aria-hidden); the text carries the meaning.
+  const hmTile = (fill, ink, glyph, filled) => `<span class="hm-tile" style="background:${fill};color:${ink}">${filled ? svgFilled(glyph, 18) : svg(glyph, 18)}</span>`;
+  // One list row. `path` makes it a link (with a chevron); without one it is a plain row. `subColour` is a token
+  // value for the subtitle (attention); `value` is the trailing figure.
+  function hmRow({ tile, title, sub, subColour, value, path, label }) {
+    const text = `<div class="hm-text"><div class="hm-rt">${esc(title)}</div><div class="hm-rs"${subColour ? ` style="color:${subColour}"` : ''}>${esc(sub)}</div></div>`;
+    const val = value ? `<span class="hm-val num">${esc(value)}</span>` : '';
+    if (!path) return `<div class="hm-row">${tile}${text}${val}</div>`;
+    return `<a class="hm-row tap" data-act="nav" data-path="${esc(path)}"${label ? ` aria-label="${esc(label)}"` : ''}>${tile}${text}${val}<span class="hm-chev">${svg(ICON.next, 14)}</span></a>`;
+  }
+  const hmSection = (title, rows, opts) => `<section class="hm-sec"><div class="hm-h"><h2${opts && opts.colour ? ` style="color:${opts.colour}"` : ''}>${esc(title)}</h2>${opts && opts.trailing ? `<span class="hm-tr">${esc(opts.trailing)}</span>` : ''}</div><div class="hm-list">${rows}</div></section>`;
+
+  // Header: the large title, the house mode and occupancy, and who is home.
+  function avatar(hass, id, name) {
+    const st = state(hass, id);
+    const home = st === 'home';
+    const status = !usable(st) ? 'unknown' : home ? 'home' : 'away';
+    return `<span class="hm-av" role="img" aria-label="${esc(COPY.home.personLabel(name, status))}">${esc(name.charAt(0))}<span class="hm-pd" style="background:${home ? TOKENS.present : TOKENS.presenceAway}"></span></span>`;
+  }
+  function sectionNowHeader(hass, at) {
     const mode = state(hass, 'sensor.house_active_mode');
     const mod = state(hass, 'input_select.house_active_mode_modifier');
-    const pill = usable(mode) ? `<a class="tag ok tap" data-act="nav" data-path="${SETTINGS_PATH}" aria-label="${COPY.common.openSettings}" style="padding:3px 9px;text-decoration:none">● ${esc(mode.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase()))}${usable(mod) && mod !== 'none' ? ' · ' + esc(mod) : ''}</a>` : '';
-    return `<div style="display:flex;align-items:center;gap:10px;min-height:44px"><div style="font-size:28px;font-weight:700;letter-spacing:-.4px">${COPY.home.title}</div>${pill}</div>`;
-  }
-
-  // People and Mo on ONE row: 30px chips, 12px text, nowrap. Texts are shortened before anything could wrap.
-  function peopleChips(hass, at) {
-    const person = (id, name, wfh) => {
-      const st = state(hass, id);
-      const home = st === 'home';
-      const w = state(hass, wfh) === 'on';
-      const label = !usable(st) ? '?' : home && w ? COPY.home.personWfh : home ? COPY.home.personHome : COPY.home.personAway;
-      return `<div class="chip"><span class="dot${home ? '' : ' dim'}" style="width:7px;height:7px"></span>${esc(name)} · ${label}</div>`;
-    };
+    const modifier = usable(mod) && mod !== 'none' ? (own(MODIFIERS, mod) ? MODIFIERS[mod].label : mod) : '';
+    const line = COPY.home.headerLine(houseModeText(mode, hass, at).title, modifier, occupiedRooms(hass).length);
+    // The Mo line is unchanged in content: the owner is redesigning it separately.
     const ate = moAte(hass, at).replace('yesterday', 'yest');
-    return `<div class="chips">${person('person.adam', 'Adam', 'input_boolean.wfh_adam')}${person('person.sarah', 'Sarah', 'input_boolean.wfh_sarah')}<div class="chip" style="color:${TOKENS.textSecondary}">Mo${ate ? ' · ' + esc(ate) : ''}</div></div>`;
+    return `<div class="hm"><div class="hm-head"><div class="hm-top"><div class="hm-hd"><h1 class="hm-big">${COPY.home.title}</h1><a class="hm-line tap" data-act="nav" data-path="${SETTINGS_PATH}" aria-label="${COPY.common.openSettings}">${esc(line)}</a></div><div class="hm-avs">${avatar(hass, 'person.adam', 'Adam')}${avatar(hass, 'person.sarah', 'Sarah')}</div></div><div class="hm-mo">${COPY.home.mo}${ate ? ' · ' + esc(ate) : ''}</div></div></div>`;
   }
 
   // Now / Next (graded colours) and Usage (unit-aware). A reading that has not updated for 10 minutes
@@ -1392,14 +1471,36 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 <div style="flex:1"></div><div style="text-align:right"><div class="lbl">${COPY.energy.usage}</div><div style="font-size:18px;font-weight:600;line-height:1.5">${usageText}</div></div></div>`;
   }
 
-  // Status card price row: one 56px+ link to the Energy page (Now / Next / Usage, chevron), and under it the
-  // cheapest-2h window with its Today/Tomorrow label (hidden when past or unknown).
-  function statusPriceLink(hass, at) {
-    const { nowP, nextP, usageText } = priceFigures(hass, at);
+  // Electricity widget: the current price, what is next, a mini chart of the coming slots, and the cheapest
+  // two-hour window. The whole card opens the Energy page.
+  const MINI_SLOTS = 9;
+  const MINI_MIN_H = 8; // px; the cheapest bar is never invisible
+  const MINI_MAX_H = 44;
+  // The current half hour and the ones after it, today's list followed by tomorrow's.
+  function upcomingSlots(hass, at) {
+    const slots = rateBands(ratesOf(hass, 'today'), at).concat(rateBands(ratesOf(hass, 'tomorrow'), at));
+    return slots.filter((s) => s.state !== 'past').sort((a, b) => a.start - b.start).slice(0, MINI_SLOTS);
+  }
+  function miniBars(slots) {
+    if (!slots.length) return '';
+    const lo = Math.min(...slots.map((s) => s.v));
+    const hi = Math.max(...slots.map((s) => s.v));
+    // Equal prices would divide by zero; they get one mid-height bar each.
+    const height = (v) => (hi === lo ? (MINI_MIN_H + MINI_MAX_H) / 2 : MINI_MIN_H + ((v - lo) / (hi - lo)) * (MINI_MAX_H - MINI_MIN_H));
+    const bars = slots.map((s) => `<span class="hm-bar${s.state === 'current' ? ' now' : ''}" style="height:${Math.round(height(s.v))}px;background:${priceColour(s.v)}"></span>`).join('');
+    return `<div class="hm-bars" aria-hidden="true">${bars}</div>`;
+  }
+  function cheapestFooter(hass, at) {
     const cw = cheapestWindow(hass, at);
-    const lbl = (t) => `<div class="lbl" style="margin:0">${t}</div>`;
-    const cue = cw.status === 'running' ? `<div style="font-size:12px;color:${TOKENS.textSecondary};margin-top:2px">${COPY.energy.cheapest2h} · <b style="color:${TOKENS.text};font-weight:600">${COPY.energy.runningNowShort(cw.endText ? esc(cw.endText) : '')}</b></div>` : cw.status === 'upcoming' ? `<div style="font-size:12px;color:${TOKENS.textSecondary};margin-top:2px">${COPY.energy.cheapest2h} · <b style="color:${TOKENS.text};font-weight:600">${esc(cw.text)}</b></div>` : '';
-    return `<a class="tap pstrip" data-act="nav" data-path="${ENERGY_PATH}" aria-label="${COPY.common.openEnergy}"><div>${lbl(COPY.energy.now)}<div style="font-size:24px;font-weight:700;letter-spacing:-.5px;line-height:1.15;color:${priceColour(nowP, { text: true })}">${nowP === null ? '–' : fmt1(nowP)}<span style="font-size:11.5px;font-weight:500;color:${TOKENS.textSecondary}"> p</span></div></div><div>${lbl(COPY.energy.next)}<div style="font-size:17px;font-weight:600;line-height:1.45;color:${priceColour(nextP, { text: true })}">${nextP === null ? '–' : fmt1(nextP) + 'p'}</div></div><div>${lbl(COPY.energy.usage)}<div style="font-size:17px;font-weight:600;line-height:1.45">${usageText}</div></div><div style="flex:1"></div><span style="color:${TOKENS.link};display:flex">${svg('M9 5l7 7-7 7', 20)}</span></a>${cue}`;
+    let right = '';
+    if (cw.status === 'running') right = COPY.energy.runningNow(cw.endText ? esc(cw.endText) : '');
+    else if (cw.status === 'upcoming') right = COPY.energy.windowOn(cw.dayWord, `${localHm(cw.start)}`, `${localHm(cw.end)}`);
+    return right ? `<div class="hm-efoot"><span class="hm-es">${COPY.energy.cheapestHeading}</span><span class="num">${right}</span></div>` : '';
+  }
+  function electricityWidget(hass, at) {
+    const { nowP, nextP, usageText } = priceFigures(hass, at);
+    const sub = COPY.energy.nextHalfHour(nextP === null ? '' : `${fmt1(nextP)}p`, usageText === '–' ? '' : usageText);
+    return `<a class="hm-card hm-elec tap" data-act="nav" data-path="${ENERGY_PATH}" aria-label="${COPY.common.openEnergy}"><div class="hm-eh">${svgFilled(ICON.bolt, 14)}<span>${COPY.energy.electricity}</span></div><div class="hm-eb"><div class="hm-ep"><div class="hm-price num" style="color:${priceColour(nowP, { text: true })}">${nowP === null ? '–' : fmt1(nowP)}<small>p</small></div>${sub ? `<div class="hm-es">${esc(sub)}</div>` : ''}</div>${miniBars(upcomingSlots(hass, at))}</div>${cheapestFooter(hass, at)}</a>`;
   }
 
   function heatingRooms(hass) {
@@ -1418,39 +1519,39 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const next = hidden.find((i) => keyFromItem(i) && !listed.has(i.key)) || hidden[0];
     return attentionPath(next);
   }
+  // The tile glyph that suits an item: a window, a thermometer-ish flame for temperature faults, else a warning.
+  function attentionGlyph(kind) {
+    if (kind === 'window_open_heating_on') return ICON.window;
+    if (kind === 'cold_not_heating' || kind === 'warm_heating') return ICON.flame;
+    return ICON.warn;
+  }
 
-  // One status card: people and Mo chips first; a head (amber attention summary, or dim "No attention report") only when there is something to say, then the price strip.
-  function sectionStatus(hass, at) {
+  // Needs attention: only when there is something to say. A missing report is said once, in small print; there is
+  // no "all good" state, a calm house shows nothing here.
+  function attentionSection(hass) {
     const items = attentionItems(hass);
-    const hasData = !!stateObj(hass, 'sensor.info_attention');
-    // A calm house says nothing: no head, the card opens on the people chips. Only a missing report
-    // or real items earn a head.
-    let head = '';
-    if (items.length === 0) {
-      if (!hasData) head = `<div style="display:flex;align-items:center;gap:10px"><span class="dot dim"></span><div style="font-size:15px;font-weight:700">${COPY.home.noAttentionReport}</div></div>`;
-    } else {
-      const shownItems = items.slice(0, STATUS_ROWS);
-      // Each row opens its own room; an item with no room (an unexplained reason) opens House.
-      // The summary is room and what; the room card below carries the sentence.
-      const shown = shownItems.map((i) => `<a class="tap" data-act="nav" data-path="${esc(attentionPath(i))}" style="display:block;font-size:13px;margin-top:6px;line-height:1.4"><b>${esc(i.room)}</b> · ${esc(itemLabel(i, ROOMS[i.key] ? roomModel(hass, i.key) : null))}</a>`).join('');
-      const more = items.length > STATUS_ROWS ? `<a class="tap" data-act="nav" data-path="${esc(moreAttentionPath(items))}" style="display:block;font-size:12px;color:${TOKENS.textSecondary};margin-top:4px">+${items.length - STATUS_ROWS} more</a>` : '';
-      head = `<div style="display:flex;align-items:center;gap:10px"><span class="dot warn"></span><span style="font-size:15px;font-weight:700;color:${TOKENS.attention}">${COPY.home.needsAttentionCount(items.length)}</span></div>${shown}${more}`;
+    if (items.length === 0) return stateObj(hass, 'sensor.info_attention') ? '' : `<p class="hm-foot">${COPY.home.noAttentionReport}</p>`;
+    const tile = (glyph) => hmTile(TOKENS.attention, TOKENS.attentionInk, glyph);
+    const rows = items.slice(0, STATUS_ROWS).map((i) => {
+      const m = ROOMS[i.key] ? roomModel(hass, i.key) : null;
+      return hmRow({ tile: tile(attentionGlyph(i.kind)), title: i.room, sub: itemDetail(i, m) || itemLabel(i, m), path: attentionPath(i) });
+    });
+    if (items.length > STATUS_ROWS) {
+      rows.push(hmRow({ tile: '<span class="hm-tile"></span>', title: COPY.home.moreItems(items.length - STATUS_ROWS), sub: '', path: moreAttentionPath(items) }));
     }
-    return `<div class="card pad${items.length ? ' warn' : ''}">${head}<div${head ? ' style="margin-top:10px"' : ''}>${peopleChips(hass, at)}</div><div style="margin-top:12px;padding-top:4px;border-top:1px solid ${TOKENS.separator}">${statusPriceLink(hass, at)}</div></div>`;
+    return hmSection(COPY.home.needsAttention, rows.join(''), { colour: TOKENS.attention });
+  }
+  function sectionStatus(hass, at) {
+    return `<div class="hm">${attentionSection(hass)}${electricityWidget(hass, at)}</div>`;
   }
 
-  // ── Rooms: three groups, quiet by default ───────────────────────────────────────────────────
-  // A room is in exactly one group: attention first, then occupied, then everything else (fixed order).
-  function roomGroups(hass) {
-    const flagged = new Set(attentionItems(hass).map(keyFromItem).filter(Boolean));
-    const attention = ROOM_ORDER.filter((k) => flagged.has(k));
-    const occupied = occupiedRooms(hass).filter((k) => !flagged.has(k));
-    const other = ROOM_ORDER.filter((k) => !flagged.has(k) && !occupied.includes(k));
-    return { attention, occupied, other };
+  // ── Rooms and Outside ───────────────────────────────────────────────────────────────────────
+  // Occupied rooms first, then the rest, each in the fixed room order. A room that needs attention is listed
+  // here too: the attention section above is a summary, not a move.
+  function roomOrder(hass) {
+    const occupied = occupiedRooms(hass);
+    return occupied.concat(ROOM_ORDER.filter((k) => !occupied.includes(k)));
   }
-
-  const SHORT_HOLD = { 'Window open': 'Window', 'Door open': 'Door' };
-  const shortHold = (l) => SHORT_HOLD[l] || l;
   // A recent real action (under 15 minutes) as a phrase with its verb ("lights off 7 min ago"). Without a
   // known verb there is no note: a bare "7 min" means nothing.
   function recentNote(hass, key, now) {
@@ -1465,66 +1566,38 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     if (age >= RECENT_MS || age < -60000) return '';
     return age < 60000 ? `${phrase} just now` : `${phrase} ${Math.floor(age / 60000)} min ago`;
   }
-  const badge = (inner, style) => `<span class="badge"${style ? ` style="${style}"` : ''}>${inner}</span>`;
-  const sizedIcon = (path, px, color) => `<svg class="ic" viewBox="0 0 24 24" width="${px}" height="${px}" fill="none" stroke="${color || 'currentColor'}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${path}"/></svg>`;
-  function manualBadge(m, now, short) {
-    if (!m.manual) return '';
-    const a = short ? '' : ago(m.manual.ts, now);
-    const src = SOURCE_WORDS[m.manual.source] || m.manual.source;
-    const label = `${src.replace(/^./, (c) => c.toUpperCase())}${a ? ' · ' + a : ''}`;
-    return badge(`${sizedIcon(ICON.hand, 13)}${esc(label)}`, `color:${TOKENS.attention};background:${TOKENS.attentionChip}`).replace('<span class="badge"', `<span class="badge" title="${COPY.room.manualChange}"`);
-  }
-  const holdBadges = (m) => m.heat_labels.map((l) => badge(`${sizedIcon(ICON.window, 12)}${esc(shortHold(l))}`)).join('');
-  const tempText = (m) => (m.temp !== null ? `${fmt1(m.temp)}°` : '–');
-  // Rooms without a climate sensor have no temperature to show at all (a bare dash adds nothing).
-  // Temperature slot: a number, a muted dash when a climate sensor has no reading, and a muted "no climate"
-  // for rooms that have no climate sensor at all (never a bare dash there).
-  const tempBlock = (m, style) => (m.cfg.climate ? `<div style="${style}${m.temp === null ? ';color:' + TOKENS.textTertiary : ''}">${tempText(m)}</div>` : `<div style="font-size:12px;font-weight:500;color:${TOKENS.textTertiary}">${COPY.home.noClimate}</div>`);
-
-  function attentionCard(hass, k, items) {
+  // The room's one plain line, from facts the report already holds: what is holding it (bed, a window), the
+  // lights and how recently the house changed them, and a note for rooms with no temperature sensor.
+  function roomSubtitle(hass, k, now) {
     const m = roomModel(hass, k);
-    const lines = [];
-    if (m.target_reason && m.target !== null) lines.push(`<div class="l"><b>${COPY.home.detailHeating}</b><span>target ${fmt1(m.target)}° (${esc(m.target_reason)})${m.mode_name && m.mode_target !== null ? ` · normally ${esc(m.mode_name)} ${fmt1(m.mode_target)}°` : ''}</span></div>`);
-    if (m.pres_labels.length) lines.push(`<div class="l"><b>${COPY.home.heldOccupied}</b><span>${esc(m.pres_labels.join(' · '))}</span></div>`);
-    for (const i of items.filter((x) => x.key === k)) lines.push(`<div class="l"><b>${esc(itemLabel(i, m))}</b><span>${esc(itemDetail(i, m))}</span></div>`);
-    const tags = m.labels.concat(m.heat_labels.filter((l) => !m.labels.includes(l))).map((l) => `<span class="tag">${esc(l)}</span>`).join('');
-    if (tags) lines.push(`<div class="l">${tags}</div>`);
-    return `<div class="card warn pad"><div style="display:flex;align-items:center;gap:8px"><span class="dot warn"></span><div style="flex:1;font-size:16px;font-weight:600;display:flex;align-items:center;gap:6px">${esc(m.cfg.short)}${occIcon(m)}</div>${tempBlock(m, 'font-size:22px;font-weight:700;letter-spacing:-.3px')}</div><div class="det" style="padding:8px 0 0">${lines.join('')}<a class="link tap" data-act="nav" data-path="${roomPath(k)}">${esc(m.cfg.short)} details ›</a></div></div>`;
+    if (!m.hasReport) return COPY.home.noReport;
+    const lights = lightsState(m, activeScene(hass, k));
+    const lightsText = !lights.on ? COPY.home.lightsOff : lights.badge === 'On' ? COPY.home.lightsOn : lights.badge;
+    const holds = m.pres_labels.slice(0, 1).map(COPY.home.holdLabel).concat(m.heat_labels.slice(0, 1));
+    const parts = holds.concat(COPY.home.lightsNote(lightsText, recentNote(hass, k, now)));
+    if (m.manual && !holds.length) parts.push(COPY.room.manualChange);
+    if (!m.cfg.climate) parts.push(COPY.home.noTemperatureSensor);
+    return parts.join(' · ');
   }
-
-  function occupiedCard(hass, k, now) {
+  function roomRow(hass, k, now) {
     const m = roomModel(hass, k);
-    const scene = activeScene(hass, k);
-    const recent = recentNote(hass, k, now).replace(/^lights /, '');
-    const lights = badge(`${sizedIcon(ICON.bulb, 13, m.lights_on > 0 ? colour('tint') : undefined)}${esc(lightsState(m, scene).badge)}`);
-    const holds = m.pres_labels.slice(0, 2).map((l) => badge(esc(l))).join('');
-    return `<a class="card oc tap" data-act="nav" data-path="${roomPath(k)}">${occIcon(m, 20)}<div class="nm">${esc(m.cfg.short)}</div><div class="t">${tempBlock(m, 'font-size:20px;font-weight:700;letter-spacing:-.3px')}</div><div class="sub">${lights}${manualBadge(m, now)}${holdBadges(m)}${holds}${recent ? badge(esc(recent), `color:${TOKENS.textSecondary}`) : ''}</div></a>`;
+    const occupied = m.hasReport && m.occupied;
+    const tile = occupied ? hmTile(TOKENS.occupied, TOKENS.occupiedInk, ICON.person, true) : hmTile(TOKENS.tileIdle, m.occupancy_unavailable ? TOKENS.attention : TOKENS.textSecondary, ICON.person);
+    // No climate sensor: no trailing value at all. A sensor with no reading shows a dash.
+    const value = m.cfg.climate ? (m.temp !== null ? `${fmt1(m.temp)}°` : '–') : '';
+    return hmRow({ tile, title: m.cfg.name, sub: roomSubtitle(hass, k, now), value, path: roomPath(k) });
   }
-
-  // Fixed-height tile, a small occupied card: icon + name with the temperature right-aligned on row 1, the
-  // lights status line on row 2. The status line never
-  // wraps; at most one badge (a hold wins over the manual marker) so it cannot grow the tile.
-  function roomTile(hass, k, now, wide) {
-    const m = roomModel(hass, k);
-    const scene = activeScene(hass, k);
-    const recent = recentNote(hass, k, now).replace(/^lights /, '');
-    const holds = m.hasReport ? holdBadges(m) : '';
-    // One extra item at most, and the manual badge drops its age here: the tile must stay one line.
-    const extra = m.hasReport ? (holds || manualBadge(m, now, true) || (recent ? `<span>${esc(recent)}</span>` : '')) : '';
-    const line = `${sizedIcon(ICON.bulb, 14)}<span>${m.hasReport ? esc(lightsState(m, scene).badge) : 'No report'}</span>${extra}`;
-    return `<a class="rt tap${wide ? ' wide' : ''}" data-act="nav" data-path="${roomPath(k)}"><div class="nm">${occIcon(m) || sizedIcon(ICON.person, 15, colour('textTertiary'))}<span>${esc(m.cfg.short)}</span></div><div class="t">${tempBlock(m, `font-size:20px;font-weight:700;letter-spacing:-.3px;line-height:${TILE.tempLine}px`)}</div><div class="b">${line}</div></a>`;
+  function gardenRow(hass, key, now) {
+    const g = gardenModel(hass, key, now);
+    const shown = !g.reporting ? '–' : g.on ? COPY.common.on : COPY.common.off;
+    return hmRow({ tile: hmTile(TOKENS.outside, TOKENS.outsideInk, ICON.sunset), title: g.name, sub: gardenSub(g, now), value: shown, path: roomPath(key) });
   }
-
   function sectionRooms(hass, now) {
-    const g = roomGroups(hass);
-    const items = attentionItems(hass);
-    const out = [];
-    if (g.attention.length) out.push(`<div class="lbl" style="margin:4px 4px -10px">${COPY.home.needsAttention}</div>${g.attention.map((k) => attentionCard(hass, k, items)).join('')}`);
-    if (g.occupied.length) out.push(`<div class="lbl" style="margin:4px 4px -10px">${COPY.home.occupiedNow}</div>${g.occupied.map((k) => occupiedCard(hass, k, now)).join('')}`);
-    if (g.other.length) out.push(`<div class="lbl" style="margin:4px 4px -10px">${g.occupied.length || g.attention.length ? COPY.home.otherRooms : COPY.home.rooms}</div><div class="rgrid">${g.other.map((k, i) => roomTile(hass, k, now, g.other.length % 2 === 1 && i === g.other.length - 1)).join('')}</div>`);
-    const flagged = new Set(items.map((i) => i.key));
-    out.push(`<div class="lbl" style="margin:4px 4px -10px">${COPY.home.outside}</div><div class="rgrid">${GARDEN_ORDER.map((k) => gardenTile(hass, k, now, flagged.has(k))).join('')}</div>`);
-    return out.join('');
+    const keys = roomOrder(hass);
+    const occupied = occupiedRooms(hass).length;
+    const rooms = hmSection(COPY.home.rooms, keys.map((k) => roomRow(hass, k, now)).join(''), { trailing: COPY.home.roomsOccupiedCount(occupied) });
+    const outside = hmSection(COPY.home.outside, GARDEN_ORDER.map((k) => gardenRow(hass, k, now)).join(''));
+    return `<div class="hm">${rooms}${outside}</div>`;
   }
 
   // The meter sensor reports kW today but could be W: read the unit, never assume it. An unknown
@@ -2008,42 +2081,65 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 <div style="font-size:11.5px;color:${TOKENS.textTertiary};margin:-6px 4px 0">${COPY.energy.meterNote}</div>`;
   }
 
-  // Bins (what is due next, and when) beside Heating (boiler state, inside/outside). This card opens the
-  // "House" group on the Now page: it and the cameras card that follows are not part of "Outside" (the
-  // gardens, which end the rooms card), so the label lives here, ahead of the first House card.
-  function sectionBinsHeating(hass) {
-    const names = { food: 'Food', paid_garden: 'Garden', recycling: 'Recycling', refuse: 'Refuse' };
-    const bins = Object.keys(names).map((k) => ({ n: names[k], d: num(state(hass, `sensor.st_albans_collect_domestic_${k}_days_until_collection`)) })).filter((b) => b.d !== null);
-    let binTitle = '–';
-    let binSub = 'no collection data';
-    let soon = false;
-    if (bins.length) {
-      const next = Math.min(...bins.map((b) => b.d));
-      binTitle = bins.filter((b) => b.d === next).map((b) => b.n).join(' · ');
-      binSub = next <= 0 ? 'today' : next === 1 ? 'tomorrow' : `in ${Math.round(next)} days`;
-      soon = next <= 1;
-    }
+  // House list: Heating, Cameras and Bins as rows. Heating opens Settings, Cameras the Cameras page; Bins has no
+  // page to open, so it is a plain row without a chevron.
+  const BIN_NAMES = { food: 'Food', paid_garden: 'Garden', recycling: 'Recycling', refuse: 'Refuse' };
+  function binsRow(hass) {
+    const bins = Object.keys(BIN_NAMES).map((k) => ({ n: BIN_NAMES[k], d: num(state(hass, `sensor.st_albans_collect_domestic_${k}_days_until_collection`)) })).filter((b) => b.d !== null);
+    const tile = hmTile(TOKENS.bins, TOKENS.binsInk, ICON.bin);
+    if (!bins.length) return hmRow({ tile, title: COPY.home.bins, sub: COPY.home.noCollectionData });
+    const next = Math.min(...bins.map((b) => b.d));
+    const soon = next <= 1;
+    return hmRow({ tile, title: COPY.home.binNames(bins.filter((b) => b.d === next).map((b) => b.n)), sub: COPY.home.collected(next), subColour: soon ? TOKENS.attention : '' });
+  }
+  function heatingRow(hass) {
     const off = state(hass, 'input_boolean.house_heating_enabled') === 'off';
     const firing = state(hass, 'binary_sensor.house_heating_boiler_firing') === 'on';
     const rooms = heatingRooms(hass).length;
-    const hTitle = off ? 'Heating off' : firing ? 'Boiler firing' : 'Boiler idle';
-    // The room count leads the sub line; it means nothing when heating is off or no room is calling for heat.
-    const roomCount = !off && rooms > 0 ? COPY.home.roomsOccupied(rooms) : '';
     const inside = num(state(hass, 'sensor.house_average_temperature'));
     const outside = num(attr(hass, 'weather.forecast_home', 'temperature'));
-    const patio = state(hass, 'input_boolean.patio_door_heating_suspended') === 'on' ? 'patio open' : '';
-    // Two fixed lines, each unwrappable on a phone: what is calling for heat, then the temperatures.
-    const hLine1 = [roomCount, patio].filter(Boolean).join(' · ');
-    const hLine2 = [inside !== null ? `in ${fmt1(inside)}°` : '', outside !== null ? `out ${fmt1(outside)}°` : ''].filter(Boolean).join(' · ') || 'no readings';
-    const sl = (t, color) => `<div class="sl"${color ? ` style="color:${color}"` : ''}>${t ? esc(t) : '&nbsp;'}</div>`;
-    return `<div class="lbl" style="margin:4px 4px -10px">${COPY.home.house}</div><div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px"><div class="card" style="padding:12px 14px${soon ? ';background:' + TOKENS.attentionChip : ''}"><div class="lbl">${COPY.home.bins}</div><div style="font-size:15px;font-weight:600;margin-top:4px${soon ? ';color:' + TOKENS.attention : ''}">${esc(binTitle)}</div>${sl(binSub, soon ? TOKENS.attention : TOKENS.textSecondary)}${sl('', TOKENS.textSecondary)}</div><a class="card tap" data-act="nav" data-path="${SETTINGS_PATH}" aria-label="${COPY.common.openSettings}" style="padding:12px 14px;display:block"><div class="lbl">${COPY.home.heatingCard}</div><div style="font-size:15px;font-weight:600;margin-top:4px">${esc(hTitle)}</div>${sl(hLine1, TOKENS.textSecondary)}${sl(hLine2, TOKENS.textSecondary)}</a></div>`;
+    const patio = state(hass, 'input_boolean.patio_door_heating_suspended') === 'on';
+    // The room count means nothing when heating is off or no room is calling for heat.
+    const sub = COPY.home.heatingLine(!off && rooms > 0 ? rooms : 0, inside === null ? '' : `${fmt1(inside)}°`, outside === null ? '' : `${fmt1(outside)}°`, patio);
+    const title = off ? COPY.home.heatingOff : firing ? COPY.home.boilerFiring : COPY.home.boilerIdle;
+    return hmRow({ tile: hmTile(TOKENS.subHeating, TOKENS.subHeatingInk, ICON.flame), title, sub, path: SETTINGS_PATH, label: COPY.common.openSettings });
+  }
+  // Nothing when the house has no camera entities at all. An offline camera is an attention matter: the tile and
+  // the subtitle say so.
+  function camerasRow(hass, now) {
+    if (!CAMERAS.some((c) => stateObj(hass, cameraSwitch(c.k)))) return '';
+    const sum = camerasSummary(hass, now);
+    const warn = sum.offline.length > 0;
+    const sub = warn ? COPY.cameras.offline(sum.offline.map((x) => x.c.name).join(' · ')) : camerasReason(sum);
+    const tile = warn ? hmTile(TOKENS.attention, TOKENS.attentionInk, ICON.camera) : hmTile(TOKENS.subCameras, TOKENS.subCamerasInk, ICON.camera);
+    return hmRow({ tile, title: sum.title, sub, subColour: warn ? TOKENS.attention : '', path: CAMERAS_PATH, label: COPY.common.openCameras });
+  }
+  function sectionHouseList(hass, now) {
+    return `<div class="hm">${hmSection(COPY.home.house, heatingRow(hass) + camerasRow(hass, now) + binsRow(hass))}</div>`;
   }
 
+  // Activity on the House page: notification-style rows. The tile carries the subsystem's colour; a declined
+  // decision (a rule that chose not to act) is quiet: an idle tile with the glyph in the subsystem colour (or in
+  // secondary text when that colour would not show on the idle tile), and a secondary-text sentence.
+  const GLYPH_MIN_CONTRAST = 3;
+  function activityTile(subsystem, tone) {
+    const s = subsystemOf(subsystem);
+    const glyph = ICON[s.icon];
+    if (!s.tile) return hmTile(TOKENS.tileIdle, TOKENS.textSecondary, glyph);
+    if (tone !== 'muted') return hmTile(TOKENS[s.tile], TOKENS[s.ink], glyph);
+    const shows = contrast(colour(s.tile), colour('tileIdle')) >= GLYPH_MIN_CONTRAST;
+    return hmTile(TOKENS.tileIdle, shows ? TOKENS[s.tile] : TOKENS.textSecondary, glyph);
+  }
+  function feedRow(r) {
+    const colourOf = r.tone === 'muted' ? TOKENS.textSecondary : r.tone === 'warn' ? TOKENS.attention : TOKENS.text;
+    const count = r.count > 1 ? ` <b>x${r.count}</b>` : '';
+    return `<div class="hm-row act">${activityTile(r.subsystem, r.tone)}<div class="hm-text"><div class="hm-l1"><span class="hm-subj">${esc(r.subject)}</span><span class="hm-time num">${esc(hhmm(r.ts))}</span></div><div class="hm-l2" style="color:${colourOf}">${esc(r.sentence)}${count}</div></div></div>`;
+  }
+  const quietFeedRow = (msg) => `<div class="hm-row"><div class="hm-text"><div class="hm-rs">${esc(msg)}</div></div></div>`;
   function sectionFeed(hass, now) {
     const { rows, note } = houseActivity(hass);
-    const quiet = quietRow;
-    const body = (rows.length ? activityRows(rows, FEED_ROWS) : quiet('Nothing recorded yet')) + (note ? quiet(note) : '');
-    return `<div class="lbl" style="margin:4px 4px -10px">${COPY.feed.whatHouseDid}</div><div class="card">${body}</div>`;
+    const body = (rows.length ? rows.slice(0, FEED_ROWS).map(feedRow).join('') : quietFeedRow(COPY.feed.nothingYet)) + (note ? quietFeedRow(note) : '');
+    return `<div class="hm">${hmSection(COPY.feed.activity, body)}</div>`;
   }
 
   // ── Top guard ────────────────────────────────────────────────────────────────────────────────
@@ -2167,8 +2263,9 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   // snapshots of the ancestors: 'fixed' when none does, otherwise 'inflow' (a normal bar at the end of the
   // page, still usable, never overlapping) and names the offender. The card probes after its first paint and
   // defaults to 'inflow' until the probe says otherwise (fail safe).
+  // `fill` names the solid glyph for the selected tab; without one the outline glyph is filled in.
   const TABS = [
-    { id: 'house', label: COPY.common.tabHouse, path: HOUSE_PATH, icon: 'home' },
+    { id: 'house', label: COPY.common.tabHouse, path: HOUSE_PATH, icon: 'home', fill: 'homeFill' },
     { id: 'energy', label: COPY.common.tabEnergy, path: ENERGY_PATH, icon: 'bolt' },
     { id: 'cameras', label: COPY.common.tabCameras, path: CAMERAS_PATH, icon: 'camera' },
     { id: 'settings', label: COPY.common.tabSettings, path: SETTINGS_PATH, icon: 'gear' },
@@ -2193,8 +2290,9 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     if (!TABBAR_ENABLED) return '';
     const active = cfg && TABS.some((t) => t.id === cfg.active) ? cfg.active : 'house';
     const fixed = ui && ui.tb === 'fixed';
-    const tabs = TABS.map((t) => `<button type="button" class="tab" data-act="nav" data-path="${t.path}"${t.id === active ? ' aria-current="page"' : ''}>${svg(ICON[t.icon], 24)}<span>${t.label}</span></button>`).join('');
-    return `${fixed ? '<div class="tabbar-spacer" style="--tbh:calc(58px + max(10px, env(safe-area-inset-bottom, 0px)))" aria-hidden="true"></div>' : ''}<nav class="tabs${fixed ? ' fixed' : ''}" aria-label="${COPY.common.navLabel}">${tabs}</nav>`;
+    const icon = (t) => (t.id === active ? svgFilled(ICON[t.fill || t.icon], 26) : svg(ICON[t.icon], 26));
+    const tabs = TABS.map((t) => `<button type="button" class="tab" data-act="nav" data-path="${t.path}"${t.id === active ? ' aria-current="page"' : ''}>${icon(t)}<span>${t.label}</span></button>`).join('');
+    return `${fixed ? `<div class="tabbar-spacer" style="--tbh:${TABBAR_H}" aria-hidden="true"></div>` : ''}<nav class="tabs${fixed ? ' fixed' : ''}" aria-label="${COPY.common.navLabel}">${tabs}</nav>`;
   }
 
   // ── Room page sections ───────────────────────────────────────────────────────────────────────
@@ -2692,14 +2790,6 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return `<div class="lbl" style="margin:4px 4px -10px">${COPY.room.theme}</div><div class="card" style="padding:12px 12px 10px"><div class="tiles" style="grid-template-columns:repeat(${cols},minmax(0,1fr))">${tiles}</div>${lines}</div>${use ? `<div class="card">${use}</div>` : ''}`;
   }
 
-  // Now: one wide tile per garden, below the indoor groups. Gardens stay out of the indoor attention,
-  // occupied and other groups; the tile only shows a warn dot when the garden has items.
-  function gardenTile(hass, key, now, flagged) {
-    const g = gardenModel(hass, key, now);
-    const dot = flagged ? '<span class="dot warn"></span>' : '';
-    return `<a class="rt gt tap wide" data-act="nav" data-path="${roomPath(key)}"><div class="nm">${dot}<span>${esc(g.name)}</span></div><div class="t gh">${esc(gardenHeadline(g))}</div><div class="b"><span>${esc(gardenSub(g, now))}</span></div></a>`;
-  }
-
   // ── Settings page ───────────────────────────────────────────────────────────────────────────────
   // The house-wide settings. Writes go to fixed helper ids (never an id read from the page), so the
   // select and number services can only reach these two helpers.
@@ -2997,15 +3087,6 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return toggle + body;
   }
 
-  // Now: one row, quiet when all is as expected, amber when a camera is offline.
-  function sectionCamerasCard(hass, now) {
-    const sum = camerasSummary(hass, now);
-    if (!CAMERAS.some((c) => stateObj(hass, cameraSwitch(c.k)))) return '';
-    const warn = sum.offline.length > 0;
-    const sub = warn ? `${sum.offline.map((x) => x.c.name).join(' · ')} offline` : camerasReason(sum);
-    return `<a class="card tap" data-act="nav" data-path="${CAMERAS_PATH}" aria-label="${COPY.common.openCameras}" style="display:flex;align-items:center;gap:12px;padding:12px 14px${warn ? ';background:' + TOKENS.attentionChip : ''}"><span style="color:${warn ? TOKENS.attention : TOKENS.textSecondary};display:flex">${svg(ICON.camera, 22)}</span><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:600">${esc(sum.title)}</div><div style="font-size:12px;color:${TOKENS.textSecondary}">${esc(sub)}</div></div><span style="color:${TOKENS.link};display:flex">${svg('M9 5l7 7-7 7', 20)}</span></a>`;
-  }
-
   function sectionRoomFeed(hass, key, now) {
     const { rows, note } = roomActivity(hass, key);
     const quiet = quietRow;
@@ -3130,10 +3211,10 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 
   // ── Dispatcher ───────────────────────────────────────────────────────────────────────────────
   const MODES = {
-    'now-header': (h) => sectionNowHeader(h),
+    'now-header': (h, c, n) => sectionNowHeader(h, n),
     status: (h, c, n) => sectionStatus(h, n),
     rooms: (h, c, n) => sectionRooms(h, n),
-    'bins-heating': (h) => sectionBinsHeating(h),
+    'house-list': (h, c, n) => sectionHouseList(h, n),
     'energy-head': (h, c, n) => sectionEnergyHead(h, n),
     'energy-day': (h, c, n, ui) => sectionEnergyDay(h, n, ui),
     'energy-cost': (h) => sectionEnergyCost(h),
@@ -3155,7 +3236,6 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     'house-people': (h) => sectionHousePeople(h),
     'house-heating': (h) => sectionHouseHeating(h),
     'house-mo': (h) => sectionHouseMo(h),
-    'cameras-card': (h, c, n) => sectionCamerasCard(h, n),
     'cameras-head': (h, c, n) => sectionCamerasHead(h, n),
     camera: (h, c, n, ui) => sectionCamera(h, c.camera, n, ui),
   };
@@ -3413,7 +3493,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     }
   }
 
-  const api = { parsedAttr, setOptimise, trackHass, depsUnchanged, makeRenderGate, RENDER_MAX_AGE_MS, deriveScenes, sceneRegistry, ROOM_TABLE, lightsStory, lightsState, verdictFor, houseActivity, parseHistory, readHistory, sentenceFor, roomActivity, unexplainedReasons, REASON_TEXT, UNDECLARED, SUPPRESS_SOURCES, TILE, TILE_H, tileNeededHeight, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, SETTINGS_PATH, takesTaps, coverNeed, topGuard, sheetFit, splitSheet, touchGuard, lockScroll, scrollTargets, SHEET_MARK, STILL, HEAD_MODES, TOP_GUARD_MAX, CAMERAS_PATH, PENDING_MS, cameraParts, cameraToggle, cameraPending, perform, pendingStart, pendingFor, pendingKey, markPending, ERROR_MS, parseClips, frigateClipsId, roomGroups, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, GARDEN_ORDER, ALL_ROOM_KEYS, THEME_LABELS, THEME_ICON, ICON, SUBSYSTEMS, subsystemOf, placed, gardenModel, gardenSub, themeSource, shortDate, ALLOWED, writeAllowed, HOUSE_NUMBERS, HOUSE_MODIFIER, HOUSE_VACATION_HOURS, CAMERAS, PTZ_DIRS, DEVICE_REASONS, ROOM_SETTINGS, MO_TOGGLES, settingFor, settingsOpen, settingsClose, tabTarget, render, priceColour, PRICE_AT, PRICE_EXTREME_P, THEMES, COLOUR_KEYS, DEFAULT_THEME, TOKENS, COPY, checkThemes, themeOf, colour, resolveVars, styleFor, roomModel, attentionItems, handleAction, callService, num, parseList };
+  const api = { parsedAttr, setOptimise, trackHass, depsUnchanged, makeRenderGate, RENDER_MAX_AGE_MS, deriveScenes, sceneRegistry, ROOM_TABLE, lightsStory, lightsState, verdictFor, houseActivity, parseHistory, readHistory, sentenceFor, roomActivity, unexplainedReasons, REASON_TEXT, UNDECLARED, SUPPRESS_SOURCES, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, SETTINGS_PATH, takesTaps, coverNeed, topGuard, sheetFit, splitSheet, touchGuard, lockScroll, scrollTargets, SHEET_MARK, STILL, HEAD_MODES, TOP_GUARD_MAX, CAMERAS_PATH, PENDING_MS, cameraParts, cameraToggle, cameraPending, perform, pendingStart, pendingFor, pendingKey, markPending, ERROR_MS, parseClips, frigateClipsId, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, GARDEN_ORDER, ALL_ROOM_KEYS, THEME_LABELS, THEME_ICON, ICON, SUBSYSTEMS, subsystemOf, placed, gardenModel, gardenSub, themeSource, shortDate, ALLOWED, writeAllowed, HOUSE_NUMBERS, HOUSE_MODIFIER, HOUSE_VACATION_HOURS, CAMERAS, PTZ_DIRS, DEVICE_REASONS, ROOM_SETTINGS, MO_TOGGLES, settingFor, settingsOpen, settingsClose, tabTarget, render, priceColour, PRICE_AT, PRICE_EXTREME_P, THEMES, COLOUR_KEYS, DEFAULT_THEME, TOKENS, COPY, checkThemes, themeOf, useTheme, colour, resolveVars, styleFor, roomModel, attentionItems, handleAction, callService, num, parseList };
   root.PulseLib = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 
