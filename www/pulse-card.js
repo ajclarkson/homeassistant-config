@@ -256,14 +256,18 @@
       // The short word a presence hold shows beside the Occupied row; a hold with no entry shows its own label.
       holdShort: { 'Bed occupied': 'Bed', 'Doors closed': 'Doors', 'Sonos playing': 'Sonos' },
       holdMore: (n) => ` +${n}`,
-      // Heating mode grid: tile labels by helper option, the line under Auto, and the footnotes.
+      // Heating mode control: labels by helper option (the segment shows the short one, five words must fit a 320px
+      // phone; the full word is its accessible name), the group's name and the footnotes.
       heatingModes: { auto: 'Auto', comfort: 'Comfort', baseline_day: 'Day', baseline_night: 'Night', minimum: 'Minimum' },
-      heatingModeAuto: 'Follows the schedule', heatingModeHolds: 'Holds until the schedule next changes',
+      heatingModesShort: { auto: 'Auto', comfort: 'Comfort', baseline_day: 'Day', baseline_night: 'Night', minimum: 'Min' },
+      heatingModeGroup: 'Heating mode',
+      heatingModeAuto: 'Follows the schedule',
       heatingModeUnavailable: 'The mode helper is unavailable, so a choice cannot be made',
-      holdsUntil: (time) => `Holds until ${time}`,
-      // The day plan above the grid: the strip, its card and the notes that stand in for it.
+      // temp may be '' (no reading); until may be '' (the plan does not say when the choice ends).
+      heatingModeManual: (mode, temp, until) => `${mode}${temp ? ` ${temp}` : ''} ${until ? `until ${until}, then back to the schedule` : 'until the schedule next changes'}`,
+      // The day plan with the mode control under its chart: the strip, its card and the notes that stand in for it.
       planNow: 'now', heatedToday: 'Heated today', radiatorHeating: 'radiator heating', radiatorIdle: 'radiator idle',
-      planMode: (mode, temp) => `${mode} · ${temp}°`, planPeak: (mode, temp) => `${mode} ${temp}°`,
+      planMode: (mode, temp) => `${mode} · ${temp}°`,
       planUntil: (time) => `until ${time}`, planByHand: (time) => `by hand until ${time}`, planHeld: 'held for now',
       planFrom: (time) => `From ${time}`, planResumes: (time) => `From ${time} · schedule resumes`,
       planLabel: (mode, temp, until) => `Today's heating plan. Now ${mode} ${temp} degrees${until ? ` until ${until}` : ''}.`,
@@ -703,6 +707,10 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 .segs{display:flex;gap:8px;background:${TOKENS.surface};border-radius:14px;padding:4px}
 .seg{border:0;font:inherit;font-size:14px;font-weight:600;min-height:44px;border-radius:12px;cursor:pointer;flex:1;background:transparent;color:${TOKENS.textSoft}}
 .seg.on{background:${TOKENS.tint};color:${TOKENS.tintInk}}
+.seg:disabled{opacity:.5;cursor:default}
+.seg:focus-visible{outline:2px solid ${TOKENS.link};outline-offset:2px}
+.segs.five{gap:2px}
+.segs.five .seg{font-size:13px;min-width:0;padding:0 2px}
 .stream{background:${TOKENS.streamWell};aspect-ratio:16/9;display:flex;align-items:center;justify-content:center}
 .stream[hidden]{display:none}
 .stream ha-camera-stream{display:block;width:100%}
@@ -760,7 +768,8 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 .tl-n{font-weight:600;color:${TOKENS.textSecondary}}
 .hm-row:focus-visible,.hm-card:focus-visible,.hm-line:focus-visible{outline:2px solid ${TOKENS.link};outline-offset:-2px}
 .hm-card{background:${TOKENS.surface};border-radius:20px;padding:16px;display:block;color:inherit;text-decoration:none}
-.plan-card{margin-bottom:${HM_GROUP_GAP}px;padding-bottom:0}
+.plan-card{padding-bottom:0}
+.plan-card .segs{margin:12px 0 16px}
 .plan-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .plan-big{font-size:44px;line-height:48px;font-weight:300;letter-spacing:-1px}
 .plan-mode{display:flex;flex-direction:column;align-items:flex-end;text-align:right}
@@ -1010,13 +1019,13 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const want = r.climate ? `input_select.${r.key}_heating_manual_mode` : undefined;
     if (r.heatMode !== want) throw new Error(`pulse-card: room "${r.key}" heatMode must be ${want === undefined ? 'unset (no climate)' : `"${want}"`}, got ${r.heatMode === undefined ? 'nothing' : `"${r.heatMode}"`}`);
   }
-  // The helper's options, in tile order. `temp` is the HOUSE_NUMBERS key whose value the tile shows; auto has none.
+  // The helper's options, in segment order. `temp` is the HOUSE_NUMBERS key holding the mode's temperature; auto has none.
   const HEATING_MODES = [
-    { option: 'auto', icon: 'clock', temp: '' },
-    { option: 'comfort', icon: 'flame', temp: 'comfort' },
-    { option: 'baseline_day', icon: 'sun', temp: 'baseline_day' },
-    { option: 'baseline_night', icon: 'moon', temp: 'baseline_night' },
-    { option: 'minimum', icon: 'snow', temp: 'minimum' },
+    { option: 'auto', temp: '' },
+    { option: 'comfort', temp: 'comfort' },
+    { option: 'baseline_day', temp: 'baseline_day' },
+    { option: 'baseline_night', temp: 'baseline_night' },
+    { option: 'minimum', temp: 'minimum' },
   ];
 
   // Where the dashboard is registered (url_path in configuration.yaml). Defined once: an unknown
@@ -2682,44 +2691,29 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const houseMode = state(hass, 'sensor.house_active_mode');
     return own({ away: L.away, sleep: L.sleep, vacation: L.vacation }, houseMode) || L.house;
   }
-  // What the Auto tile says: the schedule's current mode and temperature while the schedule is in charge, which
-  // is the only time the report describes it. Otherwise the report describes something else (a manual choice).
-  function heatingAutoLine(m, chosen, view) {
-    // With a plan the line comes from what the controller chose; without one, from the report.
-    if (view && chosen === 'auto') {
-      const a = view.plan.active;
-      return a.source.startsWith('schedule') ? `${COPY.room.heatingModes[a.mode]} ${fmt1(view.temps[a.mode])}°` : COPY.room.heatingModeAuto;
-    }
-    if (chosen !== 'auto' || m.heating_source !== 'schedule' && m.heating_source !== 'schedule_occupied') return COPY.room.heatingModeAuto;
-    const label = own(COPY.room.heatingModes, m.heating_active);
-    if (!label) return COPY.room.heatingModeAuto;
-    return m.mode_target !== null ? `${label} ${fmt1(m.mode_target)}°` : label;
+  // The footnote under the control: why a choice is locked, else what the choice does. Auto holds nothing (the day
+  // plan's header says what the schedule is doing), so it says only that the schedule is in charge; a fixed mode
+  // says its global temperature and when the plan takes back over.
+  function heatingNote(hass, chosen, view) {
+    if (chosen === 'auto') return COPY.room.heatingModeAuto;
+    const mode = HEATING_MODES.find((x) => x.option === chosen);
+    const t = num(state(hass, HOUSE_NUMBERS[mode.temp].id));
+    const end = view && view.plan.override ? view.plan.override.until : null;
+    return COPY.room.heatingModeManual(COPY.room.heatingModes[chosen], t === null ? '' : `${fmt1(t)}°`, end === null ? '' : clockText(zonedClock(end, view.tz).min));
   }
-  function modeTile({ room, mode, sub, on, locked }) {
-    const label = COPY.room.heatingModes[mode.option];
-    const cls = `hm-scene${on ? ' on' : ''}${mode.option === 'auto' ? ' wide' : ''}`;
-    return `<button type="button" class="${cls}" data-act="heating-mode" data-room="${esc(room)}" data-option="${mode.option}" aria-pressed="${on}"${locked ? ' disabled' : ''}>${svg(ICON[mode.icon], 22)}<span class="hm-scene-t"><span>${esc(label)}</span>${sub ? `<span class="hm-scene-s num">${esc(sub)}</span>` : ''}</span></button>`;
+  function modeSegment({ room, mode, on, locked }) {
+    return `<button type="button" class="seg${on ? ' on' : ''}" data-act="heating-mode" data-room="${esc(room)}" data-option="${mode.option}" aria-pressed="${on}" aria-label="${esc(COPY.room.heatingModes[mode.option])}"${locked ? ' disabled' : ''}>${esc(COPY.room.heatingModesShort[mode.option])}</button>`;
   }
-  // How long a choice made now holds: until the manual override or the current schedule block ends, when the plan says.
-  function holdsNote(view) {
-    if (!view) return COPY.room.heatingModeHolds;
-    const end = view.plan.override ? view.plan.override.until : view.plan.active.source.startsWith('schedule') ? view.plan.active.until : null;
-    return end === null ? COPY.room.heatingModeHolds : COPY.room.holdsUntil(clockText(zonedClock(end, view.tz).min));
-  }
-  // The grid: Auto across the top, the four fixed modes under it, each with its global temperature. The selected
-  // tile is the helper's state; a locked grid is disabled and its footnote says why.
-  function heatingGrid(hass, m, key, view) {
+  // The control: Auto then the four fixed modes in one row. The selected segment is the helper's state; a locked
+  // control is disabled and its footnote says why. An unknown helper state selects nothing.
+  function heatingControl(hass, m, key, view) {
     const chosen = state(hass, m.cfg.heatMode);
     const known = HEATING_MODES.some((x) => x.option === chosen);
     const lock = known ? heatingLock(hass, m) : COPY.room.heatingModeUnavailable;
-    const tiles = HEATING_MODES.map((mode) => {
-      const t = mode.temp ? num(state(hass, HOUSE_NUMBERS[mode.temp].id)) : null;
-      const sub = mode.option === 'auto' ? heatingAutoLine(m, chosen, view) : t !== null ? `${fmt1(t)}°` : '';
-      return modeTile({ room: key, mode, sub, on: mode.option === chosen, locked: lock !== '' });
-    }).join('');
-    return { html: `<div class="hm-scenes">${tiles}</div>`, note: lock || holdsNote(view) };
+    const segs = HEATING_MODES.map((mode) => modeSegment({ room: key, mode, on: mode.option === chosen, locked: lock !== '' })).join('');
+    return { html: `<div class="segs five" role="group" aria-label="${esc(COPY.room.heatingModeGroup)}">${segs}</div>`, note: lock || heatingNote(hass, chosen, view) };
   }
-  // Writes the helper, refusing what the grid would have disabled: a stale tap must not look like it worked.
+  // Writes the helper, refusing what the control would have disabled: a stale tap must not look like it worked.
   function setHeatingMode(hass, key, option) {
     const cfg = own(ROOMS, key);
     if (!cfg || !cfg.heatMode) throw new Error(`pulse-card: room "${key}" has no heating mode helper`);
@@ -2728,7 +2722,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     if (lock) throw new Error(`pulse-card: heating mode for "${key}" is locked: ${lock}`);
     return callService(hass, 'input_select', 'select_option', { entity_id: cfg.heatMode, option });
   }
-  // The rows the grid does not repeat: why the target differs from the mode, the safety hold, humidity, and the
+  // The rows the control does not repeat: why the target differs from the mode, the safety hold, humidity, and the
   // automation's pending / suspended state.
   function heatingRows(m, heated) {
     const rows = [];
@@ -2737,7 +2731,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     if (heated) rows.push(heated);
     if (m.humidity !== null) rows.push(hmRow({ title: COPY.room.humidity, value: `${Math.round(m.humidity)}%` }));
     const stateText = heatingStateText(m);
-    // "Heating automation is off" is already the grid's footnote.
+    // "Heating automation is off" is already the control's footnote.
     if (stateText && stateText !== COPY.room.heatingAutomationOff) rows.push(hmRow({ title: COPY.room.status, sub: stateText === COPY.room.pending ? COPY.room.pendingNote : undefined, value: stateText }));
     return rows.join('');
   }
@@ -3009,8 +3003,6 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     out += `<path d="M${nowX.toFixed(1)} 0V${PLAN_PLOT_H}" stroke="${text}" stroke-width="1" stroke-dasharray="2 3" opacity=".6"/>`;
     if (pts.length) out += `<circle class="plan-dot" cx="${pts[pts.length - 1][0].toFixed(1)}" cy="${pts[pts.length - 1][1].toFixed(1)}" r="4" fill="${text}" stroke="${surface}" stroke-width="2"/>`;
     if (data && data.spans) for (const [a, b] of data.spans) out += `<rect class="plan-heat" x="${planX(a).toFixed(1)}" y="${PLAN_PLOT_H + 4}" width="${Math.max(1.5, planX(b) - planX(a)).toFixed(1)}" height="4" rx="2" fill="${heat}"/>`;
-    const top = view.segs.filter((x) => x.mode !== 'minimum').sort((a, b) => t(b.mode) - t(a.mode) || (b.to - b.from) - (a.to - a.from))[0];
-    if (top && planX(top.to) - planX(top.from) >= 56) out += `<text x="${(planX(top.from) + 4).toFixed(1)}" y="${Math.max(12, y(t(top.mode)) - 5).toFixed(1)}" fill="${sec}" font-size="11" font-weight="600">${esc(COPY.room.planPeak(COPY.room.heatingModes[top.mode], fmt1(t(top.mode))))}</text>`;
     const label = (x, s, anchor, fill, weight) => `<text x="${x.toFixed(1)}" y="${PLAN_H - 2}" fill="${fill}" font-size="10"${weight ? ` font-weight="${weight}"` : ''} text-anchor="${anchor}">${s}</text>`;
     for (const h of [0, 6, 12, 18]) if (h === 0 || Math.abs(planX(h * 60) - nowX) > 18) out += label(planX(h * 60), String(h).padStart(2, '0'), h === 0 ? 'start' : 'middle', sec);
     out += label(Math.max(10, Math.min(PLAN_W - 10, nowX)), esc(COPY.room.planNow), 'middle', text, 600);
@@ -3021,7 +3013,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 
   // The card around the picture: the room's temperature, what the room is doing and until when, the picture, then
   // the next blocks as rows with their temperature trailing.
-  function planCard(view, m, data) {
+  function planCard(view, m, data, control) {
     const mode = view.plan.active.mode;
     const label = COPY.room.heatingModes[mode];
     const temp = fmt1(view.temps[mode]);
@@ -3033,7 +3025,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const big = m.temp !== null ? `${fmt1(m.temp)}°` : '–';
     const head = `<div class="plan-head"><span class="num plan-big">${esc(big)}</span><span class="plan-mode"><span class="plan-mode-t num"${view.eff ? ` style="color:${TOKENS.tint}"` : ''}>${esc(COPY.room.planMode(label, temp))}</span>${sub ? `<span class="plan-mode-s">${esc(sub)}</span>` : ''}</span></div>`;
     const rows = planNext(view).map((n) => hmRow({ title: COPY.room.heatingModes[n.mode], sub: n.resumes ? COPY.room.planResumes(clockText(n.at)) : COPY.room.planFrom(clockText(n.at)), value: `${fmt1(view.temps[n.mode])}°` })).join('');
-    return `<div class="hm-card plan-card">${head}${planSvg(view, data, m.temp)}${rows ? hmList(rows, true) : ''}</div>`;
+    return `<div class="hm-card plan-card">${head}${planSvg(view, data, m.temp)}${control}${rows ? hmList(rows, true) : ''}</div>`;
   }
   const planNote = (why) => own({ missing: COPY.room.planMissing, stale: COPY.room.planStale, invalid: COPY.room.planInvalid }, why) || COPY.room.planInvalid;
   const durationText = (min) => (min >= 60 ? COPY.room.hoursMinutes(Math.floor(min / 60), min % 60) : COPY.room.minutes(min));
@@ -3043,10 +3035,11 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     if (!m.hasReport || !m.cfg.climate) return '';
     const view = dayPlan(hass, key, now);
     const data = view.ok ? planHistory(ui, view) : null;
-    const grid = heatingGrid(hass, m, key, view.ok ? view : null);
+    const ctl = heatingControl(hass, m, key, view.ok ? view : null);
     const rows = heatingRows(m, data && data.spans ? hmRow({ title: COPY.room.heatedToday, value: durationText(heatedMinutes(data.spans)) }) : '');
-    const notes = view.ok ? [grid.note] : [grid.note, planNote(view.why)];
-    const body = (view.ok ? planCard(view, m, data) : '') + grid.html + hmFeet(notes);
+    const notes = view.ok ? [ctl.note] : [ctl.note, planNote(view.why)];
+    // Without a plan the control stands in a card of its own, where the day plan card would have held it.
+    const body = (view.ok ? planCard(view, m, data, ctl.html) : `<div class="hm-card">${ctl.html}</div>`) + hmFeet(notes);
     return `<div class="hm">${hmSection(COPY.room.heating, body, { bare: true, after: rows ? `<div class="hm-group-row">${hmList(rows, true)}</div>` : '' })}</div>`;
   }
 
