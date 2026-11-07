@@ -253,7 +253,8 @@
       holdReason: (subject, plural, state) => `${subject} ${plural ? 'are' : 'is'} ${state}`,
       litEmpties: 'off when the room empties',
       // The Presence row's sub-line when the room is occupied with nothing holding it, and when it is empty.
-      emptiesSoon: 'Empties a few minutes after the last movement', noHolds: 'No holds',
+      emptiesSoon: 'Empties a few minutes after the last movement',
+      noOneSeen: (time) => (time ? `No one seen since ${time}` : 'No one seen'),
       // The Occupied row's subtitle while something holds the room: the rule only, since the row's value names the
       // source. `subject` is "the sofa" or "it"; several holds clear together when the last one does.
       clearsAfter: (subject) => `Empty a few minutes after ${subject} clears`, clearsAfterLast: 'Empty a few minutes after the last one clears',
@@ -294,10 +295,11 @@
       },
       humidity: 'Humidity', normalTarget: 'Normal target', status: 'Status',
       manual: 'Manual', manualChange: 'Manual change', problem: 'Problem',
-      auto: 'Auto', suspended: 'Suspended', pending: 'Pending', heatingAutomationOff: 'Heating automation is off', pendingNote: 'Heating drops to minimum if it stays open',
-      // The room's subtitle under its name: "Occupied · Lamps on · 20.2°", "Empty · lights off". `scene` is the active
-      // scene's label ('' when none), only said while the lights are on; `temp` is formatted, '' without a reading.
-      headLine: (occupancy, lightsOn, scene, temp) => [occupancy, lightsOn ? (scene ? `${scene} on` : 'lights on') : 'lights off', temp].filter(Boolean).join(' · '),
+      suspended: 'Suspended', pending: 'Pending', heatingAutomationOff: 'Heating automation is off', pendingNote: 'Heating drops to minimum if it stays open',
+      // The room's subtitle under its name: "Occupied · lamps on · 20.2°", "Empty · lights off". One rule: only the
+      // first item is capitalised, so the scene's label is lowered. `scene` is the active scene's label ('' when
+      // none), only said while the lights are on; `temp` is formatted, '' without a reading.
+      headLine: (occupancy, lightsOn, scene, temp) => [occupancy, lightsOn ? (scene ? `${scene.replace(/^./, (c) => c.toLowerCase())} on` : 'lights on') : 'lights off', temp].filter(Boolean).join(' · '),
       gardenLine: (reporting, on) => (!reporting ? 'Lights unknown' : on ? 'Lights on' : 'Lights off'),
       individualLights: 'Individual lights',
       // Trailing summary of the "Individual lights" row: "2 of 5 on", or "All off".
@@ -2622,11 +2624,8 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const sensorGone = m.occupancy_unavailable || state(hass, `binary_sensor.${key}_occupied`) === 'unavailable';
     if (m.lights_on === 0 && (sensorGone || !m.occupied)) {
       if (sensorGone) return out('empty', 'Occupancy sensor unavailable', 'warn');
-      const since = parseTs(occ && occ.last_changed);
-      // Clamped to now so a skewed clock never shows a time in the future.
-      const when = since === null ? '' : ` since ${hhmm(new Date(Number.isFinite(now) ? Math.min(since, now) : since).toISOString())}`;
       const motionOff = state(hass, `input_boolean.${key}_sensor_motion_enabled`) === 'off' ? ' · motion sensor is off' : '';
-      return out('empty', `No one detected${when}${motionOff}`, 'ok');
+      return out('empty', `${noOneSeen(occ, now)}${motionOff}`, 'ok');
     }
     // What would change the lights next, said only while they are on.
     const tail = m.lights_on > 0 ? (holds ? ` · stays on while ${holds}` : ' · off when the room empties') : '';
@@ -2640,6 +2639,15 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     if (lastActed) return out('acted', `${sentenceFor(lastActed, hass).text}${at(lastActed.ts)}${tail}`, 'ok', litSince(hass, key, m, lastActed));
     return out('none', `${h.note ? `Lighting ${h.note.toLowerCase()}` : 'No lighting decision recorded yet'}${tail}`, h.note ? 'warn' : 'muted');
   }
+
+  // "No one seen since 16:31" from when the occupancy sensor last changed; the time is dropped when unreadable.
+  // Clamped to now so a skewed clock never shows a time in the future.
+  function noOneSeen(occ, now) {
+    const since = parseTs(occ && occ.last_changed);
+    return COPY.room.noOneSeen(since === null ? '' : hhmm(new Date(Number.isFinite(now) ? Math.min(since, now) : since).toISOString()));
+  }
+
+  const seenLine = (occ, now) => (parseTs(occ && occ.last_changed) === null ? '' : noOneSeen(occ, now));
 
   // The room page words a lit room plainly ("Lamps on since 15:51") from what it can see itself: the scene that is
   // active now and the time of the automation's last scene-setting. The shared reason wording (REASON_TEXT, the
@@ -2669,8 +2677,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     if (story.state === 'declined') return '';
     if (story.lit) return [COPY.room.litSince(story.lit.what, story.lit.since), story.holdList.length ? COPY.room.litHeld(story.holdList.map(holdReason).join(' and ')) : COPY.room.litEmpties].join(' · ');
     const lead = { disabled: '', manual: COPY.room.manual, problem: COPY.room.problem, declined: '' }[story.state];
-    const tag = lead !== undefined ? lead : story.holds ? '' : COPY.room.auto;
-    return [tag, story.why].filter(Boolean).join(' · ');
+    return [lead, story.why].filter(Boolean).join(' · ');
   }
 
   // Heating: an inset list of what the card shows, values trailing. The 24 h chart is its own card directly under
@@ -3128,7 +3135,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return override ? COPY.room.override : '';
   }
   // The Automation list is its own section (sectionAutomation), after Media.
-  function sectionPresence(hass, key) {
+  function sectionPresence(hass, key, now) {
     const m = roomModel(hass, key);
     const keep = keepOccupiedRow(hass, key);
     if (!m.hasReport && !keep) return '';
@@ -3136,10 +3143,12 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     if (m.hasReport) {
       const holds = m.pres_labels;
       const occ = m.occupancy_unavailable ? COPY.room.occupancyUnavailable : m.occupied ? COPY.room.occupied : COPY.room.empty;
-      const pres = holds.length ? clearRule(holds) : m.occupied ? COPY.room.emptiesSoon : COPY.room.noHolds;
-      const ovr = m.override_text ? ` · ${m.override_text}` : '';
-      const noMotion = state(hass, `input_boolean.${key}_sensor_motion_enabled`) === 'off' ? ' · Motion sensor off, so movement is ignored' : '';
-      row = hmRow({ title: occ, sub: `${pres}${ovr}${noMotion}`, value: presenceValue(holds, m.override) });
+      // An empty room says when it was last occupied; the sensor's last change is all the card has for that, and
+      // without a time the line would say nothing, so it is left out.
+      const pres = holds.length ? clearRule(holds) : m.occupied ? COPY.room.emptiesSoon : seenLine(stateObj(hass, `binary_sensor.${key}_occupied`), now);
+      const noMotion = state(hass, `input_boolean.${key}_sensor_motion_enabled`) === 'off' ? 'Motion sensor off, so movement is ignored' : '';
+      const sub = [pres, m.override_text, noMotion].filter(Boolean).join(' · ');
+      row = hmRow({ title: occ, sub: sub || undefined, value: presenceValue(holds, m.override) });
     }
     return `<div class="hm">${hmSection(COPY.room.presence, row + keep, { plain: true })}</div>`;
   }
@@ -3933,7 +3942,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     'room-head': (h, c, n) => sectionRoomHead(h, c.room, n),
     lights: (h, c, n, ui) => sectionLights(h, c.room, n, ui),
     heating: (h, c, n, ui) => sectionHeating(h, c.room, n, ui),
-    presence: (h, c) => sectionPresence(h, c.room),
+    presence: (h, c, n) => sectionPresence(h, c.room, n),
     media: (h, c) => sectionMedia(h, c.room),
     device: (h, c) => sectionDevice(h, c),
     automation: (h, c, n, ui) => sectionAutomation(h, c.room, ui),

@@ -282,11 +282,11 @@ ok('lightsStory rule 2: a manual change wins only when newer than the last autom
 ok('lightsStory rule 3: lights off in an empty room says since when, notes a disabled motion sensor, flags an unavailable one', () => {
   const occ = (state, changed) => ({ 'binary_sensor.kitchen_occupied': { state, last_changed: changed, attributes: {} } });
   const empty = story({ occupied: false }, { ...occ('off', '2026-10-25T14:03:00+00:00'), ...histSensor('kitchen', [luxHigh(1)]) });
-  assert.deepEqual([empty.state, empty.why, empty.tone], ['empty', 'No one detected since 14:03', 'ok'], 'beats a declined entry');
+  assert.deepEqual([empty.state, empty.why, empty.tone], ['empty', 'No one seen since 14:03', 'ok'], 'beats a declined entry');
   const noMotion = story({ occupied: false }, { ...occ('off', '2026-10-25T14:03:00+00:00'), 'input_boolean.kitchen_sensor_motion_enabled': { state: 'off', attributes: {} } });
-  assert.equal(noMotion.why, 'No one detected since 14:03 · motion sensor is off');
-  assert.equal(story({ occupied: false }, occ('off', 'garbage')).why, 'No one detected', 'an unreadable time is dropped, not invented');
-  assert.equal(story({ occupied: false }, occ('off', '2030-01-01T00:00:00+00:00')).why, 'No one detected since 18:42', 'a future time is clamped to now');
+  assert.equal(noMotion.why, 'No one seen since 14:03 · motion sensor is off');
+  assert.equal(story({ occupied: false }, occ('off', 'garbage')).why, 'No one seen', 'an unreadable time is dropped, not invented');
+  assert.equal(story({ occupied: false }, occ('off', '2030-01-01T00:00:00+00:00')).why, 'No one seen since 18:42', 'a future time is clamped to now');
   const gone = story({ occupied: false, occupancy_unavailable: true });
   assert.deepEqual([gone.why, gone.tone], ['Occupancy sensor unavailable', 'warn']);
   assert.equal(story({ occupied: true, lights_on: 0 }, histSensor('kitchen', [])).state, 'none', 'an occupied room with lights off falls through to history');
@@ -1678,7 +1678,7 @@ ok('held-occupied wording has no redundancy', () => {
   assert.match(why, /<div class="hm-rt">Occupied<\/div><div class="hm-rs">Empty a few minutes after the sofa clears<\/div><\/div><span class="hm-val num">Sofa<\/span>/);
   assert.doesNotMatch(why, /Held occupied|Held by|occupied by Sofa occupied|1 reason/);
   const head = P.render('room-head', { room: 'parlour' }, hass, NOW);
-  assert.match(head, /Occupied · Lamps on/);
+  assert.match(head, /Occupied · lamps on/);
   assert.doesNotMatch(head, /Occupied \(/);
   assert.doesNotMatch(head, /held occupied/i);
   assert.equal(rowSub(rowOf(P.render('rooms', {}, withRooms([m], []), NOW), '/pulse-dashboard/room-parlour')), 'Lamps · sofa occupied');
@@ -2382,7 +2382,12 @@ ok('why card says what ends a heating hold and an occupancy hold', () => {
   const motion = whyAll({ room: 'bedroom' }, withRooms([{ ...bed, pres_labels: [], heat_labels: [] }], []), NOW);
   assert.match(motion, /Empties a few minutes after the last movement/);
   const empty = whyAll({ room: 'bedroom' }, withRooms([{ ...bed, occupied: false, pres_labels: [], heat_labels: [] }], []), NOW);
-  assert.match(empty, /<div class="hm-rs">No holds<\/div>/);
+  assert.doesNotMatch(empty, /holds/i, 'never the engine word');
+  assert.doesNotMatch(empty.slice(empty.indexOf('<h2>Presence')), /hm-rs/, 'no sensor time: no subtitle');
+  const seen = withRooms([{ ...bed, occupied: false, pres_labels: [], heat_labels: [] }], [], { 'binary_sensor.bedroom_occupied': { state: 'off', last_changed: new Date(NOW - 3600000).toISOString(), attributes: {} } });
+  const seenHtml = whyAll({ room: 'bedroom' }, seen, NOW);
+  assert.match(seenHtml, /<div class="hm-rs">No one seen since \d\d:\d\d<\/div>/);
+  assert.doesNotMatch(seenHtml, /holds/i);
 });
 
 ok('top guard: a hit-testable invisible header button pushes the back link and gear down; clear targets are left alone', () => {
@@ -3525,7 +3530,7 @@ ok('lights wording: every lights phrase comes from lightsState', () => {
       const list = P.render('rooms', {}, withRooms([room({ ...over, occupied })], [], sceneState), NOW);
       assert.equal(rowSub(rowOf(list, '/pulse-dashboard/room-parlour')), line, `room row says "${line}"`);
     }
-    const said = want.on ? (want.badge === 'On' ? 'lights on' : `${want.badge} on`) : 'lights off';
+    const said = want.on ? (want.badge === 'On' ? 'lights on' : `${want.badge.toLowerCase()} on`) : 'lights off';
     assert.ok(P.render('room-head', { room: 'parlour' }, hass, NOW).includes(`<span class="hm-line">Occupied · ${said} · 20.8°</span>`), `subtitle says "${said}"`);
   }
   // No second source of lights words: the old functions are gone and the phrases appear only inside lightsState.
@@ -3547,7 +3552,7 @@ ok('room page order: header, Lights, Heating, Media, the fan, Presence, Automati
   // Automation is a disclosure row, which stands in for its section header.
   const heads = [...html.matchAll(/<h2>([^<]+)<\/h2>|data-act="disclose" data-id="parlour:(\w+)"/g)].map((m) => m[1] || `row:${m[2]}`);
   assert.deepEqual(heads, ['Lights', 'row:lights', 'Heating', 'Media', 'Presence', 'row:automation', 'Activity']);
-  assert.match(html.slice(0, html.indexOf('<h2>Lights')), /^<div class="p"><div class="hm hm-first"><div class="hm-head"><a [^>]*Back to House[\s\S]*<h1 class="hm-big">Parlour<\/h1><span class="hm-line">Occupied · Lamps on · 20\.8°<\/span>/, 'the back link, the title and the subtitle come first');
+  assert.match(html.slice(0, html.indexOf('<h2>Lights')), /^<div class="p"><div class="hm hm-first"><div class="hm-head"><a [^>]*Back to House[\s\S]*<h1 class="hm-big">Parlour<\/h1><span class="hm-line">Occupied · lamps on · 20\.8°<\/span>/, 'the back link, the title and the subtitle come first');
   assert.doesNotMatch(html, /Why it|Light level|<h2>Scenes/, 'no separate explanation card, no tiles, no Scenes title');
   assert.ok(html.indexOf('Keep room occupied') < html.indexOf('data-id="parlour:automation"'), 'Keep room occupied stays in Presence, ahead of Automation');
   assert.doesNotMatch(P.render('presence', { room: 'parlour' }, hass, NOW), /disclose/, 'Automation is not a Presence row');
@@ -3674,7 +3679,7 @@ ok('room head: a tint back link, the large title, a plain-words subtitle; attent
   assert.match(rule('.hm-line').body, /font-size:15px[^}]*color:#a3adba/);
   // Subtitles in plain words.
   const sub = (over, extra) => P.render('room-head', { room: 'parlour' }, withRooms([quietRoom('parlour', { temp: null, ...over })], [], extra), NOW).match(/<span class="hm-line">([^<]*)</)[1];
-  assert.equal(sub({ occupied: true, lights_on: 2 }), 'Occupied · Lamps on');
+  assert.equal(sub({ occupied: true, lights_on: 2 }), 'Occupied · lamps on');
   assert.equal(sub({ occupied: false, lights_on: 0 }), 'Empty · lights off');
   assert.equal(sub({ occupancy_unavailable: true, lights_on: 1 }, { 'sensor.parlour_active_scene': { state: 'unknown', attributes: {} } }), 'Occupancy unavailable · lights on');
   // Attention: one row each, filled tile with the attention ink glyph, short label in the attention colour, the detail beneath.
@@ -3701,6 +3706,10 @@ ok('light level lives in the lighting footnote: "Dark (6 lx)" or "Bright (87 lx)
   // The prefix leads the lighting sentence, joined by a middle dot.
   const lit = withRooms([quietRoom('parlour', { manual: null, pres_labels: [], labels: [], lights_on: 2, occupied: true })], [], { ...lx('6'), ...histSensor('parlour', [histEntry(30, { location: 'parlour', decision: 'activate_scene', reason: 'lux_low', facts: { lux: 6, lux_threshold: 40, scene: 'parlour_lamps' } })]) });
   assert.match(P.render('lights', { room: 'parlour' }, lit, NOW), /<p class="hm-foot">Dark \(6 lx\) · Lamps on since \d\d:\d\d · off when the room empties<\/p>/);
+  // An empty, dark room: no mode word ("Auto") between the light level and the sentence.
+  const emptyDark = withRooms([quietRoom('parlour', { manual: null, pres_labels: [], labels: [], lights_on: 0, occupied: false })], [], { ...lx('0'), 'binary_sensor.parlour_occupied': { state: 'off', last_changed: new Date(NOW - 3600000).toISOString(), attributes: {} }, ...histSensor('parlour', []) });
+  const emptyNote = (P.render('lights', { room: 'parlour' }, emptyDark, NOW).match(/<p class="hm-foot">([^<]*)<\/p>/) || [])[1];
+  assert.match(emptyNote, /^Dark \(0 lx\) · No one seen since \d\d:\d\d$/);
   // No sensor, an unusable reading, a wrong unit or no threshold: no prefix, never a guess.
   for (const [v, unit] of [['unavailable', 'lx'], ['unknown', 'lx'], ['abc', 'lx'], ['85', 'klx'], ['85', null]]) assert.doesNotMatch(note(lx(v, unit)) || '', /Dark|Bright/, `${v} ${unit}`);
   assert.doesNotMatch(note({ [LUX]: b('85', { unit_of_measurement: 'lx' }) }) || '', /Dark|Bright/, 'no threshold helper');
@@ -3720,10 +3729,12 @@ ok('light level lives in the lighting footnote: "Dark (6 lx)" or "Bright (87 lx)
 
 ok('room subtitle appends the room temperature when there is a sensor and a reading, and omits it otherwise', () => {
   const line = (key, over) => P.render('room-head', { room: key }, withRooms([quietRoom(key, { occupied: true, lights_on: 2, ...over })], []), NOW).match(/<span class="hm-line">([^<]*)<\/span>/)[1];
-  assert.equal(line('parlour', { temp: 20.2 }), 'Occupied · Lamps on · 20.2°');
-  assert.equal(line('parlour', { temp: 20 }), 'Occupied · Lamps on · 20.0°');
-  assert.equal(line('parlour', { temp: null }), 'Occupied · Lamps on', 'no reading');
+  assert.equal(line('parlour', { temp: 20.2 }), 'Occupied · lamps on · 20.2°');
+  assert.equal(line('parlour', { temp: 20 }), 'Occupied · lamps on · 20.0°');
+  assert.equal(line('parlour', { temp: null }), 'Occupied · lamps on', 'no reading');
   assert.equal(line('parlour', { temp: 18.4, occupied: false, lights_on: 0 }), 'Empty · lights off · 18.4°');
+  // One capitalisation rule: only the first item is capitalised, whatever the scene's label.
+  assert.doesNotMatch(line('parlour', { temp: 20.2 }), /· [A-Z]/);
   assert.equal(line('hallway_upstairs', { temp: 19 }), 'Occupied · lights on', 'a room without a temperature sensor');
 });
 
