@@ -243,7 +243,7 @@
     room: {
       heating: 'Heating', presence: 'Presence', lights: 'Lights', media: 'Media', theme: 'Theme',
       useCalendar: 'Use calendar', keepRoomOccupied: 'Keep room occupied', volume: 'Volume', brightness: 'Brightness',
-      scenes: 'Scenes', automation: 'Automation', fan: 'Fan', last24h: 'Last 24 hours',
+      scenes: 'Scenes', automation: 'Automation', fan: 'Fan',
       temperature: 'Temperature', lightLevel: 'Light level', luxUnit: 'lx',
       // The Light level tile's sub-line, with the room's live dark threshold: "Bright enough · on below 15 lx".
       luxDark: (limit) => `Dark · on below ${limit} lx`, luxBright: (limit) => `Bright enough · on below ${limit} lx`,
@@ -260,6 +260,17 @@
       heatingModes: { auto: 'Auto', comfort: 'Comfort', baseline_day: 'Day', baseline_night: 'Night', minimum: 'Minimum' },
       heatingModeAuto: 'Follows the schedule', heatingModeHolds: 'Holds until the schedule next changes',
       heatingModeUnavailable: 'The mode helper is unavailable, so a choice cannot be made',
+      holdsUntil: (time) => `Holds until ${time}`,
+      // The day plan above the grid: the strip, its card and the notes that stand in for it.
+      planNow: 'now', heatedToday: 'Heated today', radiatorHeating: 'radiator heating', radiatorIdle: 'radiator idle',
+      planMode: (mode, temp) => `${mode} · ${temp}°`, planPeak: (mode, temp) => `${mode} ${temp}°`,
+      planUntil: (time) => `until ${time}`, planByHand: (time) => `by hand until ${time}`, planHeld: 'held for now',
+      planFrom: (time) => `From ${time}`, planResumes: (time) => `From ${time} · schedule resumes`,
+      planLabel: (mode, temp, until) => `Today's heating plan. Now ${mode} ${temp} degrees${until ? ` until ${until}` : ''}.`,
+      hoursMinutes: (h, min) => (min ? `${h} h ${min} min` : `${h} h`), minutes: (min) => `${min} min`,
+      planMissing: 'There is no heating plan to show yet, so the day is not drawn',
+      planStale: 'The heating plan is not for today, so the day is not drawn',
+      planInvalid: 'The heating plan could not be read, so the day is not drawn',
       heatingLock: {
         automationOff: 'Heating automation is off for this room, so a choice would change nothing',
         windowOpen: 'A window or door is open, so the room is held at minimum',
@@ -749,6 +760,13 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 .tl-n{font-weight:600;color:${TOKENS.textSecondary}}
 .hm-row:focus-visible,.hm-card:focus-visible,.hm-line:focus-visible{outline:2px solid ${TOKENS.link};outline-offset:-2px}
 .hm-card{background:${TOKENS.surface};border-radius:20px;padding:16px;display:block;color:inherit;text-decoration:none}
+.plan-card{margin-bottom:${HM_GROUP_GAP}px;padding-bottom:0}
+.plan-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.plan-big{font-size:44px;line-height:48px;font-weight:300;letter-spacing:-1px}
+.plan-mode{display:flex;flex-direction:column;align-items:flex-end;text-align:right}
+.plan-mode-t{font-size:17px;font-weight:600}
+.plan-mode-s{font-size:14px;color:${TOKENS.textSecondary}}
+.plan-card .hm-list{margin:8px -16px 0;border-radius:0 0 20px 20px}
 .hm-eh{display:flex;align-items:center;gap:6px;font-size:13px;line-height:18px;font-weight:600;color:${TOKENS.subEnergy}}
 .hm-eb{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-top:8px}
 .hm-ep{min-width:0}
@@ -2666,7 +2684,12 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   }
   // What the Auto tile says: the schedule's current mode and temperature while the schedule is in charge, which
   // is the only time the report describes it. Otherwise the report describes something else (a manual choice).
-  function heatingAutoLine(m, chosen) {
+  function heatingAutoLine(m, chosen, view) {
+    // With a plan the line comes from what the controller chose; without one, from the report.
+    if (view && chosen === 'auto') {
+      const a = view.plan.active;
+      return a.source.startsWith('schedule') ? `${COPY.room.heatingModes[a.mode]} ${fmt1(view.temps[a.mode])}°` : COPY.room.heatingModeAuto;
+    }
     if (chosen !== 'auto' || m.heating_source !== 'schedule' && m.heating_source !== 'schedule_occupied') return COPY.room.heatingModeAuto;
     const label = own(COPY.room.heatingModes, m.heating_active);
     if (!label) return COPY.room.heatingModeAuto;
@@ -2677,18 +2700,24 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const cls = `hm-scene${on ? ' on' : ''}${mode.option === 'auto' ? ' wide' : ''}`;
     return `<button type="button" class="${cls}" data-act="heating-mode" data-room="${esc(room)}" data-option="${mode.option}" aria-pressed="${on}"${locked ? ' disabled' : ''}>${svg(ICON[mode.icon], 22)}<span class="hm-scene-t"><span>${esc(label)}</span>${sub ? `<span class="hm-scene-s num">${esc(sub)}</span>` : ''}</span></button>`;
   }
+  // How long a choice made now holds: until the manual override or the current schedule block ends, when the plan says.
+  function holdsNote(view) {
+    if (!view) return COPY.room.heatingModeHolds;
+    const end = view.plan.override ? view.plan.override.until : view.plan.active.source.startsWith('schedule') ? view.plan.active.until : null;
+    return end === null ? COPY.room.heatingModeHolds : COPY.room.holdsUntil(clockText(zonedClock(end, view.tz).min));
+  }
   // The grid: Auto across the top, the four fixed modes under it, each with its global temperature. The selected
   // tile is the helper's state; a locked grid is disabled and its footnote says why.
-  function heatingGrid(hass, m, key) {
+  function heatingGrid(hass, m, key, view) {
     const chosen = state(hass, m.cfg.heatMode);
     const known = HEATING_MODES.some((x) => x.option === chosen);
     const lock = known ? heatingLock(hass, m) : COPY.room.heatingModeUnavailable;
     const tiles = HEATING_MODES.map((mode) => {
       const t = mode.temp ? num(state(hass, HOUSE_NUMBERS[mode.temp].id)) : null;
-      const sub = mode.option === 'auto' ? heatingAutoLine(m, chosen) : t !== null ? `${fmt1(t)}°` : '';
+      const sub = mode.option === 'auto' ? heatingAutoLine(m, chosen, view) : t !== null ? `${fmt1(t)}°` : '';
       return modeTile({ room: key, mode, sub, on: mode.option === chosen, locked: lock !== '' });
     }).join('');
-    return { html: `<div class="hm-scenes">${tiles}</div>`, note: lock || COPY.room.heatingModeHolds };
+    return { html: `<div class="hm-scenes">${tiles}</div>`, note: lock || holdsNote(view) };
   }
   // Writes the helper, refusing what the grid would have disabled: a stale tap must not look like it worked.
   function setHeatingMode(hass, key, option) {
@@ -2701,22 +2730,324 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   }
   // The rows the grid does not repeat: why the target differs from the mode, the safety hold, humidity, and the
   // automation's pending / suspended state.
-  function heatingRows(m) {
+  function heatingRows(m, heated) {
     const rows = [];
     if (m.target_reason || m.heating_source === 'safety' || m.heat_labels.length) rows.push(hmRow({ title: heatingReason(m), value: m.target === null ? '–' : `${fmt1(m.target)}°` }));
     if (m.target_reason && m.mode_name && m.mode_target !== null) rows.push(hmRow({ title: COPY.room.normalTarget, sub: upperFirst(m.mode_name), value: `${fmt1(m.mode_target)}°` }));
+    if (heated) rows.push(heated);
     if (m.humidity !== null) rows.push(hmRow({ title: COPY.room.humidity, value: `${Math.round(m.humidity)}%` }));
     const stateText = heatingStateText(m);
     // "Heating automation is off" is already the grid's footnote.
     if (stateText && stateText !== COPY.room.heatingAutomationOff) rows.push(hmRow({ title: COPY.room.status, sub: stateText === COPY.room.pending ? COPY.room.pendingNote : undefined, value: stateText }));
     return rows.join('');
   }
-  function sectionHeating(hass, key) {
+  // ── Day plan ─────────────────────────────────────────────────────────────────────────────────
+  // The room's day drawn as a 00:00 to 24:00 strip from sensor.{room}_heating_plan (blocks and what the controller
+  // chose, never temperatures: those come from the four global helpers), with the room's temperature and the
+  // radiator's heating spans from recorder history laid over it. Times are in HA's time zone.
+  const PLAN_W = 326;
+  const PLAN_PLOT_H = 110;
+  const PLAN_H = 134;
+  const DAY_MIN = 1440;
+  // Warmer modes draw deeper. Fixed by mode, not by degrees, so a changed global never reorders the picture.
+  const PLAN_OPACITY = { minimum: 0.12, baseline_night: 0.22, baseline_day: 0.42, comfort: 0.75 };
+  const PLAN_MODES = HEATING_MODES.filter((x) => x.option !== 'auto').map((x) => x.option);
+  const PLAN_TEMP_LO = -20; // a room reading outside these is a faulty sensor, not weather
+  const PLAN_TEMP_HI = 60;
+  const PLAN_MIN_RANGE = 4; // degrees; a flat day still gets a readable scale
+  const HEAT_BUCKET_MS = 5 * 60000; // one drawn point per five minutes keeps a day under 300 points
+  const HEAT_REFRESH_MS = 5 * 60000;
+  const HEAT_RETRY_MS = 5 * 60000;
+  const PLAN_DATE = /^\d{4}-\d{2}-\d{2}$/;
+  const PLAN_CLOCK = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
+  // The wall clock of an instant in an IANA zone (the viewer's zone for a bad name): "YYYY-MM-DD" and minutes since
+  // midnight. The hour is read as h23 because some engines print midnight as 24.
+  function zonedClock(ms, tz) {
+    if (!Number.isFinite(ms)) throw new Error(`pulse-card: zonedClock needs a time, got ${ms}`);
+    const opts = { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' };
+    let parts;
+    try { parts = new Intl.DateTimeFormat('en-CA', tz ? { ...opts, timeZone: tz } : opts).formatToParts(new Date(ms)); } catch (e) { parts = new Intl.DateTimeFormat('en-CA', opts).formatToParts(new Date(ms)); }
+    const g = (t) => Number(parts.find((x) => x.type === t).value);
+    const p2 = (v) => String(v).padStart(2, '0');
+    const min = (g('hour') % 24) * 60 + g('minute');
+    return { date: `${g('year')}-${p2(g('month'))}-${p2(g('day'))}`, min, sec: g('second') };
+  }
+  const clockText = (min) => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
+  // On a clock-change day this is out by the hour that moved; the strip is nominal 24 h anyway.
+  const dayStart = (ms, tz) => { const c = zonedClock(ms, tz); return ms - (c.min * 60 + c.sec) * 1000 - (ms % 1000); };
+  const planX = (min) => Math.max(0, Math.min(DAY_MIN, min)) / DAY_MIN * PLAN_W;
+
+  // Reads and checks a plan sensor. Returns {ok:true, ...} or {ok:false, why}: `missing` (no sensor, or it is
+  // unavailable), `stale` (a well-formed plan for another day), `invalid` (anything that breaks the contract).
+  function parsePlan(s, today) {
+    if (!isObj(s) || !usable(str(s.state)) || !isObj(s.attributes)) return { ok: false, why: 'missing' };
+    const a = s.attributes;
+    const bad = { ok: false, why: 'invalid' };
+    if (typeof a.date !== 'string' || !PLAN_DATE.test(a.date)) return bad;
+    const list = parseList(a.blocks);
+    if (list.length === 0 || (Array.isArray(a.blocks) && list.length !== a.blocks.length)) return bad;
+    const blocks = [];
+    for (const b of list) {
+      const from = PLAN_CLOCK.exec(str(b.start));
+      const to = PLAN_CLOCK.exec(str(b.end));
+      if (!from || !to || !PLAN_MODES.includes(b.mode)) return bad;
+      blocks.push({ from: Number(from[1]) * 60 + Number(from[2]), to: Number(to[1]) * 60 + Number(to[2]), mode: b.mode });
+    }
+    const until = (v) => (v === null || v === undefined ? null : instantMs(v));
+    if (!isObj(a.active) || !PLAN_MODES.includes(a.active.mode) || typeof a.active.source !== 'string' || a.active.source === '') return bad;
+    const activeUntil = until(a.active.until);
+    if (a.active.until !== null && a.active.until !== undefined && activeUntil === null) return bad;
+    let override = null;
+    if (a.override !== null && a.override !== undefined) {
+      const ou = isObj(a.override) ? until(a.override.until) : null;
+      if (!isObj(a.override) || !PLAN_MODES.includes(a.override.mode) || ou === null) return bad;
+      override = { mode: a.override.mode, until: ou };
+    }
+    if (a.date !== today) return { ok: false, why: 'stale' };
+    return { ok: true, date: a.date, context: str(a.context), blocks, active: { mode: a.active.mode, source: a.active.source, until: activeUntil }, override };
+  }
+
+  // Blocks as minute segments of one day, in order. A block that wraps midnight (end <= start) becomes two pieces,
+  // one at each end of the strip.
+  function planSegments(blocks) {
+    const out = [];
+    for (const b of blocks) {
+      if (b.to > b.from) out.push({ from: b.from, to: b.to, mode: b.mode });
+      else {
+        out.push({ from: b.from, to: DAY_MIN, mode: b.mode });
+        if (b.to > 0) out.push({ from: 0, to: b.to, mode: b.mode });
+      }
+    }
+    return out.sort((x, y) => x.from - y.from);
+  }
+  const segAt = (segs, min) => segs.find((x) => x.from <= min && min < x.to) || null;
+
+  // Everything the picture and rows need, or {ok:false, why}. The "effective" span is what overrides the plan from
+  // now: a manual choice, or a safety or house-mode choice; a schedule choice is the plan itself.
+  function dayPlan(hass, key, now) {
+    const cfg = own(ROOMS, key);
+    if (!cfg || !cfg.climate) return { ok: false, why: 'missing' };
+    const tz = hass && hass.config && hass.config.time_zone;
+    const clock = zonedClock(now, tz);
+    const plan = parsePlan(stateObj(hass, `sensor.${key}_heating_plan`), clock.date);
+    if (!plan.ok) return plan;
+    const temps = {};
+    for (const mode of PLAN_MODES) {
+      const t = num(state(hass, HOUSE_NUMBERS[mode].id));
+      temps[mode] = t === null ? null : Math.max(PLAN_TEMP_LO, Math.min(PLAN_TEMP_HI, t));
+    }
+    const used = [...plan.blocks.map((b) => b.mode), plan.active.mode, ...(plan.override ? [plan.override.mode] : [])];
+    if (used.some((mode) => temps[mode] === null)) return { ok: false, why: 'invalid' };
+    const scheduled = plan.active.source.startsWith('schedule');
+    const source = plan.override ? { mode: plan.override.mode, until: plan.override.until } : scheduled ? null : { mode: plan.active.mode, until: plan.active.until };
+    let eff = null;
+    if (source) {
+      const end = source.until === null ? DAY_MIN : (() => { const c = zonedClock(source.until, tz); return c.date === clock.date ? c.min : DAY_MIN; })();
+      if (end > clock.min) eff = { mode: source.mode, from: clock.min, to: end, until: source.until, byHand: !!plan.override };
+    }
+    return { ok: true, plan, temps, tz, nowMin: clock.min, now, midnight: dayStart(now, tz), segs: planSegments(plan.blocks), eff };
+  }
+
+  // The next blocks to show, at most two: the plan block that takes over when an override ends, then the plan's
+  // own later starts.
+  function planNext(view) {
+    const out = [];
+    const after = view.eff ? view.eff.to : view.nowMin;
+    if (view.eff && view.eff.to < DAY_MIN) {
+      const seg = segAt(view.segs, view.eff.to);
+      if (seg) out.push({ mode: seg.mode, at: view.eff.to, resumes: true });
+    }
+    for (const seg of view.segs) if (seg.from > after && !out.some((x) => x.at === seg.from)) out.push({ mode: seg.mode, at: seg.from, resumes: false });
+    return out.slice(0, 2);
+  }
+
+  // The step line of the plan between two minutes, as an SVG path ('' when nothing is planned there).
+  function stepPath(view, y, from, to) {
+    let d = '';
+    let last = null;
+    for (const seg of view.segs) {
+      const a = Math.max(seg.from, from);
+      const b = Math.min(seg.to, to);
+      if (b <= a) continue;
+      const yy = y(view.temps[seg.mode]).toFixed(1);
+      d += last === null || last.to !== a ? `M${planX(a).toFixed(1)} ${yy}` : `V${yy}`;
+      d += `H${planX(b).toFixed(1)}`;
+      last = { to: b };
+    }
+    return d;
+  }
+
+  // Room history in, drawable data out. Rows come as HA sends them (full or compressed: s / a / lu); a row that
+  // cannot be read is dropped, never guessed. Returns {temps:[{min, v}], spans:[[from, to]] | null}.
+  function parseHeatHistory(res, cfg, midnight, now) {
+    if (!isObj(res)) throw new Error('pulse-card: history response is not an object');
+    const rows = (id) => (Array.isArray(res[id]) ? res[id] : []).filter(isObj)
+      .map((e) => ({ t: instantMs(e.lu !== undefined ? e.lu : e.last_updated !== undefined ? e.last_updated : e.lc !== undefined ? e.lc : e.last_changed), s: e.s !== undefined ? e.s : e.state, a: isObj(e.a) ? e.a : isObj(e.attributes) ? e.attributes : null }))
+      .filter((e) => e.t !== null).sort((x, y) => x.t - y.t);
+    const minutes = (t) => (Math.max(midnight, Math.min(now, t)) - midnight) / 60000;
+    const buckets = new Map();
+    for (const e of rows(cfg.temp)) {
+      const v = num(e.s);
+      if (v === null || v < PLAN_TEMP_LO || v > PLAN_TEMP_HI || e.t > now) continue;
+      buckets.set(Math.floor((Math.max(midnight, e.t) - midnight) / HEAT_BUCKET_MS), { min: minutes(e.t), v });
+    }
+    const temps = [...buckets.entries()].sort((x, y) => x[0] - y[0]).map((x) => x[1]);
+    const climate = rows(cfg.climate);
+    if (climate.length === 0) return { temps, spans: null };
+    const spans = [];
+    let action = '';
+    let since = null;
+    for (const e of climate) {
+      if (e.t > now) break;
+      if (e.a && typeof e.a.hvac_action === 'string') action = e.a.hvac_action;
+      else if (!usable(str(e.s))) action = '';
+      const heating = action === 'heating';
+      if (heating && since === null) since = e.t;
+      if (!heating && since !== null) { if (minutes(e.t) > minutes(since)) spans.push([minutes(since), minutes(e.t)]); since = null; }
+    }
+    if (since !== null && minutes(now) > minutes(since)) spans.push([minutes(since), minutes(now)]);
+    return { temps, spans };
+  }
+  function heatRequest(cfg, midnight, now) {
+    return {
+      type: 'history/history_during_period', start_time: new Date(midnight).toISOString(), end_time: new Date(now).toISOString(), entity_ids: [cfg.temp, cfg.climate],
+      include_start_time_state: true, significant_changes_only: false, minimal_response: false, no_attributes: false,
+    };
+  }
+
+  // Loads the day's history for one room card. At most one request in flight; a refresh no sooner than five minutes
+  // after the last success (a failure retries after five), never per hass update; a new local day drops the old
+  // data; and a response that arrives after cancel() or a newer request is ignored (the sequence number moved on).
+  function makeHeatLoader() {
+    const s = { seq: 0, busy: false, at: 0, retryAt: 0, day: '', data: null };
+    return {
+      get data() { return s.data; },
+      cancel() { s.seq += 1; s.busy = false; },
+      ensure(hass, key, now, onChange) {
+        const cfg = own(ROOMS, key);
+        if (!cfg || !cfg.climate || !cfg.temp || !hass || typeof hass.callWS !== 'function') return;
+        const tz = hass.config && hass.config.time_zone;
+        const day = zonedClock(now, tz).date;
+        if (s.day !== day) { s.seq += 1; s.busy = false; s.day = day; s.data = null; s.at = 0; s.retryAt = 0; }
+        if (s.busy || now < s.retryAt || (s.at && now - s.at < HEAT_REFRESH_MS)) return;
+        s.busy = true;
+        const seq = (s.seq += 1);
+        const midnight = dayStart(now, tz);
+        let call;
+        try { call = Promise.resolve(hass.callWS(heatRequest(cfg, midnight, now))); } catch (e) { call = Promise.reject(e); }
+        call
+          .then((res) => {
+            if (seq !== s.seq) return;
+            s.data = { day, ...parseHeatHistory(res, cfg, midnight, now) };
+            s.at = now;
+          })
+          .catch((err) => {
+            if (seq !== s.seq) return;
+            if (typeof console !== 'undefined') console.warn('pulse-card: heating history unavailable', err && err.message ? err.message : err);
+            s.retryAt = now + HEAT_RETRY_MS;
+          })
+          .finally(() => {
+            if (seq !== s.seq) return;
+            s.busy = false;
+            if (typeof onChange === 'function') onChange();
+          });
+      },
+    };
+  }
+
+  // The history that belongs to the plan on screen: today's, and drawable.
+  function planHistory(ui, view) {
+    const d = isObj(ui) ? ui.heatData : null;
+    return isObj(d) && d.day === zonedClock(view.now, view.tz).date ? d : null;
+  }
+  const heatedMinutes = (spans) => Math.round(spans.reduce((sum, [a, b]) => sum + Math.max(0, b - a), 0));
+
+  // The picture. Plan areas (not under an override), the future dimmed, the step line (dashed under an override,
+  // which is drawn in the tint), the room line to now, the now marker, and the heating bar under the axis.
+  function planSvg(view, data, roomTemp) {
+    const t = (mode) => view.temps[mode];
+    const refs = view.segs.filter((x) => x.mode !== 'minimum').map((x) => t(x.mode));
+    const all = (refs.length ? refs : view.segs.map((x) => t(x.mode))).concat(view.eff ? [t(view.eff.mode)] : []);
+    const line = data ? data.temps.map((p) => p.v) : [];
+    if (roomTemp !== null) line.push(roomTemp);
+    const lo = Math.floor(Math.min(...all, ...line) - 2);
+    const hi = Math.max(Math.ceil(Math.max(...all, ...line) + 1.5), lo + PLAN_MIN_RANGE);
+    // A temperature below the scale (the minimum, usually) sits on the floor; it is clamped, not rescaled.
+    const y = (v) => Math.max(0, Math.min(PLAN_PLOT_H, PLAN_PLOT_H - ((v - lo) / (hi - lo)) * PLAN_PLOT_H));
+    const heat = colour('heat');
+    const tint = colour('tint');
+    const text = colour('text');
+    const sec = colour('textSecondary');
+    const surface = colour('surface');
+    const nowX = planX(view.nowMin);
+    const area = (from, to, v, fill, op) => {
+      if (to <= from) return '';
+      const top = Math.min(y(v), PLAN_PLOT_H - 3);
+      return `<rect x="${planX(from).toFixed(1)}" y="${top.toFixed(1)}" width="${(planX(to) - planX(from)).toFixed(1)}" height="${(PLAN_PLOT_H - top).toFixed(1)}" fill="${fill}" opacity="${op}"/>`;
+    };
+    let out = '';
+    for (const seg of view.segs) {
+      const op = PLAN_OPACITY[seg.mode];
+      if (!view.eff) out += area(seg.from, seg.to, t(seg.mode), heat, op);
+      else out += area(seg.from, Math.min(seg.to, view.eff.from), t(seg.mode), heat, op) + area(Math.max(seg.from, view.eff.to), seg.to, t(seg.mode), heat, op);
+    }
+    if (view.eff) out += area(view.eff.from, view.eff.to, t(view.eff.mode), tint, 0.4);
+    out += `<rect class="plan-future" x="${nowX.toFixed(1)}" y="0" width="${(PLAN_W - nowX).toFixed(1)}" height="${PLAN_PLOT_H}" fill="${surface}" opacity=".45"/>`;
+    const step = (d, attrs) => (d ? `<path d="${d}" fill="none" ${attrs}/>` : '');
+    const solid = `stroke="${heat}" stroke-width="2"`;
+    if (!view.eff) out += step(stepPath(view, y, 0, DAY_MIN), solid);
+    else {
+      out += step(stepPath(view, y, 0, view.eff.from), solid);
+      out += step(stepPath(view, y, view.eff.from, view.eff.to), `class="plan-replaced" stroke="${heat}" stroke-width="1.5" stroke-dasharray="3 3" opacity=".8"`);
+      out += `<path class="plan-override" d="M${planX(view.eff.from).toFixed(1)} ${y(t(view.eff.mode)).toFixed(1)}H${planX(view.eff.to).toFixed(1)}" fill="none" stroke="${tint}" stroke-width="2"/>`;
+      out += step(stepPath(view, y, view.eff.to, DAY_MIN), solid);
+    }
+    const pts = data ? data.temps.filter((p) => p.min < view.nowMin).map((p) => [planX(p.min), y(p.v)]) : [];
+    if (roomTemp !== null) pts.push([nowX, y(roomTemp)]);
+    if (pts.length >= 2) out += `<path class="plan-room" d="${pts.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join('')}" fill="none" stroke="${text}" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>`;
+    out += `<path d="M${nowX.toFixed(1)} 0V${PLAN_PLOT_H}" stroke="${text}" stroke-width="1" stroke-dasharray="2 3" opacity=".6"/>`;
+    if (pts.length) out += `<circle class="plan-dot" cx="${pts[pts.length - 1][0].toFixed(1)}" cy="${pts[pts.length - 1][1].toFixed(1)}" r="4" fill="${text}" stroke="${surface}" stroke-width="2"/>`;
+    if (data && data.spans) for (const [a, b] of data.spans) out += `<rect class="plan-heat" x="${planX(a).toFixed(1)}" y="${PLAN_PLOT_H + 4}" width="${Math.max(1.5, planX(b) - planX(a)).toFixed(1)}" height="4" rx="2" fill="${heat}"/>`;
+    const top = view.segs.filter((x) => x.mode !== 'minimum').sort((a, b) => t(b.mode) - t(a.mode) || (b.to - b.from) - (a.to - a.from))[0];
+    if (top && planX(top.to) - planX(top.from) >= 56) out += `<text x="${(planX(top.from) + 4).toFixed(1)}" y="${Math.max(12, y(t(top.mode)) - 5).toFixed(1)}" fill="${sec}" font-size="11" font-weight="600">${esc(COPY.room.planPeak(COPY.room.heatingModes[top.mode], fmt1(t(top.mode))))}</text>`;
+    const label = (x, s, anchor, fill, weight) => `<text x="${x.toFixed(1)}" y="${PLAN_H - 2}" fill="${fill}" font-size="10"${weight ? ` font-weight="${weight}"` : ''} text-anchor="${anchor}">${s}</text>`;
+    for (const h of [0, 6, 12, 18]) if (h === 0 || Math.abs(planX(h * 60) - nowX) > 18) out += label(planX(h * 60), String(h).padStart(2, '0'), h === 0 ? 'start' : 'middle', sec);
+    out += label(Math.max(10, Math.min(PLAN_W - 10, nowX)), esc(COPY.room.planNow), 'middle', text, 600);
+    const endMs = view.eff ? view.eff.until : view.plan.active.until;
+    const aria = COPY.room.planLabel(COPY.room.heatingModes[view.plan.active.mode], fmt1(t(view.plan.active.mode)), endMs === null ? '' : clockText(zonedClock(endMs, view.tz).min));
+    return `<svg class="plan" viewBox="0 0 ${PLAN_W} ${PLAN_H}" width="100%" role="img" aria-label="${esc(aria)}" style="display:block;margin-top:12px">${out}</svg>`;
+  }
+
+  // The card around the picture: the room's temperature, what the room is doing and until when, the picture, then
+  // the next blocks as rows with their temperature trailing.
+  function planCard(view, m, data) {
+    const mode = view.plan.active.mode;
+    const label = COPY.room.heatingModes[mode];
+    const temp = fmt1(view.temps[mode]);
+    const endMs = view.eff ? view.eff.until : view.plan.active.until;
+    const until = endMs !== null ? clockText(zonedClock(endMs, view.tz).min) : '';
+    const radiator = m.hvac_action === 'heating' ? COPY.room.radiatorHeating : m.hvac_action === 'idle' ? COPY.room.radiatorIdle : '';
+    const when = !until ? (view.eff ? COPY.room.planHeld : '') : view.eff && view.eff.byHand ? COPY.room.planByHand(until) : COPY.room.planUntil(until);
+    const sub = [when, radiator].filter(Boolean).join(' · ');
+    const big = m.temp !== null ? `${fmt1(m.temp)}°` : '–';
+    const head = `<div class="plan-head"><span class="num plan-big">${esc(big)}</span><span class="plan-mode"><span class="plan-mode-t num"${view.eff ? ` style="color:${TOKENS.tint}"` : ''}>${esc(COPY.room.planMode(label, temp))}</span>${sub ? `<span class="plan-mode-s">${esc(sub)}</span>` : ''}</span></div>`;
+    const rows = planNext(view).map((n) => hmRow({ title: COPY.room.heatingModes[n.mode], sub: n.resumes ? COPY.room.planResumes(clockText(n.at)) : COPY.room.planFrom(clockText(n.at)), value: `${fmt1(view.temps[n.mode])}°` })).join('');
+    return `<div class="hm-card plan-card">${head}${planSvg(view, data, m.temp)}${rows ? hmList(rows, true) : ''}</div>`;
+  }
+  const planNote = (why) => own({ missing: COPY.room.planMissing, stale: COPY.room.planStale, invalid: COPY.room.planInvalid }, why) || COPY.room.planInvalid;
+  const durationText = (min) => (min >= 60 ? COPY.room.hoursMinutes(Math.floor(min / 60), min % 60) : COPY.room.minutes(min));
+
+  function sectionHeating(hass, key, now, ui) {
     const m = roomModel(hass, key);
     if (!m.hasReport || !m.cfg.climate) return '';
-    const grid = heatingGrid(hass, m, key);
-    const rows = heatingRows(m);
-    return `<div class="hm">${hmSection(COPY.room.heating, grid.html + hmFeet([grid.note]), { bare: true, after: rows ? `<div class="hm-group-row">${hmList(rows, true)}</div>` : '' })}</div>`;
+    const view = dayPlan(hass, key, now);
+    const data = view.ok ? planHistory(ui, view) : null;
+    const grid = heatingGrid(hass, m, key, view.ok ? view : null);
+    const rows = heatingRows(m, data && data.spans ? hmRow({ title: COPY.room.heatedToday, value: durationText(heatedMinutes(data.spans)) }) : '');
+    const notes = view.ok ? [grid.note] : [grid.note, planNote(view.why)];
+    const body = (view.ok ? planCard(view, m, data) : '') + grid.html + hmFeet(notes);
+    return `<div class="hm">${hmSection(COPY.room.heating, body, { bare: true, after: rows ? `<div class="hm-group-row">${hmList(rows, true)}</div>` : '' })}</div>`;
   }
 
   // Presence: occupied or empty, what holds the room occupied and what ends it, and "Keep room occupied" (acts now,
@@ -3543,8 +3874,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     'room-head': (h, c, n) => sectionRoomHead(h, c.room, n),
     readings: (h, c) => sectionReadings(h, c.room),
     lights: (h, c, n, ui) => sectionLights(h, c.room, n, ui),
-    heating: (h, c) => sectionHeating(h, c.room),
-    'chart-head': () => `<div class="hm"><section class="hm-sec"><div class="hm-h"><h2>${COPY.room.last24h}</h2></div></section></div>`,
+    heating: (h, c, n, ui) => sectionHeating(h, c.room, n, ui),
     presence: (h, c, n, ui) => sectionPresence(h, c.room, ui),
     media: (h, c) => sectionMedia(h, c.room),
     device: (h, c) => sectionDevice(h, c),
@@ -3837,7 +4167,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return disclosureStore[id] === true;
   }
 
-  const api = { parsedAttr, disclosureStore, toggleDisclosure, setOptimise, trackHass, depsUnchanged, makeRenderGate, RENDER_MAX_AGE_MS, deriveScenes, sceneRegistry, ROOM_TABLE, lightsStory, lightsState, verdictFor, houseActivity, parseHistory, readHistory, sentenceFor, roomActivity, splitSentence, timelineLead, unexplainedReasons, REASON_TEXT, UNDECLARED, SUPPRESS_SOURCES, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, SETTINGS_PATH, takesTaps, invisibleControl, disarm, rearm, coverNeed, topGuard, HEAD_MODES, TOP_GUARD_MAX, CAMERAS_PATH, PENDING_MS, cameraParts, cameraToggle, cameraPending, perform, pendingStart, pendingFor, pendingKey, markPending, ERROR_MS, haptic, tapHaptic, HAPTIC_TYPES, HAPTICS, ACT_HAPTIC, parseClips, frigateClipsId, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, GARDEN_ORDER, ALL_ROOM_KEYS, THEME_LABELS, THEME_ICON, ICON, SUBSYSTEMS, subsystemOf, placed, gardenModel, gardenSub, themeSource, shortDate, ALLOWED, writeAllowed, HOUSE_NUMBERS, HOUSE_MODIFIER, HOUSE_VACATION_HOURS, CAMERAS, PTZ_DIRS, DEVICE_REASONS, ROOM_SETTINGS, MO_TOGGLES, settingFor, render, priceColour, PRICE_AT, PRICE_EXTREME_P, THEMES, COLOUR_KEYS, DEFAULT_THEME, TOKENS, COPY, checkThemes, themeOf, useTheme, colour, resolveVars, styleFor, roomModel, attentionItems, handleAction, HEATING_MODES, heatingLock, setHeatingMode, callService, num, parseList };
+  const api = { parsedAttr, disclosureStore, toggleDisclosure, setOptimise, trackHass, depsUnchanged, makeRenderGate, RENDER_MAX_AGE_MS, deriveScenes, sceneRegistry, ROOM_TABLE, lightsStory, lightsState, verdictFor, houseActivity, parseHistory, readHistory, sentenceFor, roomActivity, splitSentence, timelineLead, unexplainedReasons, REASON_TEXT, UNDECLARED, SUPPRESS_SOURCES, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, SETTINGS_PATH, takesTaps, invisibleControl, disarm, rearm, coverNeed, topGuard, HEAD_MODES, TOP_GUARD_MAX, CAMERAS_PATH, PENDING_MS, cameraParts, cameraToggle, cameraPending, perform, pendingStart, pendingFor, pendingKey, markPending, ERROR_MS, haptic, tapHaptic, HAPTIC_TYPES, HAPTICS, ACT_HAPTIC, parseClips, frigateClipsId, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, GARDEN_ORDER, ALL_ROOM_KEYS, THEME_LABELS, THEME_ICON, ICON, SUBSYSTEMS, subsystemOf, placed, gardenModel, gardenSub, themeSource, shortDate, ALLOWED, writeAllowed, HOUSE_NUMBERS, HOUSE_MODIFIER, HOUSE_VACATION_HOURS, CAMERAS, PTZ_DIRS, DEVICE_REASONS, ROOM_SETTINGS, MO_TOGGLES, settingFor, render, priceColour, PRICE_AT, PRICE_EXTREME_P, THEMES, COLOUR_KEYS, DEFAULT_THEME, TOKENS, COPY, checkThemes, themeOf, useTheme, colour, resolveVars, styleFor, roomModel, attentionItems, handleAction, HEATING_MODES, heatingLock, setHeatingMode, zonedClock, parsePlan, planSegments, dayPlan, planNext, parseHeatHistory, heatRequest, makeHeatLoader, HEAT_REFRESH_MS, HEAT_RETRY_MS, callService, num, parseList };
   root.PulseLib = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 
@@ -3856,6 +4186,10 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         this._histSeq = 0;
         this._histAt = 0;
         this._histRetryAt = 0;
+        this._heat = makeHeatLoader();
+        // The day's heating history rides on ui without joining the render signature: `heatRev` moves when it changes.
+        Object.defineProperty(this._ui, 'heatData', { get: () => this._heat.data, enumerable: false });
+        this._ui.heatRev = 0;
         this._scrub = { idx: null, slots: null, active: false, pending: null, timer: null };
         this._wireControls(this._root);
         // Price chart scrubbing (see PR for the manual test list; not testable in node).
@@ -3886,12 +4220,14 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       set hass(hass) {
         this._hass = hass;
         this._histEnsure();
+        this._heatEnsure();
         this._paint(true);
         this._syncStream();
       }
       connectedCallback() {
         this._gate.reset(); // a (re)mount always renders once
         this._histEnsure();
+        this._heatEnsure();
         this._tabbarProbeLater();
         this._topProbeLater();
       }
@@ -3899,6 +4235,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         this._gate.reset();
         this._histSeq += 1;
         this._histBusy = false;
+        this._heat.cancel();
         for (const t of this._tbTimers || []) clearTimeout(t);
         for (const t of this._topTimers || []) clearTimeout(t);
         this._topTimers = null;
@@ -3939,6 +4276,13 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
             this._histBusy = false;
             this._paint();
           });
+      }
+      // The room's heating history for the day plan: only while a heating card is mounted and the room has a plan to
+      // draw it on; the loader keeps the cadence (see makeHeatLoader).
+      _heatEnsure() {
+        const c = this._config;
+        if (!c || c.mode !== 'heating' || !this._hass || !this.isConnected || !usable(state(this._hass, `sensor.${c.room}_heating_plan`))) return;
+        this._heat.ensure(this._hass, c.room, Date.now(), () => { this._ui.heatRev += 1; this._paint(); });
       }
       getCardSize() { return 3; }
       // `fromHass` is true only for a hass update, the one caller allowed to skip an unchanged render. Taps,
