@@ -8,13 +8,23 @@
  * fetches this file with revalidation and imports it from a Blob URL. After a change, wait ~60 s
  * for www-sync and reopen the dashboard; no ?v= bump, no HA restart.
  *
+ * Config: `mode` (required), `room` / `camera` / `entity` / `decision` / `active` as each mode needs, and
+ * `theme` (optional; `classic` when absent, an unknown name is a card error), e.g.
+ *   {type: custom:pulse-card, mode: status, theme: rose-pine}
+ * Every card of a dashboard should name the same theme; a theme applies to the card that names it.
+ *
+ * To add a theme: copy the `classic` entry in THEMES, give it a new key, and change the values; every
+ * token must be present (load fails otherwise) and tests/pulse-card.test.mjs holds it to the contrast
+ * floors. To change wording: edit COPY (interface text) or the tables next to it (SUBSYSTEMS,
+ * REASON_TEXT, UNDECLARED); the tests fail on an unused key or a reference to a missing one.
+ *
  * Rules this file keeps:
  *  - Rendering is a pure function (render(mode, config, hass, nowMs) -> html string) with no DOM,
  *    so it runs under node (tests/pulse-card.test.mjs).
  *  - Nothing may throw on missing data: every attribute read goes through the safe helpers below,
  *    every list through parseList, every number through num. Missing data renders an honest
  *    empty state, never a made-up value.
- *  - Style tokens live once, in TOKENS / STYLE.
+ *  - Colours live once, in THEMES; wording lives once, in COPY. Everything else references them.
  *  - Every write gives feedback (see Tap feedback): the control shows busy until its entity moves or
  *    8 s pass, and a failed call shows an error on the card.
  *  - Write paths are whitelisted per entity in ALLOWED ({domain: {service: [entity patterns]}}) and
@@ -30,46 +40,468 @@
   // Switch the bottom tab bar off in one line (renders nothing).
   const TABBAR_ENABLED = true;
 
-  // ── Style tokens (single definition) ─────────────────────────────────────────────────────────
-  const TOKENS = {
-    ground: '#12151a',
-    surface: '#1a1f26',
-    divider: '#232a33',
-    text: '#e8ebef',
-    text2: '#a3adba',
-    text3: '#8f9aa8',
-    amber: '#f2b84b',
-    amberBg: '#221d10',
-    amberBorder: '#4a3d1c',
-    amberTag: '#2b2415',
-    ok: '#6fcf97',
-    heat: '#f08a4b',
-    heatBg: '#2a1a10',
-    okBg: '#14281d',
-    link: '#7aa7ff',
-    sceneActive: '#f2c46b',
-    sceneActiveText: '#1d1708',
-    switchOn: '#3a8f63',
-    switchOff: '#3a424d',
+  // ── Themes (single definition of every colour) ───────────────────────────────────────────────
+  // Tokens are named by role, not hue, so a theme can change a hue without a name lying. Every theme
+  // defines every token; the card picks one by `theme:` in its config (default `classic`, the original
+  // look). Colours reach CSS as custom properties (--pulse-<token>), set once on the card root, and
+  // reach JS (SVG attributes, price maths, the clip player outside the shadow root) through colour().
+  // This block is the only place a colour literal may appear (a test greps for strays).
+  //   Surfaces: bg page and sheet ground; surface cards; control chips, tiles, badges and tip fills;
+  //     controlEdge their outline; separator row dividers.
+  //   Text: text; textSoft body text on controls; textSecondary sub-lines; textTertiary non-essential
+  //     hints only (it can fall below 4.5:1 on some themes).
+  //   Accent: tint is the selected / active fill, tintInk the text on it; link; on / off toggle tracks
+  //     with knob / knobOff; ok good status; heat boiler firing.
+  //   Attention: attention text and dots; attentionBg, attentionBorder, attentionChip, attentionRow fills.
+  //   Chrome: tabBar translucent tab bar; scrim / scrimFull / shadow overlays; streamWell / videoBg
+  //     behind camera pictures.
+  //   Price: priceStops are [hue, saturation %, lightness %] for the five PRICE_AT prices, interpolated
+  //     in HSL (hues may run below 0 to cross red); priceNegative, priceExtreme, priceNeutral.
+  const THEMES = {
+    classic: {
+      bg: '#12151a', surface: '#1a1f26', control: '#232a33', controlEdge: '#2f3843', separator: '#232a33',
+      text: '#e8ebef', textSoft: '#cfd5dd', textSecondary: '#a3adba', textTertiary: '#8f9aa8',
+      tint: '#f2c46b', tintInk: '#1d1708', link: '#7aa7ff',
+      on: '#3a8f63', off: '#3a424d', knob: '#fff', knobOff: '#c4ccd6',
+      ok: '#6fcf97', okBg: '#14281d', heat: '#f08a4b', heatBg: '#2a1a10',
+      attention: '#f2b84b', attentionBg: '#221d10', attentionBorder: '#4a3d1c', attentionChip: '#2b2415', attentionRow: '#201c10',
+      tabBar: 'rgba(18,21,26,.94)', scrim: 'rgba(0,0,0,.6)', scrimFull: 'rgba(0,0,0,.94)', shadow: 'rgba(0,0,0,.5)',
+      streamWell: '#0c0e12', videoBg: '#000',
+      priceNegative: '#2ee6c8', priceExtreme: '#c2003b', priceNeutral: '#6b7684',
+      priceStops: [[142, 58, 46], [88, 62, 56], [52, 82, 60], [26, 88, 56], [4, 80, 50]],
+    },
+    // Rose Pine with Tokyo Night fill-ins.
+    'rose-pine': {
+      bg: '#191724', surface: '#1f1d2e', control: '#26233a', controlEdge: '#403d52', separator: 'rgba(110,106,134,.35)',
+      text: '#e0def4', textSoft: '#e0def4', textSecondary: '#908caa', textTertiary: '#6e6a86',
+      tint: '#c4a7e7', tintInk: '#191724', link: '#7aa2f7',
+      on: '#31748f', off: '#403d52', knob: '#e0def4', knobOff: '#908caa',
+      ok: '#9ccfd8', okBg: '#1f2b35', heat: '#ebbcba', heatBg: '#2e2230',
+      attention: '#eb6f92', attentionBg: '#2b1f33', attentionBorder: '#5c3550', attentionChip: '#3a2640', attentionRow: '#251c2e',
+      tabBar: 'rgba(25,23,36,.94)', scrim: 'rgba(0,0,0,.6)', scrimFull: 'rgba(0,0,0,.94)', shadow: 'rgba(0,0,0,.5)',
+      streamWell: '#14121f', videoBg: '#000',
+      priceNegative: '#7dcfff', priceExtreme: '#b4637a', priceNeutral: '#6e6a86',
+      // Pine, Foam, Gold, a warm coral, Love (hue -17 = 343, so the last step runs through orange to red).
+      priceStops: [[197, 49, 38], [189, 43, 73], [35, 88, 72], [14, 75, 70], [-17, 76, 68]],
+    },
+  };
+  const DEFAULT_THEME = 'classic';
+  const PRICE_AT = [0, 15, 25, 35, 44.99]; // pence for each of a theme's priceStops
+
+  // Every theme must define exactly the tokens classic does: a missing or extra key fails at load,
+  // not as an invisible element on one page of one theme.
+  function checkThemes(themes) {
+    const keys = Object.keys(themes.classic);
+    for (const [name, t] of Object.entries(themes)) {
+      const have = Object.keys(t);
+      const missing = keys.filter((k) => !have.includes(k));
+      const extra = have.filter((k) => !keys.includes(k));
+      if (missing.length || extra.length) throw new Error(`pulse-card: theme "${name}" token mismatch (missing: ${missing.join(', ') || 'none'}; unknown: ${extra.join(', ') || 'none'})`);
+      for (const k of keys) {
+        if (k === 'priceStops') continue;
+        if (typeof t[k] !== 'string' || t[k] === '') throw new Error(`pulse-card: theme "${name}" token "${k}" must be a colour string`);
+      }
+      const ok = Array.isArray(t.priceStops) && t.priceStops.length === PRICE_AT.length && t.priceStops.every((x) => Array.isArray(x) && x.length === 3 && x.every(Number.isFinite));
+      if (!ok) throw new Error(`pulse-card: theme "${name}" priceStops must be ${PRICE_AT.length} [hue, saturation, lightness] triples`);
+    }
+    return keys.filter((k) => k !== 'priceStops');
+  }
+  const COLOUR_KEYS = checkThemes(THEMES);
+
+  // CSS side: TOKENS.text is the string "var(--pulse-text)". A misspelt token throws instead of
+  // producing the CSS "var(--pulse-undefined)", which would silently drop the declaration.
+  const TOKENS = new Proxy(Object.fromEntries(COLOUR_KEYS.map((k) => [k, `var(--pulse-${k})`])), {
+    get(target, key) {
+      if (typeof key === 'string' && !Object.prototype.hasOwnProperty.call(target, key)) throw new Error(`pulse-card: unknown colour token "${key}"`);
+      return target[key];
+    },
+  });
+
+  // Unknown theme names fail loudly (no silent fallback to classic); absent means the default.
+  function themeOf(config) {
+    const name = config && config.theme !== undefined ? config.theme : DEFAULT_THEME;
+    if (typeof name !== 'string' || !Object.prototype.hasOwnProperty.call(THEMES, name)) throw new Error(`pulse-card: unknown theme "${name}" (known: ${Object.keys(THEMES).join(', ')})`);
+    return THEMES[name];
+  }
+  // JS side: the theme the card is rendering with. render() sets it for a pass and restores it after;
+  // event handlers that build colours outside a render call useTheme(config) first.
+  let activeTheme = THEMES[DEFAULT_THEME];
+  const useTheme = (config) => { activeTheme = themeOf(config); };
+  function colour(key) {
+    if (!COLOUR_KEYS.includes(key)) throw new Error(`pulse-card: unknown colour token "${key}"`);
+    return activeTheme[key];
+  }
+  const themeVars = (theme) => `:host{${COLOUR_KEYS.map((k) => `--pulse-${k}:${theme[k]}`).join(';')}}`;
+  const styleFor = (config) => themeVars(themeOf(config)) + STYLE;
+  // Test helper: replace var(--pulse-x) with a theme's value, to compare against hex expectations.
+  const resolveVars = (text, name) => text.replace(/var\(--pulse-(\w+)\)/g, (m, k) => {
+    const t = THEMES[name];
+    if (!t || !COLOUR_KEYS.includes(k)) throw new Error(`pulse-card: cannot resolve ${m} in theme "${name}"`);
+    return t[k];
+  });
+
+  // ── Price colours ──────────────────────────────────────────────────────────────────────────
+  // Graded by pence/kWh, interpolated in HSL between the theme's priceStops. In the classic theme
+  // lightness varies along the scale (not just hue) so green and red stay apart for colour-blind
+  // viewers; bar height and the numbers carry the price too. Negative prices are always good ("paid to
+  // use") and get their own bright colour; >= PRICE_EXTREME_P is the theme's priceExtreme.
+  const PRICE_EXTREME_P = 45;
+  const PRICE_KEY_P = [0, 15, 30, 45];
+
+  // ── Wording (everything the card says lives in this region) ──────────────────────────────────
+  // COPY holds the interface chrome: titles, tab and control labels, empty and no-data states, units
+  // text. Wording that needs a value is a small function. Sentences composed from live facts (verdicts,
+  // banners, camera and heating explanations) are built where the facts are, from fragments in the
+  // tables below. After COPY: SUBSYSTEMS (noun and icon per homerun subsystem), then the history
+  // wording (REASON_TEXT per `subsystem:reason`, UNDECLARED for decisions homerun did not declare).
+  // To change a word, edit it here; a test fails when a key is unused or a reference has no key.
+  const COPY = {
+    common: {
+      tabHouse: 'House', tabEnergy: 'Energy', tabCameras: 'Cameras', tabSettings: 'Settings',
+      on: 'On', off: 'Off', notFound: 'Not found', unavailable: 'Unavailable',
+      navLabel: 'Pulse', backToHouse: 'Back to House', closeSettings: 'Close settings', modeModifier: 'Mode modifier',
+      openCameras: 'Open cameras', openEnergy: 'Open energy details', openSettings: 'Open settings', shorter: 'Shorter', longer: 'Longer',
+      cardError: 'pulse-card error',
+    },
+    home: {
+      title: 'Pulse', house: 'House', bins: 'Bins', heatingCard: 'Heating', detailHeating: 'Heating',
+      needsAttention: 'Needs attention', occupiedNow: 'Occupied now', otherRooms: 'Other rooms', rooms: 'Rooms', outside: 'Outside',
+      noAttentionReport: 'No attention report', noClimate: 'no climate', heldOccupied: 'Held occupied',
+      personHome: 'Home', personAway: 'Away', personWfh: 'WFH',
+      needsAttentionCount: (n) => `${n} ${plural(n, 'needs', 'need')} attention`,
+      roomsOccupied: (n) => `${n} ${plural(n, 'room', 'rooms')}`,
+    },
+    room: {
+      roomLabel: 'Room', targetLabel: 'Target', heating: 'Heating', presence: 'Presence', lights: 'Lights', media: 'Media', theme: 'Theme',
+      useCalendar: 'Use calendar', keepRoomOccupied: 'Keep room occupied', settingsLink: 'Settings',
+      individualLights: 'Individual lights', noSettings: 'No settings available for this room', volume: 'Volume',
+      lightsAutomationOff: 'Lights automation is off', manual: 'Manual', manualChange: 'Manual change', problem: 'Problem', didntAct: "Didn't act",
+      hold: 'Hold', auto: 'Auto', suspended: 'Suspended', pending: 'Pending', heatingAutomationOff: 'Heating automation is off',
+      heatingOn: 'Heating', idle: 'Idle',
+      individualLightsCount: (on, total) => ` · ${on} of ${total} on`,
+    },
+    energy: {
+      now: 'Now', next: 'Next', usage: 'Usage', perKwh: ' p/kWh', cheapest2h: 'Cheapest 2h', nextCheapest: 'Next cheapest 2 hours',
+      runningNowTag: 'Running now', bestTag: 'Best', windows: 'Windows',
+      noPriceToday: 'No price data for today', ratesNotInYet: "Tomorrow's rates are not in yet",
+      ratesPublishedLate: "Tomorrow's rates are published late afternoon", ratesEmpty: 'The rates list is empty or unavailable',
+      dragChart: 'Drag across the chart to read any half hour', dragBars: 'Drag across the bars to read a day · Published about 1-2 days late',
+      costLatest: 'Cost (latest published day)', octopusLate: 'Octopus publishes about 1-2 days late, so these cover an earlier day, not today',
+      loadingHistory: 'Loading history…', historyUnavailable: 'History unavailable',
+      historyUnavailableBody: 'The recorded cost history could not be read; the latest published day is shown above',
+      dailyCost: 'Daily cost', electricity: 'Electricity', gas: 'Gas', usageLive: 'Usage (smart meter, live)',
+      meterNote: "Live from the meter; the Octopus figures above are the supplier's, days late, and the two are not reconciled",
+      runningNow: (until) => `Running now${until ? `, until ${until}` : ''}`,
+      runningNowShort: (until) => `running now${until ? `, until ${until}` : ''}`,
+      avg: (price) => ` · avg ${price}`,
+      dailyCostDays: (n) => `Daily cost, ${n} ${plural(n, 'day', 'days')}`,
+    },
+    cameras: {
+      master: 'Cameras', cameraOn: 'Camera on', recordings: 'Recordings', tryAgain: 'Try again',
+      recent: (n) => `${n} recent`,
+    },
+    feed: {
+      whatHouseDid: 'What the house did', recentActivity: 'Recent activity', historyUnavailable: 'History unavailable',
+    },
+    settings: {
+      houseMode: 'House mode', holidayThreshold: 'Holiday threshold', centralHeating: 'Central heating', heating: 'Heating',
+      temperatureModes: 'Temperature modes', temperatureModesNote: 'Applies to every room that uses the global setpoints',
+      safety: 'Safety', people: 'People', mo: 'Mo',
+    },
+  };
+  // A reference to a key that is not in the table throws, instead of printing "undefined" on the page.
+  for (const area of Object.keys(COPY)) {
+    COPY[area] = new Proxy(COPY[area], {
+      get(target, key) {
+        if (typeof key === 'string' && !Object.prototype.hasOwnProperty.call(target, key)) throw new Error(`pulse-card: no COPY.${area}.${key}`);
+        return target[key];
+      },
+    });
+  }
+
+  // The subject and icon of each homerun subsystem on the activity feeds: the one table. A test holds it to
+  // the catalogue, so a new subsystem fails loudly here instead of showing up as a bare dot.
+  const SUBSYSTEMS = {
+    lighting: { noun: 'Lights', icon: 'bulb' },
+    heating: { noun: 'Heating', icon: 'flame' },
+    occupied: { noun: 'Occupancy', icon: 'person' },
+    energy: { noun: 'Energy', icon: 'bolt' },
+    cameras: { noun: 'Cameras', icon: 'camera' },
+    fan: { noun: 'Fan', icon: 'fan' },
+    shower: { noun: 'Shower', icon: 'droplet' },
+    sonos: { noun: 'Speakers', icon: 'speaker' },
+    house_mode: { noun: 'House mode', icon: 'home' },
+    mo: { noun: 'Mo', icon: 'paw' },
+    thermal: { noun: 'Windows', icon: 'window' },
+    wfh_inference: { noun: 'Working from home', icon: 'laptop' },
+    modifier: { noun: 'Guest mode', icon: 'guest' },
+  };
+  const subsystemOf = (id) => own(SUBSYSTEMS, id) || { noun: capFirst(pretty(id)), icon: 'dot' };
+  // ── Wording: homerun history entries in plain words ──────────────────────────────────────────
+  // homerun publishes only structured data (reason keys, outcomes, facts); every sentence on screen is
+  // written here. REASON_TEXT is keyed `subsystem:reason`, the same key the catalogue declares. A test
+  // compares it with tests/fixtures/catalog.json, and at run time `unexplainedReasons` compares it with
+  // sensor.homerun_catalog so a reason added without wording raises attention instead of vanishing.
+  const capFirst = (t) => str(t).replace(/^./, (c) => c.toUpperCase());
+  const pretty = (s) => str(s).replace(/_/g, ' ').trim();
+  const LUX_MAX = 200000; // far above sunlight; keeps a corrupt reading from printing a 20-digit number
+  const clampInt = (n, lo, hi) => Math.round(Math.min(hi, Math.max(lo, n)));
+  const fmtLux = (v) => { const n = num(v); return n === null ? 'no light reading' : `${clampInt(n, 0, LUX_MAX)} lx`; };
+  const fmtThreshold = (v) => { const n = num(v); return n === null ? 'a set level' : String(clampInt(n, 0, LUX_MAX)); };
+  const fmtMinutes = (v) => { const n = num(v); return n === null ? 'a few minutes' : `${clampInt(n, 0, 24 * 60)} min`; };
+  const fmtTheme = (v) => { const t = str(v).trim(); return t ? (THEME_LABELS[t.toLowerCase()] || capFirst(pretty(t))) : 'the new'; };
+  // Entities are named by their friendly name, falling back to the id so a rename never hides the source.
+  const entityName = (hass, id) => {
+    const s = str(id);
+    if (!s) return '';
+    const f = attr(hass, s, 'friendly_name');
+    return typeof f === 'string' && f.trim() ? f.trim() : s;
+  };
+  // The lights come on when the reading is at or below the threshold, so the words say "or below".
+  const luxText = (f) => `${fmtLux(f.lux)}, on at ${fmtThreshold(f.lux_threshold)} or below`;
+  const fmtHours = (v) => { const n = num(v); return n === null ? 'a long time' : `${clampInt(n, 0, 24 * 31)} h`; };
+  // " (scene)" after "Scene set" when homerun says which scene; nothing when it does not.
+  const sceneNote = (v) => (str(v).trim() ? ` (${pretty(v)})` : '');
+  // A person is named by the fact (adam -> Adam); a missing one leaves the sentence without a name.
+  const personLead = (v, tail) => (str(v).trim() ? `${capFirst(pretty(v).toLowerCase())} ${lowerFirst(tail)}` : tail);
+  const fmtClock = (v) => { const t = str(v).trim(); return /^\d{1,2}:\d{2}$/.test(t) ? t : ''; };
+  // Why a heating mode was re-evaluated, in the words after the reason. `other` is a runtime fallback and
+  // says nothing; a cause that only repeats its reason (house mode on a house-mode reason, a manual set on
+  // a manual setting) is dropped so the row never reads "house asleep, house mode changed".
+  const HEATING_CAUSE = {
+    boundary: 'schedule time reached', window_closed: 'window closed', house_mode: 'house mode changed', manual_ended: 'manual setting ended',
+    manual_set: 'set by hand', occupancy: 'room occupancy changed', heating_on: 'heating switched on', wfh: 'working from home', startup: 'after a restart',
+  };
+  const REPEATS_CAUSE = { house_mode: /^house_mode_/, manual_set: /^manual_override$/ };
+  const causeClause = (cause, reason) => {
+    const c = str(cause).trim();
+    const words = own(HEATING_CAUSE, c);
+    if (!words || (REPEATS_CAUSE[c] && REPEATS_CAUSE[c].test(reason))) return '';
+    return `, ${words}`;
+  };
+  // Heating modes by the words the settings page uses (HOUSE_NUMBERS titles). Anything else is shown
+  // as its own key so a new mode is readable rather than hidden.
+  const MODE_WORDS = { comfort: 'comfort', baseline_day: 'day baseline', baseline_night: 'night baseline', minimum: 'minimum', off: 'off' };
+  const modeWord = (v) => { const m = str(v).trim(); return m ? (MODE_WORDS[m] || pretty(m)) : ''; };
+  const setTo = (v) => (modeWord(v) ? `set to ${modeWord(v)}` : 'mode changed');
+  const TEMP_MAX = 50; // far above any room or boiler setpoint; keeps a corrupt reading short
+  const fmtDegrees = (v) => { const n = num(v); return n === null ? '' : `${Math.round(Math.min(TEMP_MAX, Math.max(-TEMP_MAX, n)) * 10) / 10}°`; };
+  const COUNT_MAX = 1000;
+  const fmtCount = (v) => { const n = num(v); return n === null ? null : clampInt(n, 0, COUNT_MAX); };
+  const POINTS_MAX = 100000000;
+  const fmtPoints = (v) => { const n = num(v); return n === null ? '' : String(clampInt(n, 0, POINTS_MAX)); };
+  // A room fact is a key ("home_office"), a comma-joined list of keys, or a name already in words.
+  const roomName = (v) => {
+    const t = str(v).trim();
+    if (!t) return '';
+    const key = t.toLowerCase().replace(/\s+/g, '_');
+    return ROOMS[key] ? ROOMS[key].name : capFirst(pretty(t));
+  };
+  const roomList = (v) => str(v).split(',').map(roomName).filter(Boolean).join(', ');
+  const lowerFirst = (t) => str(t).replace(/^./, (c) => c.toLowerCase());
+  const themeOr = (v, fallback) => { const t = str(v).trim(); return t ? lowerFirst(fmtTheme(t)) : fallback; };
+
+  // The privacy switch is on when the cameras are off, so the verdict reads the opposite way round.
+  const privacyVerdict = (privacy) => {
+    const p = str(privacy).trim().toLowerCase();
+    return p === 'on' || p === 'true' ? 'Cameras off' : p === 'off' || p === 'false' ? 'Cameras on' : 'Cameras switched on or off';
   };
 
-  // ── Price colours (single definition) ──────────────────────────────────────────────────────
-  // Graded green -> red by pence/kWh, interpolated in HSL between these stops. Lightness varies
-  // along the scale (not just hue) so green and red stay apart for colour-blind viewers; bar
-  // height and the numbers carry the price too. Negative prices are always good ("paid to use")
-  // and get their own bright teal; >= PRICE_EXTREME_P is a deeper, more saturated red.
-  const PRICE_STOPS = [ // [pence, hue, saturation %, lightness %]
-    [0, 142, 58, 46],
-    [15, 88, 62, 56],
-    [25, 52, 82, 60],
-    [35, 26, 88, 56],
-    [44.99, 4, 80, 50],
-  ];
-  const PRICE_EXTREME_P = 45;
-  const PRICE_NEGATIVE = '#2ee6c8';
-  const PRICE_EXTREME = '#c2003b';
-  const PRICE_NEUTRAL = '#6b7684';
-  const PRICE_KEY_P = [0, 15, 30, 45];
+  // Known sources of an external suppress, as the plain phrase a person would use. Any other source falls back to
+  // the entity's friendly name, which is usually a helper's technical name.
+  const SUPPRESS_SOURCES = {
+    'binary_sensor.hallway_upstairs_bed_occupied_sync': 'someone in bed',
+  };
+  const REASON_TEXT = {
+    'lighting:automation_disabled': () => 'Stayed off: lights automation is off',
+    'lighting:button_cycle': (f) => `Scene set${sceneNote(f.scene)} · button pressed`,
+    'lighting:button_off': () => 'Lights off · button held',
+    'lighting:calendar_boundary': (f) => `Theme switched to ${fmtTheme(f.theme)} · calendar`,
+    'lighting:calendar_boundary_catch_up': (f) => `Theme switched to ${fmtTheme(f.theme)} · calendar, after a restart`,
+    'lighting:calendar_theme_not_an_option': (f) => `Theme left as it is: the calendar wants ${fmtTheme(f.theme)}, which is not an option`,
+    'lighting:external_suppress_active': (f, c) => `Stayed off: ${own(SUPPRESS_SOURCES, f.source) || `held off by ${c.name(f.source) || 'something else'}`}`,
+    'lighting:guest_room_sleep_bypass': () => 'Not switched off at bedtime: room kept for a guest',
+    'lighting:house_sleep_mode': () => 'Lights off · house set to asleep',
+    'lighting:lux_high': (f) => `Stayed off: bright enough (${luxText(f)})`,
+    'lighting:lux_low': (f) => (num(f.lux) === null ? `Scene set${sceneNote(f.scene)} · room occupied (no light reading)` : `Scene set${sceneNote(f.scene)} · room occupied and dark (${luxText(f)})`),
+    'lighting:occupancy_off': () => 'Lights off · room empty',
+    'lighting:occupancy_settle_off': () => 'Lights off · room stayed empty',
+    'lighting:on_outside_evening_window': (f) => `Off in ${fmtMinutes(f.minutes)} · turned on by hand outside lighting hours`,
+    'lighting:preview_ended': () => 'Lights off · preview over',
+    'lighting:recent_auto_off': (f) => `Scene set${sceneNote(f.scene)} · back soon after lights went off`,
+    'lighting:schedule_off': () => 'Lights off · end of the evening',
+    'lighting:sleep_mode': () => 'Stayed off: house asleep',
+    'lighting:sunrise': () => 'Lights off · sunrise',
+    'lighting:sunset': () => 'Lights on · sunset',
+    'lighting:sunset_while_house_asleep': () => 'Stayed off at sunset: house asleep',
+    'lighting:theme_changed': (f) => `Lights restyled · lighting theme changed to ${fmtTheme(f.theme)}`,
+    'lighting:theme_changed_by_hand_today': () => 'Theme left as it is: picked by hand (checked after a restart)',
+    'lighting:theme_scene_missing': (f) => (str(f.theme).trim() ? `Normal scene used · no ${fmtTheme(f.theme)} scene set up` : 'Normal scene used · no scene set up for this theme'),
+    'lighting:automation_disabled_restore': () => 'Porch light back to its look · porch automation is off',
+    'lighting:halloween_scene_activated': () => 'Halloween animation started · Halloween scene on',
+    'lighting:hold_expired': () => 'Porch light back to its look · motion over',
+    'lighting:hold_expired_look_missing_garden_off': () => 'Porch light off · motion over, no saved look and garden off',
+    'lighting:look_unreadable': () => "Porch light not warmed: couldn't save its current look",
+    'lighting:motion_detected': () => 'Porch light warmed · motion detected',
+    'lighting:motion_during_fade_back': () => 'Porch light warmed again · motion while it faded back',
+    'lighting:no_feature_lights': () => 'Halloween effects not started: no lights labelled for them',
+    'lighting:no_lights_in_theme_roles': (f) => `Effects not started: no lights set up for ${themeOr(f.theme, 'this theme')}`,
+    'lighting:restore_look_missing': () => 'Porch light left warm: no saved look to go back to',
+    'lighting:scene_changed_during_hold': () => 'Porch light warmed again · scene changed during motion',
+    'lighting:theme_effects_stopped': (f) => (str(f.theme).trim() ? `Light effects stopped · ${fmtTheme(f.theme)} scene replaced` : 'Light effects stopped · theme scene replaced'),
+    'lighting:theme_opted_out': () => 'Porch light stayed as it is: this theme ignores motion',
+    'lighting:theme_scene_settled': (f) => (str(f.theme).trim() ? `Light effects started · ${fmtTheme(f.theme)} scene on` : 'Light effects started · theme scene on'),
+    'heating:demand_ended': () => 'Boiler off · no room needs heat',
+    'heating:demand_started': (f) => `Boiler on · ${roomList(f.rooms) || 'a room'} calling for heat`,
+    'heating:door_closed_was_suspended': () => 'House heating back on · patio door closed',
+    'heating:door_open_heating_on': () => 'House heating paused · patio door left open',
+    'heating:heating_disabled': () => 'Boiler off · house heating switched off',
+    'heating:helper_unavailable': (f) => `Heating left as it is: no ${modeWord(f.mode) || 'mode'} temperature available`,
+    'heating:house_mode_away': (f) => `Heating ${setTo(f.mode)} · house away${causeClause(f.cause, 'house_mode_away')}`,
+    'heating:house_mode_sleep': (f) => `Heating ${setTo(f.mode)} · house asleep${causeClause(f.cause, 'house_mode_sleep')}`,
+    'heating:house_mode_vacation': (f) => `Heating ${setTo(f.mode)} · house on holiday${causeClause(f.cause, 'house_mode_vacation')}`,
+    'heating:manual_override': (f) => `Heating ${setTo(f.mode)} · manual setting${causeClause(f.cause, 'manual_override')}`,
+    'heating:overtemp_heater_on': (f) => `Heater off · too hot${fmtDegrees(f.temp) ? ` (${fmtDegrees(f.temp)})` : ''}`,
+    'heating:safety_heating_disabled': (f) => `Heating ${setTo(f.mode)} · house heating switched off`,
+    'heating:safety_window_open': (f) => `Heating ${setTo(f.mode)} · window open`,
+    'heating:schedule': (f) => `Heating ${setTo(f.mode)} · schedule${causeClause(f.cause, 'schedule')}`,
+    'heating:schedule_occupied': (f) => `Heating ${setTo(f.mode)} · schedule, room occupied${causeClause(f.cause, 'schedule_occupied')}`,
+    'heating:temperature_set_arbitrage': (f) => `Heating ${setTo(f.mode)}${fmtDegrees(f.target) ? ` (${fmtDegrees(f.target)})` : ''} · free power, room empty${fmtDegrees(f.clamped_from) ? `, limited from ${fmtDegrees(f.clamped_from)}` : ''}`,
+    'heating:trvs_not_set': (f) => `Radiators left as they are: no temperature for the mode in ${roomList(f.skipped) || 'some rooms'}`,
+    'heating:unknown_mode': (f) => `Heating left as it is: unknown mode${modeWord(f.mode) ? ` (${modeWord(f.mode)})` : ''}`,
+    'heating:valve_characteristic_lost': (f) => `Notification sent · ${roomName(f.room) ? lowerFirst(roomName(f.room)) : 'a'} radiator valve needs recalibrating`,
+    'house_mode:all_left_door_recently': () => 'House set to away · everyone left',
+    'house_mode:away_duration_exceeded': () => 'House set to holiday · away for a long time',
+    'house_mode:bed_not_occupied': () => 'Not set to asleep: bed empty',
+    'house_mode:bed_occupied': () => 'Stayed asleep: bed occupied',
+    'house_mode:button_hold_bed_occupied': () => 'House set to asleep · button held, bed occupied',
+    'house_mode:button_pressed': () => 'House set to at home · button pressed',
+    'house_mode:double_press_bypass': () => 'House set to asleep · button double-pressed, bed sensor skipped',
+    'house_mode:guest_mode_active': () => 'Stayed asleep: guest mode',
+    'house_mode:kitchen_motion_detected': () => 'House set to at home · kitchen in use in the morning',
+    'house_mode:parlour_active': () => 'Not set to asleep: parlour in use',
+    'house_mode:sitter_mode_ended_house_empty': () => 'House set to away · sitter left, nobody home',
+    'house_mode:sitter_present': () => 'House set to at home · house sitter here',
+    'house_mode:someone_returned': () => 'House set to at home · someone came back',
+    'cameras:away_but_guest_present': () => 'Cameras left off: house away, guest staying',
+    'cameras:button_double_press': (f) => `${privacyVerdict(f.privacy)} · button double-pressed`,
+    'cameras:guest_arrived_while_away': () => 'Cameras off · guest arrived while away',
+    'cameras:house_away': () => 'Cameras on · house away',
+    'cameras:house_not_away': () => 'Cameras off · house at home',
+    'cameras:sleep_kitchen_camera_on': () => 'Kitchen camera on for Mo · house asleep',
+    'energy:adam': () => 'Cheap power tip sent to Adam',
+    'energy:adam_and_sarah': () => 'Cheap power tip sent to Adam and Sarah',
+    'energy:cheap_windows': () => 'Heads-up sent · cheap power tomorrow',
+    'energy:negative_windows': () => 'Heads-up sent · free power tomorrow',
+    'energy:points_increased': (f) => `Octopus points credited${fmtPoints(f.credited) ? ` (+${fmtPoints(f.credited)})` : ''}${fmtPoints(f.balance) ? ` · balance ${fmtPoints(f.balance)}` : ''}`,
+    'energy:sarah': () => 'Cheap power tip sent to Sarah',
+    'energy:sessions_joined': (f) => { const n = fmtCount(f.count); return n === null ? 'Joined power down sessions' : `Joined ${n} power down ${plural(n, 'session', 'sessions')}`; },
+    'energy:wheels_spun': (f) => { const n = fmtCount(f.count); return n === null ? 'Spun the Octopus wheels' : `Spun ${n} Octopus ${plural(n, 'wheel', 'wheels')}`; },
+    'fan:automation_disabled': () => 'Fan not started: fan automation is off',
+    'fan:fan_not_auto_started': () => 'Fan left alone: already on by hand',
+    'fan:fan_off_humidity_normal': () => 'Fan off · humidity back to normal',
+    'fan:fan_off_max_run': () => 'Fan off · ran its maximum time',
+    'fan:fan_on_shower_started': () => 'Fan on · shower started',
+    'mo:eating': (f) => `Mo eating${roomName(f.room) ? ` · ${roomName(f.room)}` : ''}`,
+    'mo:spotted': (f) => `Mo spotted${roomName(f.room) ? ` · ${roomName(f.room)}` : ''}`,
+    'modifier:guest_absent': () => 'Home office released · guest mode off',
+    'modifier:guest_present': () => 'Home office kept occupied · guest staying',
+    'shower:shower_ended': () => 'Shower over · humidity falling',
+    'shower:shower_max_duration': () => 'Shower marked over · on longer than any real shower',
+    'shower:shower_started': () => 'Shower detected · humidity rising fast',
+    'sonos:automation_disabled': () => 'Left the speaker group · grouping switched off',
+    'sonos:automation_enabled': () => 'Joined the speaker group · grouping switched on',
+    'thermal:close_bedroom': () => 'Told to close the bedroom windows · sun building',
+    'thermal:close_both': () => 'Told to close bedroom and home office windows · sun building, outside warmer',
+    'thermal:close_door': (f) => `Told to close the door · outside ${fmtDegrees(f.outdoor) || 'warmer'}${fmtDegrees(f.indoor) ? `, inside ${fmtDegrees(f.indoor)}` : ''}`,
+    'thermal:close_home_office': () => 'Told to close the home office windows · outside warmer',
+    'thermal:open_both': () => 'Told to open the windows · cooler outside',
+    'thermal:open_door': (f) => `Told to open the door · inside ${fmtDegrees(f.indoor) || 'warm'}${fmtDegrees(f.outdoor) ? `, outside ${fmtDegrees(f.outdoor)}` : ''}`,
+    'wfh_inference:always_wfh_wed_fri': (f) => `${personLead(f.person, 'Marked as working from home')} · always Wed to Fri`,
+    'wfh_inference:home_at_inference_time': (f) => `${personLead(f.person, 'Marked as working from home')} · home${fmtClock(f.time) ? ` at ${fmtClock(f.time)}` : ' when checked'}`,
+    'occupied:containment_failsafe_expired': (f) => `Marked empty · door shut but no movement for ${fmtHours(f.hours)}`,
+    'occupied:motion_detected': () => 'Marked occupied · motion detected',
+    'occupied:strong_hold_active': (f, c) => `Stayed occupied: held by ${c.name(f.hold) || 'a hold'}`,
+    'occupied:strong_hold_started': (f, c) => `Marked occupied · held by ${c.name(f.hold) || 'a hold'}`,
+    'occupied:timer_expired': (f) => `Marked empty · no one seen for ${fmtMinutes(f.minutes)}`,
+  };
+  // Decisions homerun stores without a declaration (decisions with actions only, from automations that
+  // declare no reasons): worded from the decision verb and the reason slug, in this table so there is one
+  // place for wording besides REASON_TEXT. `verb` is the sentence tail, `note` is the short phrase a room
+  // tile shows for a recent action ("lights on 7 min ago"), per subsystem, and only where a tile may say it.
+  const UNDECLARED = {
+    decisions: {
+      turn_on: { verb: 'turned on', note: { lighting: 'lights on' } },
+      turn_off: { verb: 'turned off', note: { lighting: 'lights off' } },
+      on: { verb: 'turned on' },
+      activate_scene: { verb: 'scene set', note: { lighting: 'scene set' } },
+      set_occupied: { verb: 'marked occupied', note: { occupied: 'marked occupied' } },
+      clear_occupied: { verb: 'marked empty', note: { occupied: 'marked empty' } },
+      notify: { verb: 'notification sent' },
+      join: { verb: 'joined the speaker group' },
+      unjoin: { verb: 'left the speaker group' },
+      exit_sleep: { verb: 'house set to at home' },
+      clear_recent_auto_off: { verb: 'reset after switching off' },
+      switch_theme: { verb: 'theme switched' },
+      start_preview: { verb: 'preview started' },
+      set_mode: { verb: 'mode changed', note: { heating: 'heating changed' } },
+      blocked: { verb: 'blocked' },
+      suspend: { verb: 'suspended', note: { heating: 'heating suspended' } },
+      restore: { verb: 'restored', note: { heating: 'heating restored' } },
+      sync_window_external: { verb: 'window state synced' },
+      set_sleep: { verb: 'house set to asleep' },
+    },
+    reasons: {
+      occupancy_on: 'room occupied', kitchen_motion_detected: 'kitchen motion', end_of_day: 'end of day',
+      already_in_sleep_mode: 'already asleep', not_in_sleep_mode: 'not asleep', house_away: 'house away', house_not_away: 'someone home',
+      guest_mode_active: 'guest mode', away_but_guest_present: 'away but guest present', bed_occupied: 'bed occupied',
+      bed_not_occupied: 'bed empty', button_pressed: 'button pressed', button_double_press: 'button double press',
+      door_open_heating_on: 'door open while heating', door_closed_was_suspended: 'door closed, heating resumed',
+      open_door: 'door opened', close_door: 'door closed', outside_morning_window: 'outside the morning window',
+      parlour_active: 'parlour in use', overtemp_heater_on: 'too hot',
+      safety_window_open: 'window open', safety_heating_disabled: 'heating switched off', manual_override: 'manual setting',
+      schedule: 'schedule', schedule_occupied: 'schedule, room occupied', house_mode_away: 'house away', house_mode_sleep: 'house asleep',
+      house_mode_vacation: 'house on holiday', house_mode_normal: 'house at home', automation_disabled: 'automation is off',
+    },
+    nouns: { lighting: 'Lights', occupied: 'Occupancy', heating: 'Heating' },
+  };
+  const own = (table, key) => (Object.prototype.hasOwnProperty.call(table, key) ? table[key] : undefined);
+
+  function undeclaredSentence(e) {
+    const noun = own(UNDECLARED.nouns, e.subsystem) || capFirst(pretty(e.subsystem));
+    const d = own(UNDECLARED.decisions, e.decision);
+    const verb = d ? d.verb : pretty(e.decision);
+    const why = own(UNDECLARED.reasons, e.reason) || pretty(e.reason);
+    return `${noun}${verb ? ' ' + verb : ''}${why ? ' · ' + why : ''}`;
+  }
+  // What a failed run or action says. Devices are named by their friendly name, never "entity".
+  function problemSentence(e, hass) {
+    const d = e.detail;
+    const who = entityName(hass, d.entity);
+    if (e.kind === 'action_failed') {
+      if (d.failure === 'ack_timeout') return `${who || 'A device'} didn't respond`;
+      return `${who || 'A device'} couldn't be controlled${str(d.action) ? ` (${pretty(str(d.action).split('.').pop())})` : ''}`;
+    }
+    switch (d.abort_kind) {
+      case 'unavailable_input': return `Couldn't run: ${who || 'an input'} unavailable`;
+      case 'guard': return `Held back${who ? ' · ' + who : ''}${e.reason ? ' · ' + pretty(e.reason) : ''}`;
+      case 'unhandled_error': return "Couldn't run: it failed unexpectedly";
+      default: return `Couldn't run: ${pretty(d.abort_kind) || 'unknown problem'}`;
+    }
+  }
+  // A guard abort is an automation's precondition not being met: routine, never a problem.
+  const isGuard = (e) => e.kind === 'abort' && e.detail.abort_kind === 'guard';
+  // The one place an entry becomes words, plus how to show it: `ok` for something done, `muted` for a rule that
+  // chose not to act, `warn` for a run that could not happen. A declared reason with no wording still renders
+  // (never blank) and is reported by unexplainedReasons.
+  function sentenceFor(e, hass) {
+    if (e.kind !== 'decision') return { text: problemSentence(e, hass), tone: isGuard(e) ? 'muted' : 'warn' };
+    const tone = e.outcome === 'declined' ? 'muted' : 'ok';
+    if (e.outcome === undefined) return { text: undeclaredSentence(e), tone };
+    const fn = own(REASON_TEXT, `${e.subsystem}:${e.reason}`);
+    const ctx = { name: (id) => entityName(hass, id) };
+    return { text: fn ? fn(e.facts, ctx) : `${capFirst(pretty(e.subsystem))} ${pretty(e.reason)}`, tone };
+  }
 
   // Room tile geometry in ONE place. The tile has a fixed height, so the height must be at least what its
   // rows need: top+bottom padding, the taller of the name and temperature (they share row 1), the status line
@@ -85,122 +517,122 @@
 .p{font-family:'Inter',system-ui,-apple-system,sans-serif;color:${TOKENS.text};display:flex;flex-direction:column;gap:14px}
 a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .card{background:${TOKENS.surface};border-radius:16px;overflow:hidden}
-.card.warn{border:1px solid ${TOKENS.amberBorder};background:${TOKENS.amberBg}}
+.card.warn{border:1px solid ${TOKENS.attentionBorder};background:${TOKENS.attentionBg}}
 .pad{padding:14px}
-.lbl{font-size:11px;font-weight:600;letter-spacing:.8px;text-transform:uppercase;color:${TOKENS.text3}}
+.lbl{font-size:11px;font-weight:600;letter-spacing:.8px;text-transform:uppercase;color:${TOKENS.textTertiary}}
 .dot{width:10px;height:10px;border-radius:50%;background:${TOKENS.ok};flex:none}
-.dot.warn{background:${TOKENS.amber}}
-.dot.dim{background:${TOKENS.text3}}
-.row{display:grid;grid-template-columns:10px 1fr auto;gap:12px;align-items:center;min-height:56px;padding:8px 14px;border-top:1px solid ${TOKENS.divider}}
+.dot.warn{background:${TOKENS.attention}}
+.dot.dim{background:${TOKENS.textTertiary}}
+.row{display:grid;grid-template-columns:10px 1fr auto;gap:12px;align-items:center;min-height:56px;padding:8px 14px;border-top:1px solid ${TOKENS.separator}}
 .row:first-child{border-top:0}
-.row.warn{background:#201c10;align-items:start}
+.row.warn{background:${TOKENS.attentionRow};align-items:start}
 .nm{font-size:15px;font-weight:600}
-.sub{font-size:12px;color:${TOKENS.text2};margin-top:2px;line-height:1.35}
+.sub{font-size:12px;color:${TOKENS.textSecondary};margin-top:2px;line-height:1.35}
 .t{font-size:17px;font-weight:600;text-align:right}
-.rh{font-size:11px;color:${TOKENS.text3};text-align:right}
-.chip{display:inline-flex;align-items:center;gap:6px;padding:5px 9px;border-radius:999px;background:${TOKENS.divider};font-size:12px;font-weight:600;min-height:30px;white-space:nowrap;flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.rh{font-size:11px;color:${TOKENS.textTertiary};text-align:right}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:5px 9px;border-radius:999px;background:${TOKENS.control};font-size:12px;font-weight:600;min-height:30px;white-space:nowrap;flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
 .chips{display:flex;gap:6px;flex-wrap:nowrap;min-width:0}
 .pstrip{display:flex;align-items:center;gap:16px;min-height:56px;color:inherit}
 .det{grid-column:2 / 4;display:flex;flex-direction:column;gap:6px;padding:4px 0 6px}
-.det .l{display:flex;gap:8px;font-size:12.5px;color:#cfd5dd;line-height:1.4}
-.det .l b{color:${TOKENS.amber};font-weight:600}
-.err{background:${TOKENS.amberBg};border:1px solid ${TOKENS.amberBorder};color:${TOKENS.amber};border-radius:12px;padding:10px 14px;font-size:13px;font-weight:600}
+.det .l{display:flex;gap:8px;font-size:12.5px;color:${TOKENS.textSoft};line-height:1.4}
+.det .l b{color:${TOKENS.attention};font-weight:600}
+.err{background:${TOKENS.attentionBg};border:1px solid ${TOKENS.attentionBorder};color:${TOKENS.attention};border-radius:12px;padding:10px 14px;font-size:13px;font-weight:600}
 [aria-busy="true"]{opacity:.55;cursor:progress}
-.tag{font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:${TOKENS.amberTag};color:${TOKENS.amber};white-space:nowrap}
+.tag{font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:${TOKENS.attentionChip};color:${TOKENS.attention};white-space:nowrap}
 .tag.ok{background:${TOKENS.okBg};color:${TOKENS.ok}}
-.tag.off{background:${TOKENS.divider};color:${TOKENS.text2}}
+.tag.off{background:${TOKENS.control};color:${TOKENS.textSecondary}}
 .tag.heat{background:${TOKENS.heatBg};color:${TOKENS.heat}}
 .link{display:flex;align-items:center;min-height:44px;font-size:13px;font-weight:600;color:${TOKENS.link}}
-.feed{display:grid;grid-template-columns:44px 16px minmax(0,1fr);gap:8px;font-size:12.5px;line-height:1.4;padding:8px 14px;border-top:1px solid ${TOKENS.divider}}
+.feed{display:grid;grid-template-columns:44px 16px minmax(0,1fr);gap:8px;font-size:12.5px;line-height:1.4;padding:8px 14px;border-top:1px solid ${TOKENS.separator}}
 .feed:first-child{border-top:0}
-.feed .a{color:${TOKENS.text3}}
-.feed.muted{color:${TOKENS.text2}}
-.feed.warn{color:${TOKENS.amber}}
-.feed .si{display:flex;align-items:center;justify-content:center;height:1.4em;color:${TOKENS.text3}}
+.feed .a{color:${TOKENS.textTertiary}}
+.feed.muted{color:${TOKENS.textSecondary}}
+.feed.warn{color:${TOKENS.attention}}
+.feed .si{display:flex;align-items:center;justify-content:center;height:1.4em;color:${TOKENS.textTertiary}}
 .sl{font-size:12px;line-height:16px;min-height:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.item{display:grid;grid-template-columns:22px 1fr auto;gap:10px;align-items:start;padding:12px 14px;border-top:1px solid ${TOKENS.divider}}
+.item{display:grid;grid-template-columns:22px 1fr auto;gap:10px;align-items:start;padding:12px 14px;border-top:1px solid ${TOKENS.separator}}
 .item:first-child{border-top:0}
-.item svg,.ic{width:18px;height:18px;stroke:${TOKENS.text2};fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;margin-top:1px}
+.item svg,.ic{width:18px;height:18px;stroke:${TOKENS.textSecondary};fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;margin-top:1px}
 .h{font-size:14px;font-weight:600}
-.s{font-size:12.5px;color:${TOKENS.text2};margin-top:2px;line-height:1.4}
-.tog{display:flex;align-items:center;gap:12px;justify-content:space-between;min-height:56px;padding:6px 14px;border-top:1px solid ${TOKENS.divider};width:100%;background:none;border-left:0;border-right:0;border-bottom:0;color:inherit;font:inherit;text-align:left}
+.s{font-size:12.5px;color:${TOKENS.textSecondary};margin-top:2px;line-height:1.4}
+.tog{display:flex;align-items:center;gap:12px;justify-content:space-between;min-height:56px;padding:6px 14px;border-top:1px solid ${TOKENS.separator};width:100%;background:none;border-left:0;border-right:0;border-bottom:0;color:inherit;font:inherit;text-align:left}
 .tog:first-child{border-top:0}
-.sw{width:46px;height:28px;border-radius:999px;background:${TOKENS.switchOn};position:relative;flex:none}
-.sw::after{content:'';position:absolute;top:3px;right:3px;width:22px;height:22px;border-radius:50%;background:#fff}
-.sw.off{background:${TOKENS.switchOff}}
-.sw.off::after{right:auto;left:3px;background:#c4ccd6}
+.sw{width:46px;height:28px;border-radius:999px;background:${TOKENS.on};position:relative;flex:none}
+.sw::after{content:'';position:absolute;top:3px;right:3px;width:22px;height:22px;border-radius:50%;background:${TOKENS.knob}}
+.sw.off{background:${TOKENS.off}}
+.sw.off::after{right:auto;left:3px;background:${TOKENS.knobOff}}
 .tiles{display:grid;gap:8px}
-.tile{border:0;font:inherit;border-radius:14px;min-height:64px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;cursor:pointer;font-size:13px;font-weight:600;background:${TOKENS.divider};color:#cfd5dd}
-.tile.on{background:${TOKENS.sceneActive};color:${TOKENS.sceneActiveText}}
-.lt{display:grid;grid-template-columns:1fr 130px;gap:12px;align-items:center;min-height:56px;padding:6px 14px;border-top:1px solid ${TOKENS.divider}}
+.tile{border:0;font:inherit;border-radius:14px;min-height:64px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;cursor:pointer;font-size:13px;font-weight:600;background:${TOKENS.control};color:${TOKENS.textSoft}}
+.tile.on{background:${TOKENS.tint};color:${TOKENS.tintInk}}
+.lt{display:grid;grid-template-columns:1fr 130px;gap:12px;align-items:center;min-height:56px;padding:6px 14px;border-top:1px solid ${TOKENS.separator}}
 .lt:first-child{border-top:0}
-.badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:${TOKENS.divider};color:#cfd5dd;white-space:nowrap}
+.badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:${TOKENS.control};color:${TOKENS.textSoft};white-space:nowrap}
 .oc{display:grid;grid-template-columns:20px 1fr auto;column-gap:12px;row-gap:6px;align-items:center;padding:12px 14px;min-height:64px;box-sizing:border-box;text-decoration:none;color:inherit}
 .oc .nm{font-size:16px;font-weight:600}
 .oc .t{text-align:right}
-.oc .sub{grid-column:1 / 4;display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:12px;color:#a3adba}
+.oc .sub{grid-column:1 / 4;display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:12px;color:${TOKENS.textSecondary}}
 .rgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 .rt{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-rows:auto auto;column-gap:8px;row-gap:${TILE.gap}px;padding:${TILE.padY}px 12px;height:${TILE_H}px;box-sizing:border-box;background:${TOKENS.surface};border-radius:14px;text-decoration:none;color:inherit}
-.rt .nm{grid-column:1;grid-row:1;display:flex;align-items:center;gap:6px;font-size:13.5px;font-weight:600;line-height:${TILE.nameLine}px;color:#cfd5dd;white-space:nowrap;min-width:0}
+.rt .nm{grid-column:1;grid-row:1;display:flex;align-items:center;gap:6px;font-size:13.5px;font-weight:600;line-height:${TILE.nameLine}px;color:${TOKENS.textSoft};white-space:nowrap;min-width:0}
 .rt .nm span{overflow:hidden;text-overflow:ellipsis}
 .rt .nm svg{flex:none}
 .rt .t{grid-column:2;grid-row:1;align-self:center;text-align:right;white-space:nowrap;line-height:${TILE.tempLine}px}
-.rt .b{grid-column:1 / -1;grid-row:2;display:flex;gap:6px;align-items:center;flex-wrap:nowrap;color:#8f9aa8;font-size:11.5px;line-height:${TILE.statusLine}px;min-height:${TILE.statusLine}px;white-space:nowrap;min-width:0}
+.rt .b{grid-column:1 / -1;grid-row:2;display:flex;gap:6px;align-items:center;flex-wrap:nowrap;color:${TOKENS.textTertiary};font-size:11.5px;line-height:${TILE.statusLine}px;min-height:${TILE.statusLine}px;white-space:nowrap;min-width:0}
 .rt .b>*{flex:none}
 .rt .b>span:not(.badge){flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
 .rt .b .badge{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;line-height:14px}
 .rt.wide{grid-column:1 / -1}
 .segs{display:flex;gap:8px;background:${TOKENS.surface};border-radius:14px;padding:4px}
-.seg{border:0;font:inherit;font-size:14px;font-weight:600;min-height:44px;border-radius:12px;cursor:pointer;flex:1;background:transparent;color:#cfd5dd}
-.seg.on{background:${TOKENS.sceneActive};color:${TOKENS.sceneActiveText}}
-.stream{background:#0c0e12;aspect-ratio:16/9;display:flex;align-items:center;justify-content:center}
+.seg{border:0;font:inherit;font-size:14px;font-weight:600;min-height:44px;border-radius:12px;cursor:pointer;flex:1;background:transparent;color:${TOKENS.textSoft}}
+.seg.on{background:${TOKENS.tint};color:${TOKENS.tintInk}}
+.stream{background:${TOKENS.streamWell};aspect-ratio:16/9;display:flex;align-items:center;justify-content:center}
 .stream ha-camera-stream{display:block;width:100%}
-.ptz{display:grid;grid-template-columns:repeat(3,48px);grid-template-rows:repeat(3,48px);gap:6px;justify-content:center;padding:12px 14px;border-top:1px solid ${TOKENS.divider}}
-.ptz button{border:0;border-radius:12px;background:${TOKENS.divider};color:${TOKENS.text};cursor:pointer;display:flex;align-items:center;justify-content:center;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.ptz{display:grid;grid-template-columns:repeat(3,48px);grid-template-rows:repeat(3,48px);gap:6px;justify-content:center;padding:12px 14px;border-top:1px solid ${TOKENS.separator}}
+.ptz button{border:0;border-radius:12px;background:${TOKENS.control};color:${TOKENS.text};cursor:pointer;display:flex;align-items:center;justify-content:center;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 .ptz button:active{transform:scale(.96)}
 .ptz button:disabled{opacity:.35;cursor:default}
-.clip{display:flex;align-items:center;gap:12px;padding:8px 14px;border-top:1px solid ${TOKENS.divider};width:100%;background:none;border-left:0;border-right:0;border-bottom:0;color:inherit;font:inherit;text-align:left;cursor:pointer;min-height:62px}
-.clip img{width:72px;height:48px;object-fit:cover;border-radius:8px;background:${TOKENS.divider};flex:none}
+.clip{display:flex;align-items:center;gap:12px;padding:8px 14px;border-top:1px solid ${TOKENS.separator};width:100%;background:none;border-left:0;border-right:0;border-bottom:0;color:inherit;font:inherit;text-align:left;cursor:pointer;min-height:62px}
+.clip img{width:72px;height:48px;object-fit:cover;border-radius:8px;background:${TOKENS.control};flex:none}
 .clip .t{font-size:14px;font-weight:600}
-.clip .w{font-size:12px;color:${TOKENS.text2};margin-top:2px}
+.clip .w{font-size:12px;color:${TOKENS.textSecondary};margin-top:2px}
 .stat{flex:1;padding:12px;min-width:0}
-.stat .k{font-size:11px;color:${TOKENS.text3};font-weight:600;letter-spacing:.4px;text-transform:uppercase}
+.stat .k{font-size:11px;color:${TOKENS.textTertiary};font-weight:600;letter-spacing:.4px;text-transform:uppercase}
 .stat .v{font-size:19px;font-weight:700;letter-spacing:-.3px;margin-top:4px}
-.stat .s{font-size:11.5px;color:${TOKENS.text2};margin-top:2px}
-.wrow{display:flex;justify-content:space-between;align-items:center;gap:10px;min-height:48px;padding:6px 14px;border-top:1px solid ${TOKENS.divider};font-size:14px}
+.stat .s{font-size:11.5px;color:${TOKENS.textSecondary};margin-top:2px}
+.wrow{display:flex;justify-content:space-between;align-items:center;gap:10px;min-height:48px;padding:6px 14px;border-top:1px solid ${TOKENS.separator};font-size:14px}
 .wrow:first-child{border-top:0}
 .wrow .r{font-size:13px;font-weight:600}
-.wrow .m{font-size:12px;color:${TOKENS.text2}}
+.wrow .m{font-size:12px;color:${TOKENS.textSecondary}}
 .u{padding:14px;flex:1;min-width:0}
 .u .v{font-size:22px;font-weight:700;letter-spacing:-.4px;margin-top:4px}
-.u .v span{font-size:12px;font-weight:500;color:${TOKENS.text2}}
+.u .v span{font-size:12px;font-weight:500;color:${TOKENS.textSecondary}}
 .tabbar-spacer{height:var(--tbh)}
-.tabs{--tbh:calc(58px + max(10px, env(safe-area-inset-bottom, 0px)));box-sizing:border-box;height:var(--tbh);padding:8px 16px max(10px, env(safe-area-inset-bottom, 0px));display:flex;background:rgba(18,21,26,.94);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);border-top:1px solid ${TOKENS.divider}}
+.tabs{--tbh:calc(58px + max(10px, env(safe-area-inset-bottom, 0px)));box-sizing:border-box;height:var(--tbh);padding:8px 16px max(10px, env(safe-area-inset-bottom, 0px));display:flex;background:${TOKENS.tabBar};-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);border-top:1px solid ${TOKENS.separator}}
 .tabs.fixed{position:fixed;left:0;right:0;bottom:0;z-index:100}
-.tab{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font:inherit;font-size:10.5px;font-weight:600;color:${TOKENS.text3};min-height:44px;background:none;border:0;cursor:pointer;padding:0}
-.tab[aria-current=page]{color:${TOKENS.sceneActive}}
+.tab{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font:inherit;font-size:10.5px;font-weight:600;color:${TOKENS.textTertiary};min-height:44px;background:none;border:0;cursor:pointer;padding:0}
+.tab[aria-current=page]{color:${TOKENS.tint}}
 .tab:focus-visible{outline:2px solid ${TOKENS.link};outline-offset:-2px;border-radius:10px}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .chart:focus-visible{outline:2px solid ${TOKENS.link};outline-offset:2px;border-radius:6px}
-.tip{position:absolute;top:-36px;left:0;pointer-events:none;background:${TOKENS.divider};border:1px solid #2f3843;border-radius:8px;padding:4px 8px;font-size:12px;line-height:1.3;white-space:nowrap;z-index:2}
-.tip small{display:block;font-size:10px;color:${TOKENS.text2}}
+.tip{position:absolute;top:-36px;left:0;pointer-events:none;background:${TOKENS.control};border:1px solid ${TOKENS.controlEdge};border-radius:8px;padding:4px 8px;font-size:12px;line-height:1.3;white-space:nowrap;z-index:2}
+.tip small{display:block;font-size:10px;color:${TOKENS.textSecondary}}
 .lh{display:flex;justify-content:space-between;align-items:center;width:100%;min-height:52px;padding:0 14px;background:none;border:0;color:inherit;font:inherit;cursor:pointer}
-.lt input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:44px;margin:0;background:transparent;accent-color:${TOKENS.sceneActive}}
-.lt input[type=range]::-webkit-slider-runnable-track{height:6px;border-radius:3px;background:linear-gradient(to right,${TOKENS.sceneActive} var(--p,0%),${TOKENS.switchOff} var(--p,0%))}
-.lt input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:24px;height:24px;margin-top:-9px;border-radius:50%;background:${TOKENS.sceneActive};border:2px solid ${TOKENS.surface}}
-.lt input[type=range]::-moz-range-track{height:6px;border-radius:3px;background:${TOKENS.switchOff}}
-.lt input[type=range]::-moz-range-progress{height:6px;border-radius:3px;background:${TOKENS.sceneActive}}
-.lt input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:${TOKENS.sceneActive};border:2px solid ${TOKENS.surface}}
-.round{min-height:44px;min-width:44px;border-radius:999px;border:0;background:${TOKENS.sceneActive};color:${TOKENS.sceneActiveText};display:flex;align-items:center;justify-content:center;cursor:pointer;flex:none}
-.round.quiet{background:${TOKENS.divider};color:${TOKENS.text}}
-.gbtn{border:0;font:inherit;font-size:13.5px;font-weight:600;min-height:44px;min-width:92px;padding:0 16px;border-radius:999px;cursor:pointer;background:${TOKENS.sceneActive};color:${TOKENS.sceneActiveText};align-self:center}
-.gbtn.quiet{background:${TOKENS.divider};color:${TOKENS.text}}
+.lt input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:44px;margin:0;background:transparent;accent-color:${TOKENS.tint}}
+.lt input[type=range]::-webkit-slider-runnable-track{height:6px;border-radius:3px;background:linear-gradient(to right,${TOKENS.tint} var(--p,0%),${TOKENS.off} var(--p,0%))}
+.lt input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:24px;height:24px;margin-top:-9px;border-radius:50%;background:${TOKENS.tint};border:2px solid ${TOKENS.surface}}
+.lt input[type=range]::-moz-range-track{height:6px;border-radius:3px;background:${TOKENS.off}}
+.lt input[type=range]::-moz-range-progress{height:6px;border-radius:3px;background:${TOKENS.tint}}
+.lt input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:${TOKENS.tint};border:2px solid ${TOKENS.surface}}
+.round{min-height:44px;min-width:44px;border-radius:999px;border:0;background:${TOKENS.tint};color:${TOKENS.tintInk};display:flex;align-items:center;justify-content:center;cursor:pointer;flex:none}
+.round.quiet{background:${TOKENS.control};color:${TOKENS.text}}
+.gbtn{border:0;font:inherit;font-size:13.5px;font-weight:600;min-height:44px;min-width:92px;padding:0 16px;border-radius:999px;cursor:pointer;background:${TOKENS.tint};color:${TOKENS.tintInk};align-self:center}
+.gbtn.quiet{background:${TOKENS.control};color:${TOKENS.text}}
 .gbtn:disabled{opacity:.4;cursor:default}
 .gl{align-items:center}
 .lnk{display:block;min-height:44px;padding:0;margin-top:2px;border:0;background:none;color:${TOKENS.link};font:inherit;font-size:13px;font-weight:600;text-align:left;cursor:pointer}
 .ovl{position:fixed;inset:0;z-index:2147483000;display:flex;flex-direction:column;justify-content:flex-end;padding-bottom:var(--sheet-inset,0px);box-sizing:border-box;overscroll-behavior:contain}
-.scrim{position:absolute;inset:0;background:rgba(0,0,0,.6);touch-action:none}
-.sheet{position:relative;max-height:var(--sheet-max,min(88vh,calc(100vh - env(safe-area-inset-top,0px) - 16px)));max-height:var(--sheet-max,min(88dvh,calc(100dvh - env(safe-area-inset-top,0px) - 16px)));min-height:0;display:flex;flex-direction:column;background:${TOKENS.ground};border-radius:20px 20px 0 0;border-top:1px solid ${TOKENS.divider};box-shadow:0 -8px 32px rgba(0,0,0,.5);animation:sheetup .22s ease-out;outline:none}
+.scrim{position:absolute;inset:0;background:${TOKENS.scrim};touch-action:none}
+.sheet{position:relative;max-height:var(--sheet-max,min(88vh,calc(100vh - env(safe-area-inset-top,0px) - 16px)));max-height:var(--sheet-max,min(88dvh,calc(100dvh - env(safe-area-inset-top,0px) - 16px)));min-height:0;display:flex;flex-direction:column;background:${TOKENS.bg};border-radius:20px 20px 0 0;border-top:1px solid ${TOKENS.separator};box-shadow:0 -8px 32px ${TOKENS.shadow};animation:sheetup .22s ease-out;outline:none}
 .sh{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 16px 8px;flex:none;touch-action:none}
 .sb{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y;padding:0 14px calc(24px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:14px}
 /* Scroll bug: flex children default to shrink, so a bounded .sb squeezed them (the .card clips) instead of overflowing, leaving nothing to scroll. */
@@ -211,9 +643,9 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 .big{font-size:32px;font-weight:700;letter-spacing:-.6px;line-height:1.1;margin-top:4px}
 .two{display:flex;gap:10px}
 .two .card{flex:1}
-.note{font-size:11.5px;color:${TOKENS.text3};margin:10px 2px 0;line-height:1.4}
+.note{font-size:11.5px;color:${TOKENS.textTertiary};margin:10px 2px 0;line-height:1.4}
 .mrow{display:flex;align-items:flex-start;gap:8px;margin:10px 2px 0}
-.mrow span:last-child{font-size:11.5px;color:${TOKENS.text2};line-height:1.4}
+.mrow span:last-child{font-size:11.5px;color:${TOKENS.textSecondary};line-height:1.4}
 `;
 
 
@@ -694,272 +1126,6 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return problems;
   }
 
-  // ── Wording: homerun history entries in plain words ──────────────────────────────────────────
-  // homerun publishes only structured data (reason keys, outcomes, facts); every sentence on screen is
-  // written here. REASON_TEXT is keyed `subsystem:reason`, the same key the catalogue declares. A test
-  // compares it with tests/fixtures/catalog.json, and at run time `unexplainedReasons` compares it with
-  // sensor.homerun_catalog so a reason added without wording raises attention instead of vanishing.
-  const capFirst = (t) => str(t).replace(/^./, (c) => c.toUpperCase());
-  const pretty = (s) => str(s).replace(/_/g, ' ').trim();
-  const LUX_MAX = 200000; // far above sunlight; keeps a corrupt reading from printing a 20-digit number
-  const clampInt = (n, lo, hi) => Math.round(Math.min(hi, Math.max(lo, n)));
-  const fmtLux = (v) => { const n = num(v); return n === null ? 'no light reading' : `${clampInt(n, 0, LUX_MAX)} lx`; };
-  const fmtThreshold = (v) => { const n = num(v); return n === null ? 'a set level' : String(clampInt(n, 0, LUX_MAX)); };
-  const fmtMinutes = (v) => { const n = num(v); return n === null ? 'a few minutes' : `${clampInt(n, 0, 24 * 60)} min`; };
-  const fmtTheme = (v) => { const t = str(v).trim(); return t ? (THEME_LABELS[t.toLowerCase()] || capFirst(pretty(t))) : 'the new'; };
-  // Entities are named by their friendly name, falling back to the id so a rename never hides the source.
-  const entityName = (hass, id) => {
-    const s = str(id);
-    if (!s) return '';
-    const f = attr(hass, s, 'friendly_name');
-    return typeof f === 'string' && f.trim() ? f.trim() : s;
-  };
-  // The lights come on when the reading is at or below the threshold, so the words say "or below".
-  const luxText = (f) => `${fmtLux(f.lux)}, on at ${fmtThreshold(f.lux_threshold)} or below`;
-  const fmtHours = (v) => { const n = num(v); return n === null ? 'a long time' : `${clampInt(n, 0, 24 * 31)} h`; };
-  // " (scene)" after "Scene set" when homerun says which scene; nothing when it does not.
-  const sceneNote = (v) => (str(v).trim() ? ` (${pretty(v)})` : '');
-  // A person is named by the fact (adam -> Adam); a missing one leaves the sentence without a name.
-  const personLead = (v, tail) => (str(v).trim() ? `${capFirst(pretty(v).toLowerCase())} ${lowerFirst(tail)}` : tail);
-  const fmtClock = (v) => { const t = str(v).trim(); return /^\d{1,2}:\d{2}$/.test(t) ? t : ''; };
-  // Why a heating mode was re-evaluated, in the words after the reason. `other` is a runtime fallback and
-  // says nothing; a cause that only repeats its reason (house mode on a house-mode reason, a manual set on
-  // a manual setting) is dropped so the row never reads "house asleep, house mode changed".
-  const HEATING_CAUSE = {
-    boundary: 'schedule time reached', window_closed: 'window closed', house_mode: 'house mode changed', manual_ended: 'manual setting ended',
-    manual_set: 'set by hand', occupancy: 'room occupancy changed', heating_on: 'heating switched on', wfh: 'working from home', startup: 'after a restart',
-  };
-  const REPEATS_CAUSE = { house_mode: /^house_mode_/, manual_set: /^manual_override$/ };
-  const causeClause = (cause, reason) => {
-    const c = str(cause).trim();
-    const words = own(HEATING_CAUSE, c);
-    if (!words || (REPEATS_CAUSE[c] && REPEATS_CAUSE[c].test(reason))) return '';
-    return `, ${words}`;
-  };
-  // Heating modes by the words the settings page uses (HOUSE_NUMBERS titles). Anything else is shown
-  // as its own key so a new mode is readable rather than hidden.
-  const MODE_WORDS = { comfort: 'comfort', baseline_day: 'day baseline', baseline_night: 'night baseline', minimum: 'minimum', off: 'off' };
-  const modeWord = (v) => { const m = str(v).trim(); return m ? (MODE_WORDS[m] || pretty(m)) : ''; };
-  const setTo = (v) => (modeWord(v) ? `set to ${modeWord(v)}` : 'mode changed');
-  const TEMP_MAX = 50; // far above any room or boiler setpoint; keeps a corrupt reading short
-  const fmtDegrees = (v) => { const n = num(v); return n === null ? '' : `${Math.round(Math.min(TEMP_MAX, Math.max(-TEMP_MAX, n)) * 10) / 10}°`; };
-  const COUNT_MAX = 1000;
-  const fmtCount = (v) => { const n = num(v); return n === null ? null : clampInt(n, 0, COUNT_MAX); };
-  const POINTS_MAX = 100000000;
-  const fmtPoints = (v) => { const n = num(v); return n === null ? '' : String(clampInt(n, 0, POINTS_MAX)); };
-  // A room fact is a key ("home_office"), a comma-joined list of keys, or a name already in words.
-  const roomName = (v) => {
-    const t = str(v).trim();
-    if (!t) return '';
-    const key = t.toLowerCase().replace(/\s+/g, '_');
-    return ROOMS[key] ? ROOMS[key].name : capFirst(pretty(t));
-  };
-  const roomList = (v) => str(v).split(',').map(roomName).filter(Boolean).join(', ');
-  const lowerFirst = (t) => str(t).replace(/^./, (c) => c.toLowerCase());
-  const themeOr = (v, fallback) => { const t = str(v).trim(); return t ? lowerFirst(fmtTheme(t)) : fallback; };
-
-  // The privacy switch is on when the cameras are off, so the verdict reads the opposite way round.
-  const privacyVerdict = (privacy) => {
-    const p = str(privacy).trim().toLowerCase();
-    return p === 'on' || p === 'true' ? 'Cameras off' : p === 'off' || p === 'false' ? 'Cameras on' : 'Cameras switched on or off';
-  };
-
-  // Known sources of an external suppress, as the plain phrase a person would use. Any other source falls back to
-  // the entity's friendly name, which is usually a helper's technical name.
-  const SUPPRESS_SOURCES = {
-    'binary_sensor.hallway_upstairs_bed_occupied_sync': 'someone in bed',
-  };
-  const REASON_TEXT = {
-    'lighting:automation_disabled': () => 'Stayed off: lights automation is off',
-    'lighting:button_cycle': (f) => `Scene set${sceneNote(f.scene)} · button pressed`,
-    'lighting:button_off': () => 'Lights off · button held',
-    'lighting:calendar_boundary': (f) => `Theme switched to ${fmtTheme(f.theme)} · calendar`,
-    'lighting:calendar_boundary_catch_up': (f) => `Theme switched to ${fmtTheme(f.theme)} · calendar, after a restart`,
-    'lighting:calendar_theme_not_an_option': (f) => `Theme left as it is: the calendar wants ${fmtTheme(f.theme)}, which is not an option`,
-    'lighting:external_suppress_active': (f, c) => `Stayed off: ${own(SUPPRESS_SOURCES, f.source) || `held off by ${c.name(f.source) || 'something else'}`}`,
-    'lighting:guest_room_sleep_bypass': () => 'Not switched off at bedtime: room kept for a guest',
-    'lighting:house_sleep_mode': () => 'Lights off · house set to asleep',
-    'lighting:lux_high': (f) => `Stayed off: bright enough (${luxText(f)})`,
-    'lighting:lux_low': (f) => (num(f.lux) === null ? `Scene set${sceneNote(f.scene)} · room occupied (no light reading)` : `Scene set${sceneNote(f.scene)} · room occupied and dark (${luxText(f)})`),
-    'lighting:occupancy_off': () => 'Lights off · room empty',
-    'lighting:occupancy_settle_off': () => 'Lights off · room stayed empty',
-    'lighting:on_outside_evening_window': (f) => `Off in ${fmtMinutes(f.minutes)} · turned on by hand outside lighting hours`,
-    'lighting:preview_ended': () => 'Lights off · preview over',
-    'lighting:recent_auto_off': (f) => `Scene set${sceneNote(f.scene)} · back soon after lights went off`,
-    'lighting:schedule_off': () => 'Lights off · end of the evening',
-    'lighting:sleep_mode': () => 'Stayed off: house asleep',
-    'lighting:sunrise': () => 'Lights off · sunrise',
-    'lighting:sunset': () => 'Lights on · sunset',
-    'lighting:sunset_while_house_asleep': () => 'Stayed off at sunset: house asleep',
-    'lighting:theme_changed': (f) => `Lights restyled · lighting theme changed to ${fmtTheme(f.theme)}`,
-    'lighting:theme_changed_by_hand_today': () => 'Theme left as it is: picked by hand (checked after a restart)',
-    'lighting:theme_scene_missing': (f) => (str(f.theme).trim() ? `Normal scene used · no ${fmtTheme(f.theme)} scene set up` : 'Normal scene used · no scene set up for this theme'),
-    'lighting:automation_disabled_restore': () => 'Porch light back to its look · porch automation is off',
-    'lighting:halloween_scene_activated': () => 'Halloween animation started · Halloween scene on',
-    'lighting:hold_expired': () => 'Porch light back to its look · motion over',
-    'lighting:hold_expired_look_missing_garden_off': () => 'Porch light off · motion over, no saved look and garden off',
-    'lighting:look_unreadable': () => "Porch light not warmed: couldn't save its current look",
-    'lighting:motion_detected': () => 'Porch light warmed · motion detected',
-    'lighting:motion_during_fade_back': () => 'Porch light warmed again · motion while it faded back',
-    'lighting:no_feature_lights': () => 'Halloween effects not started: no lights labelled for them',
-    'lighting:no_lights_in_theme_roles': (f) => `Effects not started: no lights set up for ${themeOr(f.theme, 'this theme')}`,
-    'lighting:restore_look_missing': () => 'Porch light left warm: no saved look to go back to',
-    'lighting:scene_changed_during_hold': () => 'Porch light warmed again · scene changed during motion',
-    'lighting:theme_effects_stopped': (f) => (str(f.theme).trim() ? `Light effects stopped · ${fmtTheme(f.theme)} scene replaced` : 'Light effects stopped · theme scene replaced'),
-    'lighting:theme_opted_out': () => 'Porch light stayed as it is: this theme ignores motion',
-    'lighting:theme_scene_settled': (f) => (str(f.theme).trim() ? `Light effects started · ${fmtTheme(f.theme)} scene on` : 'Light effects started · theme scene on'),
-    'heating:demand_ended': () => 'Boiler off · no room needs heat',
-    'heating:demand_started': (f) => `Boiler on · ${roomList(f.rooms) || 'a room'} calling for heat`,
-    'heating:door_closed_was_suspended': () => 'House heating back on · patio door closed',
-    'heating:door_open_heating_on': () => 'House heating paused · patio door left open',
-    'heating:heating_disabled': () => 'Boiler off · house heating switched off',
-    'heating:helper_unavailable': (f) => `Heating left as it is: no ${modeWord(f.mode) || 'mode'} temperature available`,
-    'heating:house_mode_away': (f) => `Heating ${setTo(f.mode)} · house away${causeClause(f.cause, 'house_mode_away')}`,
-    'heating:house_mode_sleep': (f) => `Heating ${setTo(f.mode)} · house asleep${causeClause(f.cause, 'house_mode_sleep')}`,
-    'heating:house_mode_vacation': (f) => `Heating ${setTo(f.mode)} · house on holiday${causeClause(f.cause, 'house_mode_vacation')}`,
-    'heating:manual_override': (f) => `Heating ${setTo(f.mode)} · manual setting${causeClause(f.cause, 'manual_override')}`,
-    'heating:overtemp_heater_on': (f) => `Heater off · too hot${fmtDegrees(f.temp) ? ` (${fmtDegrees(f.temp)})` : ''}`,
-    'heating:safety_heating_disabled': (f) => `Heating ${setTo(f.mode)} · house heating switched off`,
-    'heating:safety_window_open': (f) => `Heating ${setTo(f.mode)} · window open`,
-    'heating:schedule': (f) => `Heating ${setTo(f.mode)} · schedule${causeClause(f.cause, 'schedule')}`,
-    'heating:schedule_occupied': (f) => `Heating ${setTo(f.mode)} · schedule, room occupied${causeClause(f.cause, 'schedule_occupied')}`,
-    'heating:temperature_set_arbitrage': (f) => `Heating ${setTo(f.mode)}${fmtDegrees(f.target) ? ` (${fmtDegrees(f.target)})` : ''} · free power, room empty${fmtDegrees(f.clamped_from) ? `, limited from ${fmtDegrees(f.clamped_from)}` : ''}`,
-    'heating:trvs_not_set': (f) => `Radiators left as they are: no temperature for the mode in ${roomList(f.skipped) || 'some rooms'}`,
-    'heating:unknown_mode': (f) => `Heating left as it is: unknown mode${modeWord(f.mode) ? ` (${modeWord(f.mode)})` : ''}`,
-    'heating:valve_characteristic_lost': (f) => `Notification sent · ${roomName(f.room) ? lowerFirst(roomName(f.room)) : 'a'} radiator valve needs recalibrating`,
-    'house_mode:all_left_door_recently': () => 'House set to away · everyone left',
-    'house_mode:away_duration_exceeded': () => 'House set to holiday · away for a long time',
-    'house_mode:bed_not_occupied': () => 'Not set to asleep: bed empty',
-    'house_mode:bed_occupied': () => 'Stayed asleep: bed occupied',
-    'house_mode:button_hold_bed_occupied': () => 'House set to asleep · button held, bed occupied',
-    'house_mode:button_pressed': () => 'House set to at home · button pressed',
-    'house_mode:double_press_bypass': () => 'House set to asleep · button double-pressed, bed sensor skipped',
-    'house_mode:guest_mode_active': () => 'Stayed asleep: guest mode',
-    'house_mode:kitchen_motion_detected': () => 'House set to at home · kitchen in use in the morning',
-    'house_mode:parlour_active': () => 'Not set to asleep: parlour in use',
-    'house_mode:sitter_mode_ended_house_empty': () => 'House set to away · sitter left, nobody home',
-    'house_mode:sitter_present': () => 'House set to at home · house sitter here',
-    'house_mode:someone_returned': () => 'House set to at home · someone came back',
-    'cameras:away_but_guest_present': () => 'Cameras left off: house away, guest staying',
-    'cameras:button_double_press': (f) => `${privacyVerdict(f.privacy)} · button double-pressed`,
-    'cameras:guest_arrived_while_away': () => 'Cameras off · guest arrived while away',
-    'cameras:house_away': () => 'Cameras on · house away',
-    'cameras:house_not_away': () => 'Cameras off · house at home',
-    'cameras:sleep_kitchen_camera_on': () => 'Kitchen camera on for Mo · house asleep',
-    'energy:adam': () => 'Cheap power tip sent to Adam',
-    'energy:adam_and_sarah': () => 'Cheap power tip sent to Adam and Sarah',
-    'energy:cheap_windows': () => 'Heads-up sent · cheap power tomorrow',
-    'energy:negative_windows': () => 'Heads-up sent · free power tomorrow',
-    'energy:points_increased': (f) => `Octopus points credited${fmtPoints(f.credited) ? ` (+${fmtPoints(f.credited)})` : ''}${fmtPoints(f.balance) ? ` · balance ${fmtPoints(f.balance)}` : ''}`,
-    'energy:sarah': () => 'Cheap power tip sent to Sarah',
-    'energy:sessions_joined': (f) => { const n = fmtCount(f.count); return n === null ? 'Joined power down sessions' : `Joined ${n} power down ${plural(n, 'session', 'sessions')}`; },
-    'energy:wheels_spun': (f) => { const n = fmtCount(f.count); return n === null ? 'Spun the Octopus wheels' : `Spun ${n} Octopus ${plural(n, 'wheel', 'wheels')}`; },
-    'fan:automation_disabled': () => 'Fan not started: fan automation is off',
-    'fan:fan_not_auto_started': () => 'Fan left alone: already on by hand',
-    'fan:fan_off_humidity_normal': () => 'Fan off · humidity back to normal',
-    'fan:fan_off_max_run': () => 'Fan off · ran its maximum time',
-    'fan:fan_on_shower_started': () => 'Fan on · shower started',
-    'mo:eating': (f) => `Mo eating${roomName(f.room) ? ` · ${roomName(f.room)}` : ''}`,
-    'mo:spotted': (f) => `Mo spotted${roomName(f.room) ? ` · ${roomName(f.room)}` : ''}`,
-    'modifier:guest_absent': () => 'Home office released · guest mode off',
-    'modifier:guest_present': () => 'Home office kept occupied · guest staying',
-    'shower:shower_ended': () => 'Shower over · humidity falling',
-    'shower:shower_max_duration': () => 'Shower marked over · on longer than any real shower',
-    'shower:shower_started': () => 'Shower detected · humidity rising fast',
-    'sonos:automation_disabled': () => 'Left the speaker group · grouping switched off',
-    'sonos:automation_enabled': () => 'Joined the speaker group · grouping switched on',
-    'thermal:close_bedroom': () => 'Told to close the bedroom windows · sun building',
-    'thermal:close_both': () => 'Told to close bedroom and home office windows · sun building, outside warmer',
-    'thermal:close_door': (f) => `Told to close the door · outside ${fmtDegrees(f.outdoor) || 'warmer'}${fmtDegrees(f.indoor) ? `, inside ${fmtDegrees(f.indoor)}` : ''}`,
-    'thermal:close_home_office': () => 'Told to close the home office windows · outside warmer',
-    'thermal:open_both': () => 'Told to open the windows · cooler outside',
-    'thermal:open_door': (f) => `Told to open the door · inside ${fmtDegrees(f.indoor) || 'warm'}${fmtDegrees(f.outdoor) ? `, outside ${fmtDegrees(f.outdoor)}` : ''}`,
-    'wfh_inference:always_wfh_wed_fri': (f) => `${personLead(f.person, 'Marked as working from home')} · always Wed to Fri`,
-    'wfh_inference:home_at_inference_time': (f) => `${personLead(f.person, 'Marked as working from home')} · home${fmtClock(f.time) ? ` at ${fmtClock(f.time)}` : ' when checked'}`,
-    'occupied:containment_failsafe_expired': (f) => `Marked empty · door shut but no movement for ${fmtHours(f.hours)}`,
-    'occupied:motion_detected': () => 'Marked occupied · motion detected',
-    'occupied:strong_hold_active': (f, c) => `Stayed occupied: held by ${c.name(f.hold) || 'a hold'}`,
-    'occupied:strong_hold_started': (f, c) => `Marked occupied · held by ${c.name(f.hold) || 'a hold'}`,
-    'occupied:timer_expired': (f) => `Marked empty · no one seen for ${fmtMinutes(f.minutes)}`,
-  };
-  // Decisions homerun stores without a declaration (decisions with actions only, from automations that
-  // declare no reasons): worded from the decision verb and the reason slug, in this table so there is one
-  // place for wording besides REASON_TEXT. `verb` is the sentence tail, `note` is the short phrase a room
-  // tile shows for a recent action ("lights on 7 min ago"), per subsystem, and only where a tile may say it.
-  const UNDECLARED = {
-    decisions: {
-      turn_on: { verb: 'turned on', note: { lighting: 'lights on' } },
-      turn_off: { verb: 'turned off', note: { lighting: 'lights off' } },
-      on: { verb: 'turned on' },
-      activate_scene: { verb: 'scene set', note: { lighting: 'scene set' } },
-      set_occupied: { verb: 'marked occupied', note: { occupied: 'marked occupied' } },
-      clear_occupied: { verb: 'marked empty', note: { occupied: 'marked empty' } },
-      notify: { verb: 'notification sent' },
-      join: { verb: 'joined the speaker group' },
-      unjoin: { verb: 'left the speaker group' },
-      exit_sleep: { verb: 'house set to at home' },
-      clear_recent_auto_off: { verb: 'reset after switching off' },
-      switch_theme: { verb: 'theme switched' },
-      start_preview: { verb: 'preview started' },
-      set_mode: { verb: 'mode changed', note: { heating: 'heating changed' } },
-      blocked: { verb: 'blocked' },
-      suspend: { verb: 'suspended', note: { heating: 'heating suspended' } },
-      restore: { verb: 'restored', note: { heating: 'heating restored' } },
-      sync_window_external: { verb: 'window state synced' },
-      set_sleep: { verb: 'house set to asleep' },
-    },
-    reasons: {
-      occupancy_on: 'room occupied', kitchen_motion_detected: 'kitchen motion', end_of_day: 'end of day',
-      already_in_sleep_mode: 'already asleep', not_in_sleep_mode: 'not asleep', house_away: 'house away', house_not_away: 'someone home',
-      guest_mode_active: 'guest mode', away_but_guest_present: 'away but guest present', bed_occupied: 'bed occupied',
-      bed_not_occupied: 'bed empty', button_pressed: 'button pressed', button_double_press: 'button double press',
-      door_open_heating_on: 'door open while heating', door_closed_was_suspended: 'door closed, heating resumed',
-      open_door: 'door opened', close_door: 'door closed', outside_morning_window: 'outside the morning window',
-      parlour_active: 'parlour in use', overtemp_heater_on: 'too hot',
-      safety_window_open: 'window open', safety_heating_disabled: 'heating switched off', manual_override: 'manual setting',
-      schedule: 'schedule', schedule_occupied: 'schedule, room occupied', house_mode_away: 'house away', house_mode_sleep: 'house asleep',
-      house_mode_vacation: 'house on holiday', house_mode_normal: 'house at home', automation_disabled: 'automation is off',
-    },
-    nouns: { lighting: 'Lights', occupied: 'Occupancy', heating: 'Heating' },
-  };
-  const own = (table, key) => (Object.prototype.hasOwnProperty.call(table, key) ? table[key] : undefined);
-
-  function undeclaredSentence(e) {
-    const noun = own(UNDECLARED.nouns, e.subsystem) || capFirst(pretty(e.subsystem));
-    const d = own(UNDECLARED.decisions, e.decision);
-    const verb = d ? d.verb : pretty(e.decision);
-    const why = own(UNDECLARED.reasons, e.reason) || pretty(e.reason);
-    return `${noun}${verb ? ' ' + verb : ''}${why ? ' · ' + why : ''}`;
-  }
-  // What a failed run or action says. Devices are named by their friendly name, never "entity".
-  function problemSentence(e, hass) {
-    const d = e.detail;
-    const who = entityName(hass, d.entity);
-    if (e.kind === 'action_failed') {
-      if (d.failure === 'ack_timeout') return `${who || 'A device'} didn't respond`;
-      return `${who || 'A device'} couldn't be controlled${str(d.action) ? ` (${pretty(str(d.action).split('.').pop())})` : ''}`;
-    }
-    switch (d.abort_kind) {
-      case 'unavailable_input': return `Couldn't run: ${who || 'an input'} unavailable`;
-      case 'guard': return `Held back${who ? ' · ' + who : ''}${e.reason ? ' · ' + pretty(e.reason) : ''}`;
-      case 'unhandled_error': return "Couldn't run: it failed unexpectedly";
-      default: return `Couldn't run: ${pretty(d.abort_kind) || 'unknown problem'}`;
-    }
-  }
-  // A guard abort is an automation's precondition not being met: routine, never a problem.
-  const isGuard = (e) => e.kind === 'abort' && e.detail.abort_kind === 'guard';
-  // The one place an entry becomes words, plus how to show it: `ok` for something done, `muted` for a rule that
-  // chose not to act, `warn` for a run that could not happen. A declared reason with no wording still renders
-  // (never blank) and is reported by unexplainedReasons.
-  function sentenceFor(e, hass) {
-    if (e.kind !== 'decision') return { text: problemSentence(e, hass), tone: isGuard(e) ? 'muted' : 'warn' };
-    const tone = e.outcome === 'declined' ? 'muted' : 'ok';
-    if (e.outcome === undefined) return { text: undeclaredSentence(e), tone };
-    const fn = own(REASON_TEXT, `${e.subsystem}:${e.reason}`);
-    const ctx = { name: (id) => entityName(hass, id) };
-    return { text: fn ? fn(e.facts, ctx) : `${capFirst(pretty(e.subsystem))} ${pretty(e.reason)}`, tone };
-  }
-
   // ── History: sensor.<location>_history (home.history.v1) ─────────────────────────────────────
   const HISTORY_SCHEMA = 'home.history.v1';
   const HISTORY_MAX = 200; // homerun's own upper bound on history.size
@@ -998,7 +1164,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   const historyCache = new WeakMap();
   function readHistory(hass, entity) {
     const s = stateObj(hass, entity);
-    if (!s || s.state === 'unavailable') return { entries: [], note: 'History unavailable' };
+    if (!s || s.state === 'unavailable') return { entries: [], note: COPY.feed.historyUnavailable };
     if (!optimise) return parseHistory(s.attributes);
     // Keyed by the state object, and checked against the attributes object and the entries payload it was built from.
     const hit = historyCache.get(s);
@@ -1060,7 +1226,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       return `<div class="feed ${r.tone}"><span class="a">${esc(hhmm(r.ts))}</span><span class="si" aria-hidden="true">${icon}</span><span>${esc(r.text)}${r.count > 1 ? ` <b>x${r.count}</b>` : ''}</span></div>`;
     }).join('');
   }
-  const quietRow = (msg) => `<div class="feed"><span class="a"></span><span class="si"></span><span style="color:${TOKENS.text2}">${esc(msg)}</span></div>`;
+  const quietRow = (msg) => `<div class="feed"><span class="a"></span><span class="si"></span><span style="color:${TOKENS.textSecondary}">${esc(msg)}</span></div>`;
 
   // ── Icons ────────────────────────────────────────────────────────────────────────────────────
   const ICON = {
@@ -1093,31 +1259,13 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     guest: 'M10 4.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7zM3 20a7 7 0 0 1 14 0M19 8v6M16 11h6',
     dot: 'M12 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4z',
   };
-  // The subject and icon of each homerun subsystem on the activity feeds: the one table. A test holds it to
-  // the catalogue, so a new subsystem fails loudly here instead of showing up as a bare dot.
-  const SUBSYSTEMS = {
-    lighting: { noun: 'Lights', icon: 'bulb' },
-    heating: { noun: 'Heating', icon: 'flame' },
-    occupied: { noun: 'Occupancy', icon: 'person' },
-    energy: { noun: 'Energy', icon: 'bolt' },
-    cameras: { noun: 'Cameras', icon: 'camera' },
-    fan: { noun: 'Fan', icon: 'fan' },
-    shower: { noun: 'Shower', icon: 'droplet' },
-    sonos: { noun: 'Speakers', icon: 'speaker' },
-    house_mode: { noun: 'House mode', icon: 'home' },
-    mo: { noun: 'Mo', icon: 'paw' },
-    thermal: { noun: 'Windows', icon: 'window' },
-    wfh_inference: { noun: 'Working from home', icon: 'laptop' },
-    modifier: { noun: 'Guest mode', icon: 'guest' },
-  };
-  const subsystemOf = (id) => own(SUBSYSTEMS, id) || { noun: capFirst(pretty(id)), icon: 'dot' };
   const svg = (path, size, extra) => `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"${extra || ''}><path d="${path}"/></svg>`;
   // Occupancy indicator (the dot stays health): filled person = occupied, outlined dim = empty,
   // dashed amber = occupancy sensor unavailable.
   function occIcon(m, px) {
     const size = px || 15;
     if (!m.hasReport) return '';
-    const [label, fill, color, dash] = m.occupancy_unavailable ? ['Occupancy unavailable', 'none', TOKENS.amber, ' stroke-dasharray="2 2"'] : m.occupied ? ['Occupied', 'currentColor', TOKENS.text, ''] : ['Empty', 'none', TOKENS.text3, ''];
+    const [label, fill, color, dash] = m.occupancy_unavailable ? ['Occupancy unavailable', 'none', TOKENS.attention, ' stroke-dasharray="2 2"'] : m.occupied ? ['Occupied', 'currentColor', TOKENS.text, ''] : ['Empty', 'none', TOKENS.textTertiary, ''];
     return `<svg class="occ" role="img" aria-label="${label}" viewBox="0 0 24 24" width="${size}" height="${size}" fill="${fill}" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="color:${color};flex:none"${dash}><circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/></svg>`;
   }
   const SCENE_ICON = { off: 'power', lamps: 'lamp', low: 'moon', full: 'sun', all_full: 'sun', daylight: 'sun' };
@@ -1173,8 +1321,8 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   function sectionNowHeader(hass) {
     const mode = state(hass, 'sensor.house_active_mode');
     const mod = state(hass, 'input_select.house_active_mode_modifier');
-    const pill = usable(mode) ? `<a class="tag ok tap" data-act="nav" data-path="${SETTINGS_PATH}" aria-label="Open settings" style="padding:3px 9px;text-decoration:none">● ${esc(mode.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase()))}${usable(mod) && mod !== 'none' ? ' · ' + esc(mod) : ''}</a>` : '';
-    return `<div style="display:flex;align-items:center;gap:10px;min-height:44px"><div style="font-size:28px;font-weight:700;letter-spacing:-.4px">Pulse</div>${pill}</div>`;
+    const pill = usable(mode) ? `<a class="tag ok tap" data-act="nav" data-path="${SETTINGS_PATH}" aria-label="${COPY.common.openSettings}" style="padding:3px 9px;text-decoration:none">● ${esc(mode.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase()))}${usable(mod) && mod !== 'none' ? ' · ' + esc(mod) : ''}</a>` : '';
+    return `<div style="display:flex;align-items:center;gap:10px;min-height:44px"><div style="font-size:28px;font-weight:700;letter-spacing:-.4px">${COPY.home.title}</div>${pill}</div>`;
   }
 
   // People and Mo on ONE row: 30px chips, 12px text, nowrap. Texts are shortened before anything could wrap.
@@ -1183,11 +1331,11 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       const st = state(hass, id);
       const home = st === 'home';
       const w = state(hass, wfh) === 'on';
-      const label = !usable(st) ? '?' : home && w ? 'WFH' : home ? 'Home' : 'Away';
+      const label = !usable(st) ? '?' : home && w ? COPY.home.personWfh : home ? COPY.home.personHome : COPY.home.personAway;
       return `<div class="chip"><span class="dot${home ? '' : ' dim'}" style="width:7px;height:7px"></span>${esc(name)} · ${label}</div>`;
     };
     const ate = moAte(hass, at).replace('yesterday', 'yest');
-    return `<div class="chips">${person('person.adam', 'Adam', 'input_boolean.wfh_adam')}${person('person.sarah', 'Sarah', 'input_boolean.wfh_sarah')}<div class="chip" style="color:${TOKENS.text2}">Mo${ate ? ' · ' + esc(ate) : ''}</div></div>`;
+    return `<div class="chips">${person('person.adam', 'Adam', 'input_boolean.wfh_adam')}${person('person.sarah', 'Sarah', 'input_boolean.wfh_sarah')}<div class="chip" style="color:${TOKENS.textSecondary}">Mo${ate ? ' · ' + esc(ate) : ''}</div></div>`;
   }
 
   // Now / Next (graded colours) and Usage (unit-aware). A reading that has not updated for 10 minutes
@@ -1239,9 +1387,9 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   function priceStrip(hass, at) {
     const { nowP, nextP, usageText } = priceFigures(hass, at);
     return `<div style="display:flex;gap:16px;align-items:flex-end">
-<div><div class="lbl">Now</div><div style="font-size:26px;font-weight:700;letter-spacing:-.5px;line-height:1.15;color:${priceColour(nowP, { text: true })}">${nowP === null ? '–' : fmt1(nowP)}<span style="font-size:12px;font-weight:500;color:${TOKENS.text2}"> p/kWh</span></div></div>
-<div><div class="lbl">Next</div><div style="font-size:18px;font-weight:600;color:${priceColour(nextP, { text: true })};line-height:1.5">${nextP === null ? '–' : fmt1(nextP) + 'p'}</div></div>
-<div style="flex:1"></div><div style="text-align:right"><div class="lbl">Usage</div><div style="font-size:18px;font-weight:600;line-height:1.5">${usageText}</div></div></div>`;
+<div><div class="lbl">${COPY.energy.now}</div><div style="font-size:26px;font-weight:700;letter-spacing:-.5px;line-height:1.15;color:${priceColour(nowP, { text: true })}">${nowP === null ? '–' : fmt1(nowP)}<span style="font-size:12px;font-weight:500;color:${TOKENS.textSecondary}">${COPY.energy.perKwh}</span></div></div>
+<div><div class="lbl">${COPY.energy.next}</div><div style="font-size:18px;font-weight:600;color:${priceColour(nextP, { text: true })};line-height:1.5">${nextP === null ? '–' : fmt1(nextP) + 'p'}</div></div>
+<div style="flex:1"></div><div style="text-align:right"><div class="lbl">${COPY.energy.usage}</div><div style="font-size:18px;font-weight:600;line-height:1.5">${usageText}</div></div></div>`;
   }
 
   // Status card price row: one 56px+ link to the Energy page (Now / Next / Usage, chevron), and under it the
@@ -1250,8 +1398,8 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const { nowP, nextP, usageText } = priceFigures(hass, at);
     const cw = cheapestWindow(hass, at);
     const lbl = (t) => `<div class="lbl" style="margin:0">${t}</div>`;
-    const cue = cw.status === 'running' ? `<div style="font-size:12px;color:${TOKENS.text2};margin-top:2px">Cheapest 2h · <b style="color:${TOKENS.text};font-weight:600">running now${cw.endText ? ', until ' + esc(cw.endText) : ''}</b></div>` : cw.status === 'upcoming' ? `<div style="font-size:12px;color:${TOKENS.text2};margin-top:2px">Cheapest 2h · <b style="color:${TOKENS.text};font-weight:600">${esc(cw.text)}</b></div>` : '';
-    return `<a class="tap pstrip" data-act="nav" data-path="${ENERGY_PATH}" aria-label="Open energy details"><div>${lbl('Now')}<div style="font-size:24px;font-weight:700;letter-spacing:-.5px;line-height:1.15;color:${priceColour(nowP, { text: true })}">${nowP === null ? '–' : fmt1(nowP)}<span style="font-size:11.5px;font-weight:500;color:${TOKENS.text2}"> p</span></div></div><div>${lbl('Next')}<div style="font-size:17px;font-weight:600;line-height:1.45;color:${priceColour(nextP, { text: true })}">${nextP === null ? '–' : fmt1(nextP) + 'p'}</div></div><div>${lbl('Usage')}<div style="font-size:17px;font-weight:600;line-height:1.45">${usageText}</div></div><div style="flex:1"></div><span style="color:${TOKENS.link};display:flex">${svg('M9 5l7 7-7 7', 20)}</span></a>${cue}`;
+    const cue = cw.status === 'running' ? `<div style="font-size:12px;color:${TOKENS.textSecondary};margin-top:2px">${COPY.energy.cheapest2h} · <b style="color:${TOKENS.text};font-weight:600">${COPY.energy.runningNowShort(cw.endText ? esc(cw.endText) : '')}</b></div>` : cw.status === 'upcoming' ? `<div style="font-size:12px;color:${TOKENS.textSecondary};margin-top:2px">${COPY.energy.cheapest2h} · <b style="color:${TOKENS.text};font-weight:600">${esc(cw.text)}</b></div>` : '';
+    return `<a class="tap pstrip" data-act="nav" data-path="${ENERGY_PATH}" aria-label="${COPY.common.openEnergy}"><div>${lbl(COPY.energy.now)}<div style="font-size:24px;font-weight:700;letter-spacing:-.5px;line-height:1.15;color:${priceColour(nowP, { text: true })}">${nowP === null ? '–' : fmt1(nowP)}<span style="font-size:11.5px;font-weight:500;color:${TOKENS.textSecondary}"> p</span></div></div><div>${lbl(COPY.energy.next)}<div style="font-size:17px;font-weight:600;line-height:1.45;color:${priceColour(nextP, { text: true })}">${nextP === null ? '–' : fmt1(nextP) + 'p'}</div></div><div>${lbl(COPY.energy.usage)}<div style="font-size:17px;font-weight:600;line-height:1.45">${usageText}</div></div><div style="flex:1"></div><span style="color:${TOKENS.link};display:flex">${svg('M9 5l7 7-7 7', 20)}</span></a>${cue}`;
   }
 
   function heatingRooms(hass) {
@@ -1279,16 +1427,16 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     // or real items earn a head.
     let head = '';
     if (items.length === 0) {
-      if (!hasData) head = `<div style="display:flex;align-items:center;gap:10px"><span class="dot dim"></span><div style="font-size:15px;font-weight:700">No attention report</div></div>`;
+      if (!hasData) head = `<div style="display:flex;align-items:center;gap:10px"><span class="dot dim"></span><div style="font-size:15px;font-weight:700">${COPY.home.noAttentionReport}</div></div>`;
     } else {
       const shownItems = items.slice(0, STATUS_ROWS);
       // Each row opens its own room; an item with no room (an unexplained reason) opens House.
       // The summary is room and what; the room card below carries the sentence.
       const shown = shownItems.map((i) => `<a class="tap" data-act="nav" data-path="${esc(attentionPath(i))}" style="display:block;font-size:13px;margin-top:6px;line-height:1.4"><b>${esc(i.room)}</b> · ${esc(itemLabel(i, ROOMS[i.key] ? roomModel(hass, i.key) : null))}</a>`).join('');
-      const more = items.length > STATUS_ROWS ? `<a class="tap" data-act="nav" data-path="${esc(moreAttentionPath(items))}" style="display:block;font-size:12px;color:${TOKENS.text2};margin-top:4px">+${items.length - STATUS_ROWS} more</a>` : '';
-      head = `<div style="display:flex;align-items:center;gap:10px"><span class="dot warn"></span><span style="font-size:15px;font-weight:700;color:${TOKENS.amber}">${items.length} ${plural(items.length, 'needs', 'need')} attention</span></div>${shown}${more}`;
+      const more = items.length > STATUS_ROWS ? `<a class="tap" data-act="nav" data-path="${esc(moreAttentionPath(items))}" style="display:block;font-size:12px;color:${TOKENS.textSecondary};margin-top:4px">+${items.length - STATUS_ROWS} more</a>` : '';
+      head = `<div style="display:flex;align-items:center;gap:10px"><span class="dot warn"></span><span style="font-size:15px;font-weight:700;color:${TOKENS.attention}">${COPY.home.needsAttentionCount(items.length)}</span></div>${shown}${more}`;
     }
-    return `<div class="card pad${items.length ? ' warn' : ''}">${head}<div${head ? ' style="margin-top:10px"' : ''}>${peopleChips(hass, at)}</div><div style="margin-top:12px;padding-top:4px;border-top:1px solid ${TOKENS.divider}">${statusPriceLink(hass, at)}</div></div>`;
+    return `<div class="card pad${items.length ? ' warn' : ''}">${head}<div${head ? ' style="margin-top:10px"' : ''}>${peopleChips(hass, at)}</div><div style="margin-top:12px;padding-top:4px;border-top:1px solid ${TOKENS.separator}">${statusPriceLink(hass, at)}</div></div>`;
   }
 
   // ── Rooms: three groups, quiet by default ───────────────────────────────────────────────────
@@ -1324,20 +1472,20 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const a = short ? '' : ago(m.manual.ts, now);
     const src = SOURCE_WORDS[m.manual.source] || m.manual.source;
     const label = `${src.replace(/^./, (c) => c.toUpperCase())}${a ? ' · ' + a : ''}`;
-    return badge(`${sizedIcon(ICON.hand, 13)}${esc(label)}`, `color:${TOKENS.amber};background:${TOKENS.amberTag}`).replace('<span class="badge"', '<span class="badge" title="Manual change"');
+    return badge(`${sizedIcon(ICON.hand, 13)}${esc(label)}`, `color:${TOKENS.attention};background:${TOKENS.attentionChip}`).replace('<span class="badge"', `<span class="badge" title="${COPY.room.manualChange}"`);
   }
   const holdBadges = (m) => m.heat_labels.map((l) => badge(`${sizedIcon(ICON.window, 12)}${esc(shortHold(l))}`)).join('');
   const tempText = (m) => (m.temp !== null ? `${fmt1(m.temp)}°` : '–');
   // Rooms without a climate sensor have no temperature to show at all (a bare dash adds nothing).
   // Temperature slot: a number, a muted dash when a climate sensor has no reading, and a muted "no climate"
   // for rooms that have no climate sensor at all (never a bare dash there).
-  const tempBlock = (m, style) => (m.cfg.climate ? `<div style="${style}${m.temp === null ? ';color:' + TOKENS.text3 : ''}">${tempText(m)}</div>` : `<div style="font-size:12px;font-weight:500;color:${TOKENS.text3}">no climate</div>`);
+  const tempBlock = (m, style) => (m.cfg.climate ? `<div style="${style}${m.temp === null ? ';color:' + TOKENS.textTertiary : ''}">${tempText(m)}</div>` : `<div style="font-size:12px;font-weight:500;color:${TOKENS.textTertiary}">${COPY.home.noClimate}</div>`);
 
   function attentionCard(hass, k, items) {
     const m = roomModel(hass, k);
     const lines = [];
-    if (m.target_reason && m.target !== null) lines.push(`<div class="l"><b>Heating</b><span>target ${fmt1(m.target)}° (${esc(m.target_reason)})${m.mode_name && m.mode_target !== null ? ` · normally ${esc(m.mode_name)} ${fmt1(m.mode_target)}°` : ''}</span></div>`);
-    if (m.pres_labels.length) lines.push(`<div class="l"><b>Held occupied</b><span>${esc(m.pres_labels.join(' · '))}</span></div>`);
+    if (m.target_reason && m.target !== null) lines.push(`<div class="l"><b>${COPY.home.detailHeating}</b><span>target ${fmt1(m.target)}° (${esc(m.target_reason)})${m.mode_name && m.mode_target !== null ? ` · normally ${esc(m.mode_name)} ${fmt1(m.mode_target)}°` : ''}</span></div>`);
+    if (m.pres_labels.length) lines.push(`<div class="l"><b>${COPY.home.heldOccupied}</b><span>${esc(m.pres_labels.join(' · '))}</span></div>`);
     for (const i of items.filter((x) => x.key === k)) lines.push(`<div class="l"><b>${esc(itemLabel(i, m))}</b><span>${esc(itemDetail(i, m))}</span></div>`);
     const tags = m.labels.concat(m.heat_labels.filter((l) => !m.labels.includes(l))).map((l) => `<span class="tag">${esc(l)}</span>`).join('');
     if (tags) lines.push(`<div class="l">${tags}</div>`);
@@ -1348,9 +1496,9 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const m = roomModel(hass, k);
     const scene = activeScene(hass, k);
     const recent = recentNote(hass, k, now).replace(/^lights /, '');
-    const lights = badge(`${sizedIcon(ICON.bulb, 13, m.lights_on > 0 ? TOKENS.sceneActive : undefined)}${esc(lightsState(m, scene).badge)}`);
+    const lights = badge(`${sizedIcon(ICON.bulb, 13, m.lights_on > 0 ? colour('tint') : undefined)}${esc(lightsState(m, scene).badge)}`);
     const holds = m.pres_labels.slice(0, 2).map((l) => badge(esc(l))).join('');
-    return `<a class="card oc tap" data-act="nav" data-path="${roomPath(k)}">${occIcon(m, 20)}<div class="nm">${esc(m.cfg.short)}</div><div class="t">${tempBlock(m, 'font-size:20px;font-weight:700;letter-spacing:-.3px')}</div><div class="sub">${lights}${manualBadge(m, now)}${holdBadges(m)}${holds}${recent ? badge(esc(recent), `color:${TOKENS.text2}`) : ''}</div></a>`;
+    return `<a class="card oc tap" data-act="nav" data-path="${roomPath(k)}">${occIcon(m, 20)}<div class="nm">${esc(m.cfg.short)}</div><div class="t">${tempBlock(m, 'font-size:20px;font-weight:700;letter-spacing:-.3px')}</div><div class="sub">${lights}${manualBadge(m, now)}${holdBadges(m)}${holds}${recent ? badge(esc(recent), `color:${TOKENS.textSecondary}`) : ''}</div></a>`;
   }
 
   // Fixed-height tile, a small occupied card: icon + name with the temperature right-aligned on row 1, the
@@ -1364,18 +1512,18 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     // One extra item at most, and the manual badge drops its age here: the tile must stay one line.
     const extra = m.hasReport ? (holds || manualBadge(m, now, true) || (recent ? `<span>${esc(recent)}</span>` : '')) : '';
     const line = `${sizedIcon(ICON.bulb, 14)}<span>${m.hasReport ? esc(lightsState(m, scene).badge) : 'No report'}</span>${extra}`;
-    return `<a class="rt tap${wide ? ' wide' : ''}" data-act="nav" data-path="${roomPath(k)}"><div class="nm">${occIcon(m) || sizedIcon(ICON.person, 15, TOKENS.text3)}<span>${esc(m.cfg.short)}</span></div><div class="t">${tempBlock(m, `font-size:20px;font-weight:700;letter-spacing:-.3px;line-height:${TILE.tempLine}px`)}</div><div class="b">${line}</div></a>`;
+    return `<a class="rt tap${wide ? ' wide' : ''}" data-act="nav" data-path="${roomPath(k)}"><div class="nm">${occIcon(m) || sizedIcon(ICON.person, 15, colour('textTertiary'))}<span>${esc(m.cfg.short)}</span></div><div class="t">${tempBlock(m, `font-size:20px;font-weight:700;letter-spacing:-.3px;line-height:${TILE.tempLine}px`)}</div><div class="b">${line}</div></a>`;
   }
 
   function sectionRooms(hass, now) {
     const g = roomGroups(hass);
     const items = attentionItems(hass);
     const out = [];
-    if (g.attention.length) out.push(`<div class="lbl" style="margin:4px 4px -10px">Needs attention</div>${g.attention.map((k) => attentionCard(hass, k, items)).join('')}`);
-    if (g.occupied.length) out.push(`<div class="lbl" style="margin:4px 4px -10px">Occupied now</div>${g.occupied.map((k) => occupiedCard(hass, k, now)).join('')}`);
-    if (g.other.length) out.push(`<div class="lbl" style="margin:4px 4px -10px">${g.occupied.length || g.attention.length ? 'Other rooms' : 'Rooms'}</div><div class="rgrid">${g.other.map((k, i) => roomTile(hass, k, now, g.other.length % 2 === 1 && i === g.other.length - 1)).join('')}</div>`);
+    if (g.attention.length) out.push(`<div class="lbl" style="margin:4px 4px -10px">${COPY.home.needsAttention}</div>${g.attention.map((k) => attentionCard(hass, k, items)).join('')}`);
+    if (g.occupied.length) out.push(`<div class="lbl" style="margin:4px 4px -10px">${COPY.home.occupiedNow}</div>${g.occupied.map((k) => occupiedCard(hass, k, now)).join('')}`);
+    if (g.other.length) out.push(`<div class="lbl" style="margin:4px 4px -10px">${g.occupied.length || g.attention.length ? COPY.home.otherRooms : COPY.home.rooms}</div><div class="rgrid">${g.other.map((k, i) => roomTile(hass, k, now, g.other.length % 2 === 1 && i === g.other.length - 1)).join('')}</div>`);
     const flagged = new Set(items.map((i) => i.key));
-    out.push(`<div class="lbl" style="margin:4px 4px -10px">Outside</div><div class="rgrid">${GARDEN_ORDER.map((k) => gardenTile(hass, k, now, flagged.has(k))).join('')}</div>`);
+    out.push(`<div class="lbl" style="margin:4px 4px -10px">${COPY.home.outside}</div><div class="rgrid">${GARDEN_ORDER.map((k) => gardenTile(hass, k, now, flagged.has(k))).join('')}</div>`);
     return out.join('');
   }
 
@@ -1409,6 +1557,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   const hex2 = (n) => Math.round(Math.max(0, Math.min(255, n))).toString(16).padStart(2, '0');
   function hslToHex(h, sat, l) {
     const S = sat / 100;
+    h = ((h % 360) + 360) % 360; // stops may use negative hues to cross red
     const L = l / 100;
     const k = (n) => (n + h / 30) % 12;
     const a = S * Math.min(L, 1 - L);
@@ -1426,13 +1575,14 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   function priceColour(p, opts) {
     const v = typeof p === 'number' ? p : typeof p === 'string' && p.trim() !== '' ? Number(p) : NaN;
     const text = !!(opts && opts.text);
-    if (!Number.isFinite(v)) return text ? lift(PRICE_NEUTRAL) : PRICE_NEUTRAL;
-    if (v <= 0) return text ? lift(PRICE_NEGATIVE) : PRICE_NEGATIVE;
-    if (v >= PRICE_EXTREME_P) return text ? lift(PRICE_EXTREME) : PRICE_EXTREME;
-    let lo = PRICE_STOPS[0];
-    let hi = PRICE_STOPS[PRICE_STOPS.length - 1];
-    for (let i = 0; i < PRICE_STOPS.length - 1; i += 1) {
-      if (v >= PRICE_STOPS[i][0] && v <= PRICE_STOPS[i + 1][0]) { lo = PRICE_STOPS[i]; hi = PRICE_STOPS[i + 1]; break; }
+    if (!Number.isFinite(v)) return text ? lift(colour('priceNeutral')) : colour('priceNeutral');
+    if (v <= 0) return text ? lift(colour('priceNegative')) : colour('priceNegative');
+    if (v >= PRICE_EXTREME_P) return text ? lift(colour('priceExtreme')) : colour('priceExtreme');
+    const stops = activeTheme.priceStops.map((x, i) => [PRICE_AT[i], ...x]); // [pence, hue, saturation %, lightness %]
+    let lo = stops[0];
+    let hi = stops[stops.length - 1];
+    for (let i = 0; i < stops.length - 1; i += 1) {
+      if (v >= stops[i][0] && v <= stops[i + 1][0]) { lo = stops[i]; hi = stops[i + 1]; break; }
     }
     const t = hi[0] === lo[0] ? 0 : (v - lo[0]) / (hi[0] - lo[0]);
     const mix = (i) => lo[i] + (hi[i] - lo[i]) * t;
@@ -1442,7 +1592,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   // Lighten (mix toward white) until the colour reads on the card surface.
   function lift(hex) {
     let out = hex;
-    for (let i = 1; i <= 10 && contrast(out, TOKENS.surface) < 4.5; i += 1) {
+    for (let i = 1; i <= 10 && contrast(out, colour('surface')) < 4.5; i += 1) {
       const m = (c) => hex2(parseInt(hex.slice(c, c + 2), 16) + (255 - parseInt(hex.slice(c, c + 2), 16)) * (i / 10));
       out = `#${m(1)}${m(3)}${m(5)}`;
     }
@@ -1501,7 +1651,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 
   function priceChart(rates, now, day) {
     const slots = rateBands(rates, now);
-    if (slots.length === 0) return `<div style="font-size:12px;color:${TOKENS.text2};margin-top:12px">No price data for today</div>`;
+    if (slots.length === 0) return `<div style="font-size:12px;color:${TOKENS.textSecondary};margin-top:12px">${COPY.energy.noPriceToday}</div>`;
     const n = slots.length;
     const lo = Math.min(0, ...slots.map((x) => x.v));
     let hi = Math.max(0, ...slots.map((x) => x.v));
@@ -1511,12 +1661,12 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const bars = slots.map((x, i) => {
       const top = Math.min(y(x.v), y0);
       const h = Math.max(1.5, Math.abs(y(x.v) - y0));
-      const fill = x.state === 'current' ? TOKENS.text : priceColour(x.v);
+      const fill = x.state === 'current' ? colour('text') : priceColour(x.v);
       const op = x.state === 'past' ? 0.45 : 1;
       return `<rect x="${i * SLOT_W}" y="${top.toFixed(1)}" width="${SLOT_W - 1}" height="${h.toFixed(1)}" rx="1" fill="${fill}" opacity="${op}"/>`;
     }).join('');
     const cur = slots.findIndex((x) => x.state === 'current');
-    const marker = cur >= 0 ? `<line x1="${cur * SLOT_W + (SLOT_W - 1) / 2}" x2="${cur * SLOT_W + (SLOT_W - 1) / 2}" y1="0" y2="${PLOT_H}" stroke="${TOKENS.text}" stroke-width="1" stroke-dasharray="2 2" vector-effect="non-scaling-stroke" opacity=".6"/>` : '';
+    const marker = cur >= 0 ? `<line x1="${cur * SLOT_W + (SLOT_W - 1) / 2}" x2="${cur * SLOT_W + (SLOT_W - 1) / 2}" y1="0" y2="${PLOT_H}" stroke="${colour('text')}" stroke-width="1" stroke-dasharray="2 2" vector-effect="non-scaling-stroke" opacity=".6"/>` : '';
     // Hour labels follow the slots' real start times in the viewer's zone, so a 25-hour day is right.
     const ticks = slots.map((x, i) => {
       const d = new Date(x.start);
@@ -1527,12 +1677,12 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const at = (x) => hhmm(new Date(x.start).toISOString());
     const label = `Half-hourly electricity price, ${n} slots. Cheapest ${fmt1(cheapest.v)}p at ${at(cheapest)}, dearest ${fmt1(dearest.v)}p at ${at(dearest)}.${cur >= 0 ? ` Now ${fmt1(slots[cur].v)}p.` : ''}`;
     const grad = [0, 15, 25, 35, 44.9].map((pp, i) => `${priceColour(pp)} ${(i / 4) * 100}%`).join(',');
-    const key = `<div style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:10px;color:${TOKENS.text3}" aria-hidden="true"><span style="display:inline-flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:3px;background:${PRICE_NEGATIVE}"></span>≤0p</span><span style="flex:1;display:flex;flex-direction:column;gap:2px"><span style="height:6px;border-radius:3px;background:linear-gradient(to right,${grad})"></span><span style="display:flex;justify-content:space-between"><span>${PRICE_KEY_P[0]}</span><span>${PRICE_KEY_P[1]}</span><span>${PRICE_KEY_P[2]}</span><span>${PRICE_KEY_P[3]}p+</span></span></span><span style="width:10px;height:10px;border-radius:3px;background:${PRICE_EXTREME}"></span></div>`;
+    const key = `<div style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:10px;color:${TOKENS.textTertiary}" aria-hidden="true"><span style="display:inline-flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:3px;background:${colour('priceNegative')}"></span>≤0p</span><span style="flex:1;display:flex;flex-direction:column;gap:2px"><span style="height:6px;border-radius:3px;background:linear-gradient(to right,${grad})"></span><span style="display:flex;justify-content:space-between"><span>${PRICE_KEY_P[0]}</span><span>${PRICE_KEY_P[1]}</span><span>${PRICE_KEY_P[2]}</span><span>${PRICE_KEY_P[3]}p+</span></span></span><span style="width:10px;height:10px;border-radius:3px;background:${colour('priceExtreme')}"></span></div>`;
     // The wrapper is the focusable, scrubbable chart (touch-action: pan-y keeps vertical page scroll;
     // horizontal drags scrub). Guide and tooltip are positioned by the element, not re-rendered.
-    return `<div class="chart" data-chart data-day="${day === 'tomorrow' ? 'tomorrow' : 'today'}" data-n="${n}" tabindex="0" role="img" aria-label="${esc(label)}" style="position:relative;margin-top:36px;touch-action:pan-y;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none"><svg viewBox="0 0 ${n * SLOT_W} ${PLOT_H}" preserveAspectRatio="none" width="100%" height="${PLOT_H}" aria-hidden="true" style="display:block">${bars}<line x1="0" x2="${n * SLOT_W}" y1="${y0.toFixed(1)}" y2="${y0.toFixed(1)}" stroke="${TOKENS.text3}" stroke-width=".8" vector-effect="non-scaling-stroke"/>${marker}</svg>
-<span style="position:absolute;left:0;top:${Math.max(0, y0 - 14).toFixed(0)}px;font-size:10px;color:${TOKENS.text3};pointer-events:none">0</span><div data-guide style="display:none;position:absolute;top:0;bottom:0;width:1px;margin-left:-.5px;background:${TOKENS.text};opacity:.7;pointer-events:none"></div><div data-tip class="tip" style="display:none"></div></div><span class="sr" aria-live="polite" data-live></span>
-<div style="position:relative;height:14px;font-size:10px;color:${TOKENS.text3};margin-top:4px">${ticks}</div>${key}`;
+    return `<div class="chart" data-chart data-day="${day === 'tomorrow' ? 'tomorrow' : 'today'}" data-n="${n}" tabindex="0" role="img" aria-label="${esc(label)}" style="position:relative;margin-top:36px;touch-action:pan-y;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none"><svg viewBox="0 0 ${n * SLOT_W} ${PLOT_H}" preserveAspectRatio="none" width="100%" height="${PLOT_H}" aria-hidden="true" style="display:block">${bars}<line x1="0" x2="${n * SLOT_W}" y1="${y0.toFixed(1)}" y2="${y0.toFixed(1)}" stroke="${colour('textTertiary')}" stroke-width=".8" vector-effect="non-scaling-stroke"/>${marker}</svg>
+<span style="position:absolute;left:0;top:${Math.max(0, y0 - 14).toFixed(0)}px;font-size:10px;color:${TOKENS.textTertiary};pointer-events:none">0</span><div data-guide style="display:none;position:absolute;top:0;bottom:0;width:1px;margin-left:-.5px;background:${TOKENS.text};opacity:.7;pointer-events:none"></div><div data-tip class="tip" style="display:none"></div></div><span class="sr" aria-live="polite" data-live></span>
+<div style="position:relative;height:14px;font-size:10px;color:${TOKENS.textTertiary};margin-top:4px">${ticks}</div>${key}`;
   }
 
   // The energy block is ONE card: numbers, bars, cheapest-2h and the tomorrow note.
@@ -1653,7 +1803,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const day = coveredDay(a) || 'latest complete day';
     const note = standingNote(total, a);
     const kwh = usable(state(hass, kwhId)) ? energyText(state(hass, kwhId), attr(hass, kwhId, 'unit_of_measurement') || 'kWh') : '–';
-    return `<div class="card u"><div class="lbl" style="margin:0">${esc(label)}</div><div class="v">${usable(state(hass, costId)) ? money(state(hass, costId), a.unit_of_measurement) : '–'}</div><div style="font-size:11.5px;color:${TOKENS.text2};margin-top:2px">${esc(day)} · ${esc(kwh)}${note ? ' · ' + esc(note) : ''}</div></div>`;
+    return `<div class="card u"><div class="lbl" style="margin:0">${esc(label)}</div><div class="v">${usable(state(hass, costId)) ? money(state(hass, costId), a.unit_of_measurement) : '–'}</div><div style="font-size:11.5px;color:${TOKENS.textSecondary};margin-top:2px">${esc(day)} · ${esc(kwh)}${note ? ' · ' + esc(note) : ''}</div></div>`;
   }
 
   // The heading of a tab page (Energy, Settings, Cameras). Those pages are normal views, so HA's header shows
@@ -1678,20 +1828,20 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const control = `<div class="segs">${seg('today', 'Today')}${seg('tomorrow', 'Tomorrow')}</div>`;
     if (slots.length === 0) {
       const late = day === 'tomorrow';
-      return `${control}<div class="card pad"><div style="font-size:14px;font-weight:600">${late ? 'Tomorrow\'s rates are not in yet' : 'No price data for today'}</div><div style="font-size:12.5px;color:${TOKENS.text2};margin-top:4px;line-height:1.4">${late ? 'Tomorrow\'s rates are published late afternoon' : 'The rates list is empty or unavailable'}</div></div>${windowsCard(hass, [], at)}`;
+      return `${control}<div class="card pad"><div style="font-size:14px;font-weight:600">${late ? COPY.energy.ratesNotInYet : COPY.energy.noPriceToday}</div><div style="font-size:12.5px;color:${TOKENS.textSecondary};margin-top:4px;line-height:1.4">${late ? COPY.energy.ratesPublishedLate : COPY.energy.ratesEmpty}</div></div>${windowsCard(hass, [], at)}`;
     }
     const st = energyStats(slots);
     const stat = (k, v, sub, col) => `<div class="card stat"><div class="k">${k}</div><div class="v" style="${col ? 'color:' + col : ''}">${v}</div><div class="s">${sub}</div></div>`;
     const stats = `<div style="display:flex;gap:8px">${stat('Cheapest', penceText(st.cheapest.v), 'at ' + st.cheapest.time, priceColour(st.cheapest.v, { text: true }))}${stat('Dearest', penceText(st.dearest.v), 'at ' + st.dearest.time, priceColour(st.dearest.v, { text: true }))}${stat('Average', penceText(st.avg), 'per kWh', priceColour(st.avg, { text: true }))}</div>`;
-    return `${control}<div class="card pad">${priceChart(rates, at, day)}<div style="font-size:11.5px;color:${TOKENS.text3};margin-top:8px">Drag across the chart to read any half hour</div></div>${stats}${windowsCard(hass, slots, at)}`;
+    return `${control}<div class="card pad">${priceChart(rates, at, day)}<div style="font-size:11.5px;color:${TOKENS.textTertiary};margin-top:8px">${COPY.energy.dragChart}</div></div>${stats}${windowsCard(hass, slots, at)}`;
   }
 
   function windowsCard(hass, slots, at) {
     const rows = [];
     const cw = cheapestWindow(hass, at);
     const row = (title, sub, right) => `<div class="wrow"><div><div style="font-weight:600">${title}</div><div class="m">${sub}</div></div>${right}</div>`;
-    if (cw.status === 'running') rows.push(row('Next cheapest 2 hours', `Running now${cw.endText ? ', until ' + esc(cw.endText) : ''}`, '<span class="tag ok">Running now</span>'));
-    else if (cw.status === 'upcoming') rows.push(row('Next cheapest 2 hours', `${esc(cw.text)}${cw.avg !== null ? ' · avg ' + esc(penceText(cw.avg)) : ''}`, '<span class="tag ok">Best</span>'));
+    if (cw.status === 'running') rows.push(row(COPY.energy.nextCheapest, COPY.energy.runningNow(cw.endText ? esc(cw.endText) : ''), `<span class="tag ok">${COPY.energy.runningNowTag}</span>`));
+    else if (cw.status === 'upcoming') rows.push(row(COPY.energy.nextCheapest, `${esc(cw.text)}${cw.avg !== null ? COPY.energy.avg(esc(penceText(cw.avg))) : ''}`, `<span class="tag ok">${COPY.energy.bestTag}</span>`));
     else rows.push(row('Next cheapest 2 hours', 'none upcoming', ''));
     if (Array.isArray(slots) && slots.length) {
       for (const [kind, label] of [['negative', 'Free power'], ['cheap', 'Cheap']]) {
@@ -1700,16 +1850,16 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         else for (const w of ws) rows.push(row(label, esc(windowRange(w)), `<div class="r" style="color:${priceColour(w.avg, { text: true })}">avg ${esc(penceText(w.avg))}</div>`));
       }
     }
-    return `<div class="lbl" style="margin:4px 4px -10px">Windows</div><div class="card">${rows.join('')}</div>`;
+    return `<div class="lbl" style="margin:4px 4px -10px">${COPY.energy.windows}</div><div class="card">${rows.join('')}</div>`;
   }
 
   // Real published data only, always labelled with the day it covers. Octopus publishes a day or two late.
   function sectionEnergyCost(hass) {
     const e = 'sensor.octopus_energy_electricity_24e8140196_1012483035417_previous_accumulative';
     const g = 'sensor.octopus_energy_gas_e6s15257822462_2986733608_previous_accumulative';
-    return `<div class="lbl" style="margin:4px 4px -10px">Cost (latest published day)</div>
+    return `<div class="lbl" style="margin:4px 4px -10px">${COPY.energy.costLatest}</div>
 <div style="display:flex;gap:8px">${costTile(hass, 'Electricity', `${e}_cost`, `${e}_consumption`)}${costTile(hass, 'Gas', `${g}_cost`, `${g}_consumption_kwh`)}</div>
-<div style="font-size:11.5px;color:${TOKENS.text3};margin:-6px 4px 0">Octopus publishes about 1-2 days late, so these cover an earlier day, not today</div>`;
+<div style="font-size:11.5px;color:${TOKENS.textTertiary};margin:-6px 4px 0">${COPY.energy.octopusLate}</div>`;
   }
 
   // ── Daily cost history (recorder long-term statistics) ────────────────────────────────────────
@@ -1816,16 +1966,16 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       const top = Math.min(y(d.cost), y0);
       const h = Math.max(1.5, Math.abs(y(d.cost) - y0));
       const latest = i === n - 1;
-      return `<rect x="${i * COL_W + 2}" y="${top.toFixed(1)}" width="${COL_W - 4}" height="${h.toFixed(1)}" rx="2" fill="${TOKENS.link}" opacity="${latest ? 1 : 0.55}"/>`;
+      return `<rect x="${i * COL_W + 2}" y="${top.toFixed(1)}" width="${COL_W - 4}" height="${h.toFixed(1)}" rx="2" fill="${colour('link')}" opacity="${latest ? 1 : 0.55}"/>`;
     }).join('');
     const ticks = days.map((d, i) => ((n - 1 - i) % 2 === 0 ? `<span style="position:absolute;left:${(((i + 0.5) / n) * 100).toFixed(2)}%;transform:translateX(-50%);white-space:nowrap">${esc(dayTick(d.date))}</span>` : '')).join('');
     const hiDay = days.reduce((a, d) => (d.cost > a.cost ? d : a), days[0]);
     const loDay = days.reduce((a, d) => (d.cost < a.cost ? d : a), days[0]);
     const lbl = (d) => `${money(d.cost, 'GBP')} on ${isoDayLabel(d.date)}`;
-    const label = `Daily cost, ${n} ${plural(n, 'day', 'days')}. Highest ${lbl(hiDay)}, lowest ${lbl(loDay)}, latest ${lbl(days[n - 1])}.`;
-    return `<div class="chart" data-chart data-kind="cost" data-n="${n}" tabindex="0" role="img" aria-label="${esc(label)}" style="position:relative;margin-top:36px;touch-action:pan-y;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none"><svg viewBox="0 0 ${n * COL_W} ${PLOT_H}" preserveAspectRatio="none" width="100%" height="${PLOT_H}" aria-hidden="true" style="display:block">${bars}<line x1="0" x2="${n * COL_W}" y1="${y0.toFixed(1)}" y2="${y0.toFixed(1)}" stroke="${TOKENS.text3}" stroke-width=".8" vector-effect="non-scaling-stroke"/></svg>
-<span style="position:absolute;left:0;top:${Math.max(0, y0 - 14).toFixed(0)}px;font-size:10px;color:${TOKENS.text3};pointer-events:none">£0</span><div data-guide style="display:none;position:absolute;top:0;bottom:0;width:1px;margin-left:-.5px;background:${TOKENS.text};opacity:.7;pointer-events:none"></div><div data-tip class="tip" style="display:none"></div></div><span class="sr" aria-live="polite" data-live></span>
-<div style="position:relative;height:14px;font-size:9.5px;color:${TOKENS.text3};margin-top:4px">${ticks}</div>`;
+    const label = `${COPY.energy.dailyCostDays(n)}. Highest ${lbl(hiDay)}, lowest ${lbl(loDay)}, latest ${lbl(days[n - 1])}.`;
+    return `<div class="chart" data-chart data-kind="cost" data-n="${n}" tabindex="0" role="img" aria-label="${esc(label)}" style="position:relative;margin-top:36px;touch-action:pan-y;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none"><svg viewBox="0 0 ${n * COL_W} ${PLOT_H}" preserveAspectRatio="none" width="100%" height="${PLOT_H}" aria-hidden="true" style="display:block">${bars}<line x1="0" x2="${n * COL_W}" y1="${y0.toFixed(1)}" y2="${y0.toFixed(1)}" stroke="${colour('textTertiary')}" stroke-width=".8" vector-effect="non-scaling-stroke"/></svg>
+<span style="position:absolute;left:0;top:${Math.max(0, y0 - 14).toFixed(0)}px;font-size:10px;color:${TOKENS.textTertiary};pointer-events:none">£0</span><div data-guide style="display:none;position:absolute;top:0;bottom:0;width:1px;margin-left:-.5px;background:${TOKENS.text};opacity:.7;pointer-events:none"></div><div data-tip class="tip" style="display:none"></div></div><span class="sr" aria-live="polite" data-live></span>
+<div style="position:relative;height:14px;font-size:9.5px;color:${TOKENS.textTertiary};margin-top:4px">${ticks}</div>`;
   }
 
   // Electricity | Gas toggle, bars for up to 14 covered days, readout on scrub, honest loading/unavailable states.
@@ -1835,15 +1985,15 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const h = ui && isObj(ui.hist) && isObj(ui.hist[fuel]) ? ui.hist[fuel] : { status: 'loading', days: [] };
     const days = Array.isArray(h.days) ? h.days : [];
     let body;
-    if (h.status === 'loading') body = `<div style="font-size:13px;color:${TOKENS.text2}">Loading history…</div>`;
-    else if (h.status !== 'ok' || days.length === 0) body = `<div style="font-size:14px;font-weight:600">History unavailable</div><div style="font-size:12.5px;color:${TOKENS.text2};margin-top:4px;line-height:1.4">The recorded cost history could not be read; the latest published day is shown above</div>`;
+    if (h.status === 'loading') body = `<div style="font-size:13px;color:${TOKENS.textSecondary}">${COPY.energy.loadingHistory}</div>`;
+    else if (h.status !== 'ok' || days.length === 0) body = `<div style="font-size:14px;font-weight:600">${COPY.energy.historyUnavailable}</div><div style="font-size:12.5px;color:${TOKENS.textSecondary};margin-top:4px;line-height:1.4">${COPY.energy.historyUnavailableBody}</div>`;
     else {
       const id = COST_STAT[fuel];
       const total = usable(state(hass, id)) ? num(state(hass, id)) : null;
       const summary = dailySummary(days, standingNote(total, isObj(stateObj(hass, id)) ? stateObj(hass, id).attributes : {}));
-      body = `${costChart(days)}<div style="font-size:12.5px;margin-top:8px">${esc(summary)}</div><div style="font-size:11.5px;color:${TOKENS.text3};margin-top:4px">Drag across the bars to read a day · Published about 1-2 days late</div>`;
+      body = `${costChart(days)}<div style="font-size:12.5px;margin-top:8px">${esc(summary)}</div><div style="font-size:11.5px;color:${TOKENS.textTertiary};margin-top:4px">${COPY.energy.dragBars}</div>`;
     }
-    return `<div class="lbl" style="margin:4px 4px -10px">Daily cost</div><div class="segs">${seg('electricity', 'Electricity')}${seg('gas', 'Gas')}</div><div class="card pad">${body}</div>`;
+    return `<div class="lbl" style="margin:4px 4px -10px">${COPY.energy.dailyCost}</div><div class="segs">${seg('electricity', COPY.energy.electricity)}${seg('gas', COPY.energy.gas)}</div><div class="card pad">${body}</div>`;
   }
 
   function sectionEnergyUsage(hass) {
@@ -1852,10 +2002,10 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       const [v, u] = text === '–' ? ['–', ''] : text.split(' ');
       return `<div class="card u"><div class="lbl" style="margin:0">${label}</div><div class="v">${esc(v)}${u ? ` <span>${u}</span>` : ''}</div></div>`;
     };
-    return `<div class="lbl" style="margin:4px 4px -10px">Usage (smart meter, live)</div>
+    return `<div class="lbl" style="margin:4px 4px -10px">${COPY.energy.usageLive}</div>
 <div style="display:flex;gap:8px">${tile('Electricity today', 'sensor.glow_electricity_today')}${tile('Gas today', 'sensor.glow_gas_today')}</div>
 <div style="display:flex;gap:8px">${tile('Electricity this month', 'sensor.glow_electricity_month')}${tile('Gas this month', 'sensor.glow_gas_month')}</div>
-<div style="font-size:11.5px;color:${TOKENS.text3};margin:-6px 4px 0">Live from the meter; the Octopus figures above are the supplier's, days late, and the two are not reconciled</div>`;
+<div style="font-size:11.5px;color:${TOKENS.textTertiary};margin:-6px 4px 0">${COPY.energy.meterNote}</div>`;
   }
 
   // Bins (what is due next, and when) beside Heating (boiler state, inside/outside). This card opens the
@@ -1878,7 +2028,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const rooms = heatingRooms(hass).length;
     const hTitle = off ? 'Heating off' : firing ? 'Boiler firing' : 'Boiler idle';
     // The room count leads the sub line; it means nothing when heating is off or no room is calling for heat.
-    const roomCount = !off && rooms > 0 ? `${rooms} ${plural(rooms, 'room', 'rooms')}` : '';
+    const roomCount = !off && rooms > 0 ? COPY.home.roomsOccupied(rooms) : '';
     const inside = num(state(hass, 'sensor.house_average_temperature'));
     const outside = num(attr(hass, 'weather.forecast_home', 'temperature'));
     const patio = state(hass, 'input_boolean.patio_door_heating_suspended') === 'on' ? 'patio open' : '';
@@ -1886,14 +2036,14 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const hLine1 = [roomCount, patio].filter(Boolean).join(' · ');
     const hLine2 = [inside !== null ? `in ${fmt1(inside)}°` : '', outside !== null ? `out ${fmt1(outside)}°` : ''].filter(Boolean).join(' · ') || 'no readings';
     const sl = (t, color) => `<div class="sl"${color ? ` style="color:${color}"` : ''}>${t ? esc(t) : '&nbsp;'}</div>`;
-    return `<div class="lbl" style="margin:4px 4px -10px">House</div><div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px"><div class="card" style="padding:12px 14px${soon ? ';background:' + TOKENS.amberTag : ''}"><div class="lbl">Bins</div><div style="font-size:15px;font-weight:600;margin-top:4px${soon ? ';color:' + TOKENS.amber : ''}">${esc(binTitle)}</div>${sl(binSub, soon ? TOKENS.amber : TOKENS.text2)}${sl('', TOKENS.text2)}</div><a class="card tap" data-act="nav" data-path="${SETTINGS_PATH}" aria-label="Open settings" style="padding:12px 14px;display:block"><div class="lbl">Heating</div><div style="font-size:15px;font-weight:600;margin-top:4px">${esc(hTitle)}</div>${sl(hLine1, TOKENS.text2)}${sl(hLine2, TOKENS.text2)}</a></div>`;
+    return `<div class="lbl" style="margin:4px 4px -10px">${COPY.home.house}</div><div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px"><div class="card" style="padding:12px 14px${soon ? ';background:' + TOKENS.attentionChip : ''}"><div class="lbl">${COPY.home.bins}</div><div style="font-size:15px;font-weight:600;margin-top:4px${soon ? ';color:' + TOKENS.attention : ''}">${esc(binTitle)}</div>${sl(binSub, soon ? TOKENS.attention : TOKENS.textSecondary)}${sl('', TOKENS.textSecondary)}</div><a class="card tap" data-act="nav" data-path="${SETTINGS_PATH}" aria-label="${COPY.common.openSettings}" style="padding:12px 14px;display:block"><div class="lbl">${COPY.home.heatingCard}</div><div style="font-size:15px;font-weight:600;margin-top:4px">${esc(hTitle)}</div>${sl(hLine1, TOKENS.textSecondary)}${sl(hLine2, TOKENS.textSecondary)}</a></div>`;
   }
 
   function sectionFeed(hass, now) {
     const { rows, note } = houseActivity(hass);
     const quiet = quietRow;
     const body = (rows.length ? activityRows(rows, FEED_ROWS) : quiet('Nothing recorded yet')) + (note ? quiet(note) : '');
-    return `<div class="lbl" style="margin:4px 4px -10px">What the house did</div><div class="card">${body}</div>`;
+    return `<div class="lbl" style="margin:4px 4px -10px">${COPY.feed.whatHouseDid}</div><div class="card">${body}</div>`;
   }
 
   // ── Top guard ────────────────────────────────────────────────────────────────────────────────
@@ -2018,10 +2168,10 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   // page, still usable, never overlapping) and names the offender. The card probes after its first paint and
   // defaults to 'inflow' until the probe says otherwise (fail safe).
   const TABS = [
-    { id: 'house', label: 'House', path: HOUSE_PATH, icon: 'home' },
-    { id: 'energy', label: 'Energy', path: ENERGY_PATH, icon: 'bolt' },
-    { id: 'cameras', label: 'Cameras', path: CAMERAS_PATH, icon: 'camera' },
-    { id: 'settings', label: 'Settings', path: SETTINGS_PATH, icon: 'gear' },
+    { id: 'house', label: COPY.common.tabHouse, path: HOUSE_PATH, icon: 'home' },
+    { id: 'energy', label: COPY.common.tabEnergy, path: ENERGY_PATH, icon: 'bolt' },
+    { id: 'cameras', label: COPY.common.tabCameras, path: CAMERAS_PATH, icon: 'camera' },
+    { id: 'settings', label: COPY.common.tabSettings, path: SETTINGS_PATH, icon: 'gear' },
   ];
   function tabbarPlacement(ancestors) {
     const none = (v) => v === undefined || v === null || v === '' || v === 'none';
@@ -2044,7 +2194,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const active = cfg && TABS.some((t) => t.id === cfg.active) ? cfg.active : 'house';
     const fixed = ui && ui.tb === 'fixed';
     const tabs = TABS.map((t) => `<button type="button" class="tab" data-act="nav" data-path="${t.path}"${t.id === active ? ' aria-current="page"' : ''}>${svg(ICON[t.icon], 24)}<span>${t.label}</span></button>`).join('');
-    return `${fixed ? '<div class="tabbar-spacer" style="--tbh:calc(58px + max(10px, env(safe-area-inset-bottom, 0px)))" aria-hidden="true"></div>' : ''}<nav class="tabs${fixed ? ' fixed' : ''}" aria-label="Pulse">${tabs}</nav>`;
+    return `${fixed ? '<div class="tabbar-spacer" style="--tbh:calc(58px + max(10px, env(safe-area-inset-bottom, 0px)))" aria-hidden="true"></div>' : ''}<nav class="tabs${fixed ? ' fixed' : ''}" aria-label="${COPY.common.navLabel}">${tabs}</nav>`;
   }
 
   // ── Room page sections ───────────────────────────────────────────────────────────────────────
@@ -2072,11 +2222,11 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   function sectionRoomHead(hass, key, ui) {
     const m = roomModel(hass, key);
     const b = bannerFor(m, attentionItems(hass), activeScene(hass, key));
-    const back = `<a class="round quiet tap" data-act="nav" data-path="${HOUSE_PATH}" aria-label="Back to House" style="text-decoration:none;margin-left:-8px">${svg(ICON.back, 22)}</a>`;
+    const back = `<a class="round quiet tap" data-act="nav" data-path="${HOUSE_PATH}" aria-label="${COPY.common.backToHouse}" style="text-decoration:none;margin-left:-8px">${svg(ICON.back, 22)}</a>`;
     const title = `<div style="flex:1;min-width:0;min-height:44px;display:flex;align-items:center;font-size:28px;font-weight:700;letter-spacing:-.4px">${esc(m.cfg.name)}</div>`;
     const gear = `<button class="round quiet tap" data-act="settings-open" data-room="${key}" aria-haspopup="dialog" aria-label="${esc(m.cfg.name)} settings" style="margin-right:-8px">${svg(ICON.gear, 22)}</button>`;
     const head = `<div style="display:flex;align-items:center;gap:8px">${back}${title}${gear}</div>`;
-    const banner = `<div class="card pad${b.warn ? ' warn' : ''}" style="display:flex;gap:10px;align-items:flex-start"><span class="dot${b.warn ? ' warn' : b.dim ? ' dim' : ''}" style="margin-top:5px"></span><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:700;${b.warn ? 'color:' + TOKENS.amber : ''}">${esc(b.title)}</div><div style="font-size:13px;color:${b.warn ? TOKENS.text : TOKENS.text2};margin-top:3px;line-height:1.45">${esc(b.body)}</div></div></div>`;
+    const banner = `<div class="card pad${b.warn ? ' warn' : ''}" style="display:flex;gap:10px;align-items:flex-start"><span class="dot${b.warn ? ' warn' : b.dim ? ' dim' : ''}" style="margin-top:5px"></span><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:700;${b.warn ? 'color:' + TOKENS.attention : ''}">${esc(b.title)}</div><div style="font-size:13px;color:${b.warn ? TOKENS.text : TOKENS.textSecondary};margin-top:3px;line-height:1.45">${esc(b.body)}</div></div></div>`;
     return `${head}${banner}${ui && ui.settings ? settingsSheet(hass, key) : ''}`;
   }
 
@@ -2131,11 +2281,11 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 
   function lightsTag(story) {
     switch (story.state) {
-      case 'disabled': return '<span class="tag">Lights automation is off</span>';
-      case 'manual': return '<span class="tag">Manual</span>';
-      case 'problem': return '<span class="tag">Problem</span>';
-      case 'declined': return "<span class=\"tag off\">Didn't act</span>";
-      default: return story.holds ? '<span class="tag off">Hold</span>' : '<span class="tag ok">Auto</span>';
+      case 'disabled': return `<span class="tag">${COPY.room.lightsAutomationOff}</span>`;
+      case 'manual': return `<span class="tag">${COPY.room.manual}</span>`;
+      case 'problem': return `<span class="tag">${COPY.room.problem}</span>`;
+      case 'declined': return `<span class="tag off">${COPY.room.didntAct}</span>`;
+      default: return story.holds ? `<span class="tag off">${COPY.room.hold}</span>` : `<span class="tag ok">${COPY.room.auto}</span>`;
     }
   }
 
@@ -2145,9 +2295,9 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const differs = !!m.target_reason;
     const sub2 = differs ? (m.mode_name && m.mode_target !== null ? `Mode ${m.mode_name} ${fmt1(m.mode_target)}°` : m.target_reason.replace(/^./, (c) => c.toUpperCase())) : [m.heating_active.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase()), m.heating_source ? 'from ' + m.heating_source.replace(/_/g, ' ') : ''].filter(Boolean).join(' ');
     const hs = heatingStatus(m);
-    const status = hs ? `<div style="display:flex;align-items:center;gap:5px;font-size:12.5px;font-weight:600;margin-top:2px;color:${hs.on ? TOKENS.heat : TOKENS.text2}">${hs.on ? svg(ICON.flame, 14) : ''}${hs.text}</div>` : '';
-    return `<div class="two"><div class="card pad"><div class="lbl">Room</div><div class="big">${m.temp === null ? '–' : fmt1(m.temp) + '°'}</div><div style="font-size:12px;color:${TOKENS.text2};margin-top:2px">${m.humidity === null ? 'no humidity' : Math.round(m.humidity) + '% humidity'}</div></div>
-<div class="card pad"><div class="lbl">Target</div><div class="big" style="${differs ? 'color:' + TOKENS.amber : ''}">${m.target === null ? '–' : fmt1(m.target) + '°'}</div>${status}<div style="font-size:12px;color:${TOKENS.text2};margin-top:2px">${esc(sub2)}</div></div></div>`;
+    const status = hs ? `<div style="display:flex;align-items:center;gap:5px;font-size:12.5px;font-weight:600;margin-top:2px;color:${hs.on ? TOKENS.heat : TOKENS.textSecondary}">${hs.on ? svg(ICON.flame, 14) : ''}${hs.text}</div>` : '';
+    return `<div class="two"><div class="card pad"><div class="lbl">${COPY.room.roomLabel}</div><div class="big">${m.temp === null ? '–' : fmt1(m.temp) + '°'}</div><div style="font-size:12px;color:${TOKENS.textSecondary};margin-top:2px">${m.humidity === null ? 'no humidity' : Math.round(m.humidity) + '% humidity'}</div></div>
+<div class="card pad"><div class="lbl">${COPY.room.targetLabel}</div><div class="big" style="${differs ? 'color:' + TOKENS.attention : ''}">${m.target === null ? '–' : fmt1(m.target) + '°'}</div>${status}<div style="font-size:12px;color:${TOKENS.textSecondary};margin-top:2px">${esc(sub2)}</div></div></div>`;
   }
   function heatingWhy(m) {
     const differs = !!m.target_reason;
@@ -2159,13 +2309,13 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const cause = safetyCause(m);
     const resumes = m.house_heating_off ? 'stays at minimum while house heating is off' : m.heat_labels.length ? 'normal heating resumes when it closes' : '';
     const sub = safety ? `Held at ${esc(m.mode_name || 'minimum')}${minT !== null ? ' ' + fmt1(minT) + '°' : ''}${cause ? ' · ' + esc(cause) : ''}${resumes ? ' · ' + resumes : ''}` : held ? `${esc(m.heat_labels.join(' · '))} · ${s}` : s;
-    const tag = differs ? `<span class="tag">${esc(m.target_reason.replace(/^./, (c) => c.toUpperCase()))}</span>` : safety ? '<span class="tag">Suspended</span>' : held ? '<span class="tag">Pending</span>' : m.heating_enabled === false ? '<span class="tag">Heating automation is off</span>' : m.hvac_action === 'heating' ? '<span class="tag heat">Heating</span>' : m.hvac_action === 'idle' ? '<span class="tag off">Idle</span>' : '';
+    const tag = differs ? `<span class="tag">${esc(m.target_reason.replace(/^./, (c) => c.toUpperCase()))}</span>` : safety ? `<span class="tag">${COPY.room.suspended}</span>` : held ? `<span class="tag">${COPY.room.pending}</span>` : m.heating_enabled === false ? `<span class="tag">${COPY.room.heatingAutomationOff}</span>` : m.hvac_action === 'heating' ? `<span class="tag heat">${COPY.room.heatingOn}</span>` : m.hvac_action === 'idle' ? `<span class="tag off">${COPY.room.idle}</span>` : '';
     return `<div class="item">${svg(ICON.flame, 18)}<div><div class="h">${esc(h)}</div><div class="s">${sub}</div></div>${tag}</div>`;
   }
   function sectionHeating(hass, key) {
     const m = roomModel(hass, key);
     if (!m.hasReport || !m.cfg.climate) return '';
-    return `<div class="lbl" style="margin:4px 4px -10px">Heating</div>${heatingNumbers(m)}<div class="card">${heatingWhy(m)}</div>`;
+    return `<div class="lbl" style="margin:4px 4px -10px">${COPY.room.heating}</div>${heatingNumbers(m)}<div class="card">${heatingWhy(m)}</div>`;
   }
 
   // Presence: occupied or empty, what holds the room occupied and what ends it, and "Keep room occupied" (acts now,
@@ -2178,7 +2328,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const on = s === 'on';
     const guest = key === 'home_office' && state(hass, 'input_select.house_active_mode_modifier') === 'guest';
     const sub = on ? (guest ? 'Set by guest mode · lights and heating treat the room as in use' : 'Room held occupied · lights and heating treat it as in use') : 'Holds the room occupied until switched off';
-    return `<button class="tog tap" data-act="toggle" data-entity="${id}" aria-pressed="${on}"><div><div class="h">Keep room occupied</div><div class="s">${sub}</div></div><span class="sw${on ? '' : ' off'}" role="img" aria-label="${on ? 'On' : 'Off'}"></span></button>`;
+    return `<button class="tog tap" data-act="toggle" data-entity="${id}" aria-pressed="${on}"><div><div class="h">${COPY.room.keepRoomOccupied}</div><div class="s">${sub}</div></div><span class="sw${on ? '' : ' off'}" role="img" aria-label="${on ? COPY.common.on : COPY.common.off}"></span></button>`;
   }
   function sectionPresence(hass, key) {
     const m = roomModel(hass, key);
@@ -2192,17 +2342,17 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       const ovr = m.override_text ? ` · ${esc(m.override_text)}` : '';
       const motionOff = state(hass, `input_boolean.${key}_sensor_motion_enabled`) === 'off';
       const noMotion = motionOff ? ' · Motion sensor off, so movement is ignored' : '';
-      const link = motionOff ? `<button class="lnk tap" data-act="settings-open" data-room="${key}" aria-haspopup="dialog">Settings</button>` : '';
+      const link = motionOff ? `<button class="lnk tap" data-act="settings-open" data-room="${key}" aria-haspopup="dialog">${COPY.room.settingsLink}</button>` : '';
       row = `<div class="item">${svg(ICON.person, 18)}<div><div class="h">${occ}</div><div class="s">${pres}${ovr}${noMotion}</div>${link}</div><span class="tag${m.override && !holds.length ? '' : ' off'}">${holds.length ? 'Held' : m.override ? 'Override' : 'Clear'}</span></div>`;
     }
-    return `<div class="lbl" style="margin:4px 4px -10px">Presence</div><div class="card">${row}${keep}</div>`;
+    return `<div class="lbl" style="margin:4px 4px -10px">${COPY.room.presence}</div><div class="card">${row}${keep}</div>`;
   }
 
   // Lights: what they are doing and why (including why they are not on), the scene tiles, and the individual
   // lights expanding under a hairline, all in one card. The headline wording is lightsState, as everywhere.
   function lightsStoryRow(hass, key, now, m, scene) {
     const story = lightsStory(hass, key, now);
-    const tint = story.tone === 'warn' ? ` style="color:${TOKENS.amber}"` : '';
+    const tint = story.tone === 'warn' ? ` style="color:${TOKENS.attention}"` : '';
     return `<div class="item">${svg(ICON.bulb, 18)}<div><div class="h">${esc(lightsState(m, scene).phrase)}</div><div class="s"${tint}>${esc(story.why)}</div></div>${lightsTag(story)}</div>`;
   }
   function sectionLights(hass, key, now, ui) {
@@ -2216,9 +2366,9 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     }).join('');
     const story = m.hasReport ? lightsStoryRow(hass, key, now, m, active) : '';
     const exp = lightsExpander(hass, key, ui);
-    const more = exp ? `<div style="margin:10px -12px -10px;border-top:1px solid ${TOKENS.divider}">${exp}</div>` : '';
-    const controls = `<div style="padding:12px 12px 10px${story ? `;border-top:1px solid ${TOKENS.divider}` : ''}"><div class="tiles" style="grid-template-columns:repeat(${cols},minmax(0,1fr))">${tiles}</div>${more}</div>`;
-    return `<div class="lbl" style="margin:4px 4px -10px">Lights</div><div class="card">${story}${controls}</div>`;
+    const more = exp ? `<div style="margin:10px -12px -10px;border-top:1px solid ${TOKENS.separator}">${exp}</div>` : '';
+    const controls = `<div style="padding:12px 12px 10px${story ? `;border-top:1px solid ${TOKENS.separator}` : ''}"><div class="tiles" style="grid-template-columns:repeat(${cols},minmax(0,1fr))">${tiles}</div>${more}</div>`;
+    return `<div class="lbl" style="margin:4px 4px -10px">${COPY.room.lights}</div><div class="card">${story}${controls}</div>`;
   }
 
   function lightCounts(hass, key) {
@@ -2236,11 +2386,11 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     if (m.cfg.lights.length === 0) return '';
     const open = !!(ui && ui.open);
     const c = lightCounts(hass, key);
-    const head = `<button class="lh tap" data-act="lights-toggle" aria-expanded="${open}"><span style="font-size:14px;font-weight:600">Individual lights<span style="font-weight:500;color:${TOKENS.text2}"> · ${c.on} of ${c.total} on</span></span><span style="display:flex;color:${TOKENS.text2};transform:${open ? 'rotate(180deg)' : 'none'}">${svg(ICON.chev, 18)}</span></button>`;
+    const head = `<button class="lh tap" data-act="lights-toggle" aria-expanded="${open}"><span style="font-size:14px;font-weight:600">${COPY.room.individualLights}<span style="font-weight:500;color:${TOKENS.textSecondary}">${COPY.room.individualLightsCount(c.on, c.total)}</span></span><span style="display:flex;color:${TOKENS.textSecondary};transform:${open ? 'rotate(180deg)' : 'none'}">${svg(ICON.chev, 18)}</span></button>`;
     if (!open) return head;
     const rows = m.cfg.lights.map(([id, label]) => {
       const s = stateObj(hass, id);
-      if (!s || !usable(s.state)) return `<div class="tog"><div><div class="h">${esc(label)}</div><div class="s">${s ? 'Unavailable' : 'Not found'}</div></div></div>`;
+      if (!s || !usable(s.state)) return `<div class="tog"><div><div class="h">${esc(label)}</div><div class="s">${s ? COPY.common.unavailable : COPY.common.notFound}</div></div></div>`;
       const on = s.state === 'on';
       const modes = attr(hass, id, 'supported_color_modes');
       const dimmable = id.startsWith('light.') && Array.isArray(modes) && modes.some((x) => x !== 'onoff');
@@ -2248,7 +2398,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         const pct = on ? Math.max(0, Math.min(100, Math.round(((num(attr(hass, id, 'brightness')) || 0) / 255) * 100))) : 0;
         return `<div class="lt"><div><div class="h">${esc(label)}</div><div class="s">${on ? pct + '%' : 'Off'}</div></div><input type="range" min="0" max="100" value="${pct}" style="--p:${pct}%" data-act="brightness" data-entity="${esc(id)}" aria-label="${esc(label)} brightness"></div>`;
       }
-      return `<button class="tog tap" data-act="toggle" data-entity="${esc(id)}" aria-pressed="${on}"><div><div class="h">${esc(label)}</div><div class="s">${on ? 'On' : 'Off'}</div></div><span class="sw${on ? '' : ' off'}" role="img" aria-label="${on ? 'On' : 'Off'}"></span></button>`;
+      return `<button class="tog tap" data-act="toggle" data-entity="${esc(id)}" aria-pressed="${on}"><div><div class="h">${esc(label)}</div><div class="s">${on ? COPY.common.on : COPY.common.off}</div></div><span class="sw${on ? '' : ' off'}" role="img" aria-label="${on ? COPY.common.on : COPY.common.off}"></span></button>`;
     }).join('');
     return `${head}${rows}`;
   }
@@ -2313,7 +2463,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       const s = state(hass, row.id);
       if (!usable(s)) return '';
       const on = s === 'on';
-      return `<button class="tog tap" data-act="setting-toggle" data-room="${room}" data-group="${group}" data-key="${row.key}" aria-pressed="${on}"><div><div class="h">${esc(row.title)}</div><div class="s">${esc(row.sub)}</div></div><span class="sw${on ? '' : ' off'}" role="img" aria-label="${on ? 'On' : 'Off'}"></span></button>`;
+      return `<button class="tog tap" data-act="setting-toggle" data-room="${room}" data-group="${group}" data-key="${row.key}" aria-pressed="${on}"><div><div class="h">${esc(row.title)}</div><div class="s">${esc(row.sub)}</div></div><span class="sw${on ? '' : ' off'}" role="img" aria-label="${on ? COPY.common.on : COPY.common.off}"></span></button>`;
     }
     const v = num(state(hass, row.id));
     return v === null ? '' : stepperRow(row, v, row.sub, 'setting-number', ds);
@@ -2329,9 +2479,9 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   // and keeps its scroll position. Escape, the Close button and the scrim all close it; focus handling is in
   // the element (settingsOpen / settingsClose say where focus goes).
   function settingsSheet(hass, room) {
-    const body = settingGroupsHtml(hass, room) || `<div class="card pad" style="color:${TOKENS.text2};font-size:13px">No settings available for this room</div>`;
+    const body = settingGroupsHtml(hass, room) || `<div class="card pad" style="color:${TOKENS.textSecondary};font-size:13px">${COPY.room.noSettings}</div>`;
     const title = `${ROOMS[room].name} settings`;
-    return `<div class="ovl"><div class="scrim" data-act="settings-close" aria-hidden="true"></div><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title" tabindex="-1"><div class="sh"><div id="sheet-title" style="font-size:20px;font-weight:700;letter-spacing:-.2px">${esc(title)}</div><button class="round quiet" data-act="settings-close" aria-label="Close settings">${svg('M6 6l12 12M18 6L6 18', 20)}</button></div><div class="sb">${body}</div></div></div>`;
+    return `<div class="ovl"><div class="scrim" data-act="settings-close" aria-hidden="true"></div><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title" tabindex="-1"><div class="sh"><div id="sheet-title" style="font-size:20px;font-weight:700;letter-spacing:-.2px">${esc(title)}</div><button class="round quiet" data-act="settings-close" aria-label="${COPY.common.closeSettings}">${svg('M6 6l12 12M18 6L6 18', 20)}</button></div><div class="sb">${body}</div></div></div>`;
   }
 
   // Open/closed lives in ui.settings; ui.focus names the control that takes focus after the next paint
@@ -2361,12 +2511,12 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const id = config.entity;
     const label = str(config.label) || 'Fan';
     const s = stateObj(hass, id);
-    if (!s) return `<div class="card"><div class="tog"><div><div class="h">${esc(label)}</div><div class="s">Not found</div></div></div></div>`;
-    if (!usable(s.state)) return `<div class="card"><div class="tog"><div><div class="h">${esc(label)}</div><div class="s">Unavailable</div></div></div></div>`;
+    if (!s) return `<div class="card"><div class="tog"><div><div class="h">${esc(label)}</div><div class="s">${COPY.common.notFound}</div></div></div></div>`;
+    if (!usable(s.state)) return `<div class="card"><div class="tog"><div><div class="h">${esc(label)}</div><div class="s">${COPY.common.unavailable}</div></div></div></div>`;
     const on = s.state === 'on';
     const why = deviceReason(attr(hass, config.decision, 'reason'), on);
-    const text = [on ? 'On' : 'Off', why].filter(Boolean).join(' · ');
-    return `<div class="card"><button class="tog tap" data-act="toggle" data-entity="${esc(id)}" aria-pressed="${on}"><div><div class="h">${esc(label)}</div><div class="s">${esc(text)}</div></div><span class="sw${on ? '' : ' off'}" role="img" aria-label="${on ? 'On' : 'Off'}"></span></button></div>`;
+    const text = [on ? COPY.common.on : COPY.common.off, why].filter(Boolean).join(' · ');
+    return `<div class="card"><button class="tog tap" data-act="toggle" data-entity="${esc(id)}" aria-pressed="${on}"><div><div class="h">${esc(label)}</div><div class="s">${esc(text)}</div></div><span class="sw${on ? '' : ' off'}" role="img" aria-label="${on ? COPY.common.on : COPY.common.off}"></span></button></div>`;
   }
 
   function sectionMedia(hass, key) {
@@ -2375,8 +2525,8 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const rows = m.cfg.media.map(([id, label, kind]) => {
       const s = stateObj(hass, id);
       const name = esc(label); // the device role from the room config, not the entity's friendly name
-      if (!s) return `<div class="tog"><div><div class="h">${esc(label)}</div><div class="s">Not found</div></div></div>`;
-      if (!usable(s.state)) return `<div class="tog"><div><div class="h">${name}</div><div class="s">Unavailable</div></div></div>`;
+      if (!s) return `<div class="tog"><div><div class="h">${esc(label)}</div><div class="s">${COPY.common.notFound}</div></div></div>`;
+      if (!usable(s.state)) return `<div class="tog"><div><div class="h">${name}</div><div class="s">${COPY.common.unavailable}</div></div></div>`;
       const off = s.state === 'off' || s.state === 'standby';
       const playing = s.state === 'playing';
       const title = str(attr(hass, id, 'media_title'));
@@ -2386,10 +2536,10 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         return `<button class="tog tap" data-act="media-power" data-entity="${esc(id)}" aria-pressed="${!off}"><div><div class="h">${name}</div><div class="s">${esc(text)}</div></div><span class="sw${off ? ' off' : ''}" role="img" aria-label="${off ? 'Off' : 'On'}"></span></button>`;
       }
       const vol = num(attr(hass, id, 'volume_level'));
-      const volRow = vol === null ? '' : `<div class="lt"><div><div class="h">Volume</div><div class="s">${Math.round(vol * 100)}%</div></div><input type="range" min="0" max="100" value="${Math.round(vol * 100)}" data-act="volume" data-entity="${esc(id)}" aria-label="${name} volume"></div>`;
+      const volRow = vol === null ? '' : `<div class="lt"><div><div class="h">${COPY.room.volume}</div><div class="s">${Math.round(vol * 100)}%</div></div><input type="range" min="0" max="100" value="${Math.round(vol * 100)}" data-act="volume" data-entity="${esc(id)}" aria-label="${name} volume"></div>`;
       return `<div class="tog"><div><div class="h">${name}</div><div class="s">${esc(text)}</div></div><button class="round${playing ? '' : ' quiet'}" data-act="media-play" data-entity="${esc(id)}" aria-label="${playing ? 'Pause' : 'Play'}">${svg(playing ? ICON.pause : ICON.play, 20)}</button></div>${volRow}`;
     }).join('');
-    return `<div class="lbl" style="margin:4px 4px -10px">Media</div><div class="card">${rows}</div>`;
+    return `<div class="lbl" style="margin:4px 4px -10px">${COPY.room.media}</div><div class="card">${rows}</div>`;
   }
 
   // ── Gardens ──────────────────────────────────────────────────────────────────────────────────
@@ -2538,8 +2688,8 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const lines = [themeSource(g), themeApplies(g, now)].filter(Boolean).map((t) => `<div class="note">${esc(t)}</div>`).join('');
     // Only when the calendar is not in charge: paused, or a theme picked by hand. Acting needs the toggle's state.
     const follow = !!g.calToday && !!g.calToggle && (g.calToggle === 'off' || g.theme !== g.calToday);
-    const use = follow ? `<button class="tog tap" data-act="use-calendar" data-garden="${key}"><div><div class="h">Use calendar</div><div class="s">Back to ${esc(themeLabel(g.calToday))}, then follow the calendar</div></div></button>` : '';
-    return `<div class="lbl" style="margin:4px 4px -10px">Theme</div><div class="card" style="padding:12px 12px 10px"><div class="tiles" style="grid-template-columns:repeat(${cols},minmax(0,1fr))">${tiles}</div>${lines}</div>${use ? `<div class="card">${use}</div>` : ''}`;
+    const use = follow ? `<button class="tog tap" data-act="use-calendar" data-garden="${key}"><div><div class="h">${COPY.room.useCalendar}</div><div class="s">Back to ${esc(themeLabel(g.calToday))}, then follow the calendar</div></div></button>` : '';
+    return `<div class="lbl" style="margin:4px 4px -10px">${COPY.room.theme}</div><div class="card" style="padding:12px 12px 10px"><div class="tiles" style="grid-template-columns:repeat(${cols},minmax(0,1fr))">${tiles}</div>${lines}</div>${use ? `<div class="card">${use}</div>` : ''}`;
   }
 
   // Now: one wide tile per garden, below the indoor groups. Gardens stay out of the indoor attention,
@@ -2596,7 +2746,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const when = usable(mode) && hhmm(since) ? ` · since ${hhmm(since)}` : '';
     const mod = state(hass, HOUSE_MODIFIER);
     const modText = usable(mod) && mod !== 'none' && MODIFIERS[mod] ? ` · ${MODIFIERS[mod].label} modifier` : '';
-    const banner = `<div class="card pad" style="display:flex;gap:10px;align-items:flex-start"><span class="dot${usable(mode) ? '' : ' dim'}" style="margin-top:5px"></span><div><div style="font-size:15px;font-weight:700">${esc(t.title)}</div><div style="font-size:13px;color:${TOKENS.text2};margin-top:3px;line-height:1.45">${esc(t.body)}${esc(when)}${esc(modText)}</div></div></div>`;
+    const banner = `<div class="card pad" style="display:flex;gap:10px;align-items:flex-start"><span class="dot${usable(mode) ? '' : ' dim'}" style="margin-top:5px"></span><div><div style="font-size:15px;font-weight:700">${esc(t.title)}</div><div style="font-size:13px;color:${TOKENS.textSecondary};margin-top:3px;line-height:1.45">${esc(t.body)}${esc(when)}${esc(modText)}</div></div></div>`;
     return `${pageTitle('Settings')}${banner}`;
   }
 
@@ -2607,11 +2757,11 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     if (usable(mod)) {
       const segs = Object.keys(MODIFIERS).map((k) => `<button class="seg${mod === k ? ' on' : ''}" data-act="house-modifier" data-option="${k}" aria-pressed="${mod === k}">${MODIFIERS[k].label}</button>`).join('');
       const sub = (MODIFIERS[mod] || MODIFIERS.none).sub;
-      out += `<div class="lbl" style="margin:4px 4px -10px">House mode</div><div class="card pad"><div class="segs" role="group" aria-label="Mode modifier">${segs}</div><div style="font-size:12.5px;color:${TOKENS.text2};margin-top:8px;line-height:1.45">${esc(sub)}</div></div>`;
+      out += `<div class="lbl" style="margin:4px 4px -10px">${COPY.settings.houseMode}</div><div class="card pad"><div class="segs" role="group" aria-label="${COPY.common.modeModifier}">${segs}</div><div style="font-size:12.5px;color:${TOKENS.textSecondary};margin-top:8px;line-height:1.45">${esc(sub)}</div></div>`;
     }
     if (vac !== null) {
       const away = state(hass, 'sensor.house_active_mode') === 'away';
-      out += `<div class="card"><div class="tog"><div><div class="h">Holiday threshold</div><div class="s">${away ? 'Away now · counts from when the house went away' : 'How long away lasts before holiday heating'}</div></div><div style="display:flex;align-items:center;gap:6px"><button class="round" data-act="house-threshold" data-delta="-1" aria-label="Shorter">${svg('M5 12h14', 20)}</button><span style="min-width:44px;text-align:center;font-weight:600">${Math.round(vac)} h</span><button class="round" data-act="house-threshold" data-delta="1" aria-label="Longer">${svg('M12 5v14M5 12h14', 20)}</button></div></div></div>`;
+      out += `<div class="card"><div class="tog"><div><div class="h">${COPY.settings.holidayThreshold}</div><div class="s">${away ? 'Away now · counts from when the house went away' : 'How long away lasts before holiday heating'}</div></div><div style="display:flex;align-items:center;gap:6px"><button class="round" data-act="house-threshold" data-delta="-1" aria-label="${COPY.common.shorter}">${svg('M5 12h14', 20)}</button><span style="min-width:44px;text-align:center;font-weight:600">${Math.round(vac)} h</span><button class="round" data-act="house-threshold" data-delta="1" aria-label="${COPY.common.longer}">${svg('M12 5v14M5 12h14', 20)}</button></div></div></div>`;
     }
     return out;
   }
@@ -2649,7 +2799,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       const on = master === 'on';
       const firing = state(hass, 'binary_sensor.house_heating_boiler_firing') === 'on';
       const sub = on ? (firing ? 'On · boiler firing' : 'On · boiler idle') : 'Off · every room drops to its minimum';
-      rows.push(`<button class="tog tap" data-act="toggle" data-entity="input_boolean.house_heating_enabled" aria-pressed="${on}"><div><div class="h">Central heating</div><div class="s">${sub}</div></div><span class="sw${on ? '' : ' off'}" role="img" aria-label="${on ? 'On' : 'Off'}"></span></button>`);
+      rows.push(`<button class="tog tap" data-act="toggle" data-entity="input_boolean.house_heating_enabled" aria-pressed="${on}"><div><div class="h">${COPY.settings.centralHeating}</div><div class="s">${sub}</div></div><span class="sw${on ? '' : ' off'}" role="img" aria-label="${on ? COPY.common.on : COPY.common.off}"></span></button>`);
     }
     const subs = {
       baseline_day: 'Daytime target for rooms on the global setpoints',
@@ -2661,9 +2811,9 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const temps = ['baseline_day', 'baseline_night', 'comfort', 'minimum'].map((k) => numberRow(hass, k, subs[k])).join('');
     const grace = numberRow(hass, 'window_grace', subs.window_grace);
     const out = [];
-    if (rows.length) out.push(`<div class="lbl" style="margin:4px 4px -10px">Heating</div><div class="card">${rows.join('')}</div>`);
-    if (temps) out.push(`<div class="lbl" style="margin:4px 4px -10px">Temperature modes</div><div class="card">${temps}</div><div style="font-size:12px;color:${TOKENS.text2};margin:-6px 4px 0">Applies to every room that uses the global setpoints</div>`);
-    if (grace) out.push(`<div class="lbl" style="margin:4px 4px -10px">Safety</div><div class="card">${grace}</div>`);
+    if (rows.length) out.push(`<div class="lbl" style="margin:4px 4px -10px">${COPY.settings.heating}</div><div class="card">${rows.join('')}</div>`);
+    if (temps) out.push(`<div class="lbl" style="margin:4px 4px -10px">${COPY.settings.temperatureModes}</div><div class="card">${temps}</div><div style="font-size:12px;color:${TOKENS.textSecondary};margin:-6px 4px 0">${COPY.settings.temperatureModesNote}</div>`);
+    if (grace) out.push(`<div class="lbl" style="margin:4px 4px -10px">${COPY.settings.safety}</div><div class="card">${grace}</div>`);
     return out.join('');
   }
 
@@ -2673,9 +2823,9 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       if (!usable(s)) return '';
       const on = s === 'on';
       const where = state(hass, person) === 'home' ? 'Home' : usable(state(hass, person)) ? 'Away' : '';
-      return `<button class="tog tap" data-act="toggle" data-entity="${id}" aria-pressed="${on}"><div><div class="h">${name} working from home</div><div class="s">${[where, 'Set automatically from the weekly pattern, tap to override'].filter(Boolean).join(' · ')}</div></div><span class="sw${on ? '' : ' off'}" role="img" aria-label="${on ? 'On' : 'Off'}"></span></button>`;
+      return `<button class="tog tap" data-act="toggle" data-entity="${id}" aria-pressed="${on}"><div><div class="h">${name} working from home</div><div class="s">${[where, 'Set automatically from the weekly pattern, tap to override'].filter(Boolean).join(' · ')}</div></div><span class="sw${on ? '' : ' off'}" role="img" aria-label="${on ? COPY.common.on : COPY.common.off}"></span></button>`;
     }).join('');
-    return rows ? `<div class="lbl" style="margin:4px 4px -10px">People</div><div class="card">${rows}</div>` : '';
+    return rows ? `<div class="lbl" style="margin:4px 4px -10px">${COPY.settings.people}</div><div class="card">${rows}</div>` : '';
   }
 
   // Mo's phone alerts. Same approach as HOUSE_NUMBERS: the page names a key, so turn_on/turn_off through this path
@@ -2689,9 +2839,9 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       const st = state(hass, d.id);
       if (!usable(st)) return '';
       const on = st === 'on';
-      return `<button class="tog tap" data-act="mo-toggle" data-key="${key}" aria-pressed="${on}"><div><div class="h">${d.title}</div><div class="s">${d.sub}</div></div><span class="sw${on ? '' : ' off'}" role="img" aria-label="${on ? 'On' : 'Off'}"></span></button>`;
+      return `<button class="tog tap" data-act="mo-toggle" data-key="${key}" aria-pressed="${on}"><div><div class="h">${d.title}</div><div class="s">${d.sub}</div></div><span class="sw${on ? '' : ' off'}" role="img" aria-label="${on ? COPY.common.on : COPY.common.off}"></span></button>`;
     }).join('');
-    return rows ? `<div class="lbl" style="margin:4px 4px -10px">Mo</div><div class="card">${rows}</div>` : '';
+    return rows ? `<div class="lbl" style="margin:4px 4px -10px">${COPY.settings.mo}</div><div class="card">${rows}</div>` : '';
   }
 
   // ── Cameras ──────────────────────────────────────────────────────────────────────────────────
@@ -2792,9 +2942,9 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const sum = camerasSummary(hass, now);
     const notes = [sum.rule.text, sum.byHand ? 'set by hand' : '', sum.offline.length ? `${sum.offline.map((x) => x.c.name).join(' · ')} offline` : ''].filter(Boolean);
     const warn = sum.offline.length > 0;
-    const banner = `<div class="card pad${warn ? ' warn' : ''}" style="display:flex;gap:10px;align-items:flex-start"><span class="dot${warn ? ' warn' : sum.live.length ? '' : ' dim'}" style="margin-top:5px"></span><div><div style="font-size:15px;font-weight:700">${esc(sum.title)}</div><div style="font-size:13px;color:${TOKENS.text2};margin-top:3px;line-height:1.45">${esc(notes.join(' · '))}</div></div></div>`;
+    const banner = `<div class="card pad${warn ? ' warn' : ''}" style="display:flex;gap:10px;align-items:flex-start"><span class="dot${warn ? ' warn' : sum.live.length ? '' : ' dim'}" style="margin-top:5px"></span><div><div style="font-size:15px;font-weight:700">${esc(sum.title)}</div><div style="font-size:13px;color:${TOKENS.textSecondary};margin-top:3px;line-height:1.45">${esc(notes.join(' · '))}</div></div></div>`;
     const usableCams = sum.st.filter((x) => !x.s.offline).length;
-    const master = usableCams ? `<div class="card"><button class="tog tap" data-act="cameras-all" aria-pressed="${sum.live.length > 0}"><div><div class="h">Cameras</div><div class="s">${sum.live.length ? 'Tap to turn all off' : 'Tap to turn all on'}</div></div><span class="sw${sum.live.length ? '' : ' off'}" role="img" aria-label="${sum.live.length ? 'On' : 'Off'}"></span></button></div>` : '';
+    const master = usableCams ? `<div class="card"><button class="tog tap" data-act="cameras-all" aria-pressed="${sum.live.length > 0}"><div><div class="h">${COPY.cameras.master}</div><div class="s">${sum.live.length ? 'Tap to turn all off' : 'Tap to turn all on'}</div></div><span class="sw${sum.live.length ? '' : ' off'}" role="img" aria-label="${sum.live.length ? COPY.common.on : COPY.common.off}"></span></button></div>` : '';
     return `${pageTitle('Cameras')}${banner}${master}`;
   }
 
@@ -2811,7 +2961,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     else if (pend) { tag = 'No response'; cls = 'tag'; }
     const sub = st.offline ? `Offline${st.since ? ' · ' + st.since : ''}` : waiting ? 'Waiting for the camera' : pend ? 'It did not change · tap to try again' : st.live ? (st.person ? 'Person in view' : 'No one in view') : 'Camera is off';
     const head = `<div class="tog"><div style="display:flex;align-items:center;gap:10px">${svg(ICON.camera, 20)}<div><div class="h">${c.name}</div><div class="s">${esc(sub)}</div></div></div><span class="${cls}">${esc(tag)}</span></div>`;
-    const toggle = st.offline ? '' : `<button class="tog tap" data-act="camera-toggle" data-camera="${c.k}" aria-pressed="${st.live}"><div><div class="h">Camera on</div><div class="s">${waiting ? 'Waiting for the camera' : st.live ? 'Tap to turn off' : 'Tap to turn on'}</div></div><span class="sw${st.live ? '' : ' off'}" role="img" aria-label="${st.live ? 'On' : 'Off'}"></span></button>`;
+    const toggle = st.offline ? '' : `<button class="tog tap" data-act="camera-toggle" data-camera="${c.k}" aria-pressed="${st.live}"><div><div class="h">${COPY.cameras.cameraOn}</div><div class="s">${waiting ? 'Waiting for the camera' : st.live ? 'Tap to turn off' : 'Tap to turn on'}</div></div><span class="sw${st.live ? '' : ' off'}" role="img" aria-label="${st.live ? COPY.common.on : COPY.common.off}"></span></button>`;
     const pad = st.live ? ptzPad(hass, c) : '';
     return { live: st.live, rest: markPending(`${head}${toggle}${pad}${recordingsBlock(hass, c, now, ui)}`, ui, hass, now) };
   }
@@ -2833,16 +2983,16 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 
   function recordingsBlock(hass, c, now, ui) {
     const r = camUi(ui).rec[c.k] || { open: false };
-    const toggle = `<button class="tog tap" data-act="camera-rec" data-camera="${c.k}" aria-expanded="${!!r.open}"><div><div class="h">Recordings</div><div class="s">${r.open && r.status === 'ok' ? `${r.items.length} recent` : 'Clips of people and movement'}</div></div><span style="color:${TOKENS.text2};display:flex;transform:rotate(${r.open ? 180 : 0}deg)">${svg(ICON.chev, 20)}</span></button>`;
+    const toggle = `<button class="tog tap" data-act="camera-rec" data-camera="${c.k}" aria-expanded="${!!r.open}"><div><div class="h">${COPY.cameras.recordings}</div><div class="s">${r.open && r.status === 'ok' ? COPY.cameras.recent(r.items.length) : 'Clips of people and movement'}</div></div><span style="color:${TOKENS.textSecondary};display:flex;transform:rotate(${r.open ? 180 : 0}deg)">${svg(ICON.chev, 20)}</span></button>`;
     if (!r.open) return toggle;
-    const msg = (t) => `<div class="feed"><span class="a"></span><span class="si"></span><span style="color:${TOKENS.text2}">${t}</span></div>`;
+    const msg = (t) => `<div class="feed"><span class="a"></span><span class="si"></span><span style="color:${TOKENS.textSecondary}">${t}</span></div>`;
     let body;
     if (r.status === 'loading' || !r.status) body = msg('Loading recordings…');
-    else if (r.status === 'error') body = msg("Couldn't load recordings") + `<button class="tog tap" data-act="camera-rec-refresh" data-camera="${c.k}"><div><div class="h">Try again</div></div></button>`;
+    else if (r.status === 'error') body = msg("Couldn't load recordings") + `<button class="tog tap" data-act="camera-rec-refresh" data-camera="${c.k}"><div><div class="h">${COPY.cameras.tryAgain}</div></div></button>`;
     else if (!r.items.length) body = msg('No recordings yet');
     else body = r.items.map((it) => {
       const what = [it.label.replace(/^./, (x) => x.toUpperCase()), it.zones.join(', ')].filter(Boolean).join(' · ');
-      return `<button class="clip" data-act="camera-clip" data-camera="${c.k}" data-clip="${esc(it.id)}"><img src="/api/frigate/notifications/${encodeURIComponent(it.id)}/snapshot.jpg" alt="" loading="lazy"><div style="flex:1;min-width:0"><div class="t">${esc(clipWhen(it.start, now))}</div><div class="w">${esc(what)}</div></div><span style="color:${TOKENS.text2};display:flex">${svg(ICON.play, 18)}</span></button>`;
+      return `<button class="clip" data-act="camera-clip" data-camera="${c.k}" data-clip="${esc(it.id)}"><img src="/api/frigate/notifications/${encodeURIComponent(it.id)}/snapshot.jpg" alt="" loading="lazy"><div style="flex:1;min-width:0"><div class="t">${esc(clipWhen(it.start, now))}</div><div class="w">${esc(what)}</div></div><span style="color:${TOKENS.textSecondary};display:flex">${svg(ICON.play, 18)}</span></button>`;
     }).join('');
     return toggle + body;
   }
@@ -2853,14 +3003,14 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     if (!CAMERAS.some((c) => stateObj(hass, cameraSwitch(c.k)))) return '';
     const warn = sum.offline.length > 0;
     const sub = warn ? `${sum.offline.map((x) => x.c.name).join(' · ')} offline` : camerasReason(sum);
-    return `<a class="card tap" data-act="nav" data-path="${CAMERAS_PATH}" aria-label="Open cameras" style="display:flex;align-items:center;gap:12px;padding:12px 14px${warn ? ';background:' + TOKENS.amberTag : ''}"><span style="color:${warn ? TOKENS.amber : TOKENS.text2};display:flex">${svg(ICON.camera, 22)}</span><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:600">${esc(sum.title)}</div><div style="font-size:12px;color:${TOKENS.text2}">${esc(sub)}</div></div><span style="color:${TOKENS.link};display:flex">${svg('M9 5l7 7-7 7', 20)}</span></a>`;
+    return `<a class="card tap" data-act="nav" data-path="${CAMERAS_PATH}" aria-label="${COPY.common.openCameras}" style="display:flex;align-items:center;gap:12px;padding:12px 14px${warn ? ';background:' + TOKENS.attentionChip : ''}"><span style="color:${warn ? TOKENS.attention : TOKENS.textSecondary};display:flex">${svg(ICON.camera, 22)}</span><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:600">${esc(sum.title)}</div><div style="font-size:12px;color:${TOKENS.textSecondary}">${esc(sub)}</div></div><span style="color:${TOKENS.link};display:flex">${svg('M9 5l7 7-7 7', 20)}</span></a>`;
   }
 
   function sectionRoomFeed(hass, key, now) {
     const { rows, note } = roomActivity(hass, key);
     const quiet = quietRow;
     const body = (rows.length ? activityRows(rows, ACTIVITY_ROWS) : quiet('Nothing recorded for this room yet')) + (note ? quiet(note) : '');
-    return `<div class="lbl" style="margin:4px 4px -10px">Recent activity</div><div class="card">${body}</div>`;
+    return `<div class="lbl" style="margin:4px 4px -10px">${COPY.feed.recentActivity}</div><div class="card">${body}</div>`;
   }
 
   // ── Tap feedback ─────────────────────────────────────────────────────────────────────────────
@@ -3017,6 +3167,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 
   function validate(config) {
     if (!isObj(config) || !MODES[config.mode]) throw new Error(`pulse-card: unknown mode "${config && config.mode}"`);
+    themeOf(config);
     if (config.mode === 'camera' && !CAMERAS.some((c) => c.k === config.camera)) throw new Error(`pulse-card: mode "camera" needs a known camera, got "${config.camera}"`);
     // Both blank is the shared room template's "this room has no device": render nothing. One blank is a mistake.
     if (config.mode === 'device' && !(config.entity === '' && config.decision === '')) {
@@ -3035,6 +3186,8 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const at = Number.isFinite(now) ? now : Date.now();
     // One pass, one set of room models; restored in `finally` so a throw cannot leave a stale pass behind.
     const outer = pass;
+    const outerTheme = activeTheme;
+    useTheme(config);
     pass = optimise ? { hass, models: new Map() } : null;
     try {
       const body = MODES[mode](hass, config || {}, at, ui || {});
@@ -3042,6 +3195,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       return html ? `<div class="p">${errorBanner(ui, at)}${markPending(html, ui, hass, at)}</div>` : '';
     } finally {
       pass = outer;
+      activeTheme = outerTheme;
     }
   }
 
@@ -3259,7 +3413,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     }
   }
 
-  const api = { parsedAttr, setOptimise, trackHass, depsUnchanged, makeRenderGate, RENDER_MAX_AGE_MS, deriveScenes, sceneRegistry, ROOM_TABLE, lightsStory, lightsState, verdictFor, houseActivity, parseHistory, readHistory, sentenceFor, roomActivity, unexplainedReasons, REASON_TEXT, UNDECLARED, SUPPRESS_SOURCES, TILE, TILE_H, tileNeededHeight, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, SETTINGS_PATH, takesTaps, coverNeed, topGuard, sheetFit, splitSheet, touchGuard, lockScroll, scrollTargets, SHEET_MARK, STILL, HEAD_MODES, TOP_GUARD_MAX, CAMERAS_PATH, PENDING_MS, cameraParts, cameraToggle, cameraPending, perform, pendingStart, pendingFor, pendingKey, markPending, ERROR_MS, parseClips, frigateClipsId, roomGroups, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, GARDEN_ORDER, ALL_ROOM_KEYS, THEME_LABELS, THEME_ICON, ICON, SUBSYSTEMS, subsystemOf, placed, gardenModel, gardenSub, themeSource, shortDate, ALLOWED, writeAllowed, HOUSE_NUMBERS, HOUSE_MODIFIER, HOUSE_VACATION_HOURS, CAMERAS, PTZ_DIRS, DEVICE_REASONS, ROOM_SETTINGS, MO_TOGGLES, settingFor, settingsOpen, settingsClose, tabTarget, render, priceColour, PRICE_STOPS, PRICE_EXTREME_P, roomModel, attentionItems, handleAction, callService, num, parseList };
+  const api = { parsedAttr, setOptimise, trackHass, depsUnchanged, makeRenderGate, RENDER_MAX_AGE_MS, deriveScenes, sceneRegistry, ROOM_TABLE, lightsStory, lightsState, verdictFor, houseActivity, parseHistory, readHistory, sentenceFor, roomActivity, unexplainedReasons, REASON_TEXT, UNDECLARED, SUPPRESS_SOURCES, TILE, TILE_H, tileNeededHeight, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, SETTINGS_PATH, takesTaps, coverNeed, topGuard, sheetFit, splitSheet, touchGuard, lockScroll, scrollTargets, SHEET_MARK, STILL, HEAD_MODES, TOP_GUARD_MAX, CAMERAS_PATH, PENDING_MS, cameraParts, cameraToggle, cameraPending, perform, pendingStart, pendingFor, pendingKey, markPending, ERROR_MS, parseClips, frigateClipsId, roomGroups, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, GARDEN_ORDER, ALL_ROOM_KEYS, THEME_LABELS, THEME_ICON, ICON, SUBSYSTEMS, subsystemOf, placed, gardenModel, gardenSub, themeSource, shortDate, ALLOWED, writeAllowed, HOUSE_NUMBERS, HOUSE_MODIFIER, HOUSE_VACATION_HOURS, CAMERAS, PTZ_DIRS, DEVICE_REASONS, ROOM_SETTINGS, MO_TOGGLES, settingFor, settingsOpen, settingsClose, tabTarget, render, priceColour, PRICE_AT, PRICE_EXTREME_P, THEMES, COLOUR_KEYS, DEFAULT_THEME, TOKENS, COPY, checkThemes, themeOf, colour, resolveVars, styleFor, roomModel, attentionItems, handleAction, callService, num, parseList };
   root.PulseLib = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 
@@ -3391,7 +3545,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
           html = this._gate.run(this._config.mode, this._config, this._hass, Date.now(), this._ui, !fromHass).html;
         } catch (err) {
           // Fail loudly in the card itself rather than leaving a blank hole.
-          html = `<div class="p"><div class="card warn pad"><b>pulse-card error</b><div class="s">${esc(err && err.message)}</div></div></div>`;
+          html = `<div class="p"><div class="card warn pad"><b>${COPY.common.cardError}</b><div class="s">${esc(err && err.message)}</div></div></div>`;
         }
         if (html === this._html) return;
         this._html = html;
@@ -3404,7 +3558,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         this._sheetPainted = !!sheet;
         const portaled = sheet ? this._portalShow(sheet, still) : (this._portalHide(), false);
         // No sheet, or a sheet that could not be portaled (fallback: it stays in the card): paint all of it here.
-        this._root.innerHTML = `<style>${STYLE}</style>${still}${portaled ? page : html}`;
+        this._root.innerHTML = `<style>${styleFor(this._config)}</style>${still}${portaled ? page : html}`;
         this._restoreFocus(kept);
         if (this._config.mode === 'tabbar' && !this._tbProbed) this._tabbarProbeLater();
         this._fitSheet();
@@ -3452,7 +3606,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         }
         try {
           if (!this._portal) this._portalOpen();
-          this._portal.root.innerHTML = `<style>${STYLE}</style>${still}<div class="p">${sheetHtml}</div>`;
+          this._portal.root.innerHTML = `<style>${styleFor(this._config)}</style>${still}<div class="p">${sheetHtml}</div>`;
           return true;
         } catch (err) {
           this._portalBroken = true;
@@ -3536,10 +3690,10 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         try {
           parts = cameraParts(this._hass, this._config.camera, Date.now(), this._ui);
         } catch (err) {
-          parts = { live: false, rest: `<div class="pad warn"><b>pulse-card error</b><div class="s">${esc(err && err.message)}</div></div>` };
+          parts = { live: false, rest: `<div class="pad warn"><b>${COPY.common.cardError}</b><div class="s">${esc(err && err.message)}</div></div>` };
         }
         if (!this._camShell) {
-          this._root.innerHTML = `<style>${STYLE}</style><div class="p"><div class="card"><div class="stream" id="cam-stream" hidden></div><div id="cam-rest"></div></div></div>`;
+          this._root.innerHTML = `<style>${styleFor(this._config)}</style><div class="p"><div class="card"><div class="stream" id="cam-stream" hidden></div><div id="cam-rest"></div></div></div>`;
           this._camShell = true;
           this._html = null;
         }
@@ -3612,21 +3766,23 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       async _playClip(k, id) {
         const item = (this._ui.cam.rec[k] || { items: [] }).items.find((x) => x.id === id);
         if (!item || typeof document === 'undefined') return;
+        // Attached to the document, outside the shadow root, so the card's CSS variables do not reach it.
+        useTheme(this._config);
         const overlay = document.createElement('div');
         overlay.setAttribute('role', 'dialog');
         overlay.setAttribute('aria-label', 'Recording');
-        overlay.style.cssText = 'position:fixed;inset:0;z-index:2147483000;background:rgba(0,0,0,.94);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;gap:12px;font-family:system-ui,sans-serif';
+        overlay.style.cssText = 'position:fixed;inset:0;z-index:2147483000;background:' + colour('scrimFull') + ';display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;gap:12px;font-family:system-ui,sans-serif';
         const video = document.createElement('video');
         video.controls = true;
         video.playsInline = true;
         video.autoplay = true;
-        video.style.cssText = 'max-width:100%;max-height:75vh;border-radius:12px;background:#000';
+        video.style.cssText = 'max-width:100%;max-height:75vh;border-radius:12px;background:' + colour('videoBg');
         const status = document.createElement('div');
-        status.style.cssText = 'color:#a3adba;font-size:13px;min-height:18px';
+        status.style.cssText = `color:${colour('textSecondary')};font-size:13px;min-height:18px`;
         status.textContent = 'Loading…';
         const close = document.createElement('button');
         close.textContent = 'Close';
-        close.style.cssText = 'min-height:44px;padding:0 28px;border:0;border-radius:22px;background:#e8ebef;color:#12151a;font:inherit;font-size:15px;font-weight:600;cursor:pointer';
+        close.style.cssText = `min-height:44px;padding:0 28px;border:0;border-radius:22px;background:${colour('text')};color:${colour('bg')};font:inherit;font-size:15px;font-weight:600;cursor:pointer`;
         overlay.append(video, status, close);
         const done = () => { video.pause(); video.removeAttribute('src'); overlay.remove(); };
         close.addEventListener('click', done);
@@ -3742,6 +3898,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         const chart = this._chartEl();
         const slots = this._scrub.slots;
         if (!chart || !slots || slots.length === 0) return;
+        useTheme(this._config); // the readout's price colour is computed here, outside a render
         const i = Math.max(0, Math.min(slots.length - 1, idx));
         const r = chart.dataset.kind === 'cost' ? dayReadout(slots[i]) : slotReadout(slots[i]);
         if (!r) return;
@@ -3753,7 +3910,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         guide.style.left = `${((i + 0.5) / n) * 100}%`;
         guide.style.display = 'block';
         chart.querySelectorAll('rect').forEach((b, k) => {
-          if (k === i) { b.setAttribute('stroke', TOKENS.text); b.setAttribute('stroke-width', '1.5'); b.setAttribute('vector-effect', 'non-scaling-stroke'); } else { b.removeAttribute('stroke'); b.removeAttribute('stroke-width'); }
+          if (k === i) { b.setAttribute('stroke', colour('text')); b.setAttribute('stroke-width', '1.5'); b.setAttribute('vector-effect', 'non-scaling-stroke'); } else { b.removeAttribute('stroke'); b.removeAttribute('stroke-width'); }
         });
         tip.innerHTML = `${esc(r.range)} · <b style="color:${r.colour}">${esc(r.price)}</b>${r.note ? `<small>${esc(r.note)}</small>` : ''}`;
         tip.style.display = 'block';

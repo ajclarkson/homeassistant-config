@@ -11,11 +11,26 @@ import { createRequire } from 'node:module';
 import * as yaml from 'js-yaml';
 
 const require = createRequire(import.meta.url);
-const P = require('../www/pulse-card.js');
+const Raw = require('../www/pulse-card.js');
+// Pages carry var(--pulse-token) rather than hex. Most tests assert on the classic look, so P resolves the
+// variables against the theme the config names (classic by default); Raw is the card as shipped.
+const themeName = (config) => (config && config.theme) || 'classic';
+const P = {
+  ...Raw,
+  render: (mode, config, ...rest) => Raw.resolveVars(Raw.render(mode, config, ...rest), themeName(config)),
+  STYLE: Raw.resolveVars(Raw.STYLE, 'classic'),
+  makeRenderGate: (...a) => {
+    const gate = Raw.makeRenderGate(...a);
+    const run = (mode, config, ...rest) => { const out = gate.run(mode, config, ...rest); return { ...out, html: Raw.resolveVars(out.html, themeName(config)) }; };
+    return Object.create(gate, { run: { value: run } });
+  },
+};
 const root = new URL('..', import.meta.url).pathname;
 let n = 0;
-const ok = (name, fn) => { fn(); n += 1; console.log('ok', name); };
-const okAsync = async (name, fn) => { await fn(); n += 1; console.log('ok', name); };
+// PULSE_GOLDEN_WRITE=1 only defines the helpers and rewrites the golden file (see the end of this file).
+const WRITING_GOLDEN = !!process.env.PULSE_GOLDEN_WRITE;
+const ok = (name, fn) => { if (WRITING_GOLDEN) return; fn(); n += 1; console.log('ok', name); };
+const okAsync = async (name, fn) => { if (WRITING_GOLDEN) return; await fn(); n += 1; console.log('ok', name); };
 
 const NOW = Date.parse('2026-10-25T18:42:00Z');
 // The old "why" card is now three subsystem sections; tests about its wording read them together.
@@ -1755,10 +1770,11 @@ ok('tab bar renders four tabs, one per id, with aria-current on the active one o
   for (const cfg of [undefined, null, {}, { active: 5 }]) assert.doesNotMatch(P.render('tabbar', cfg, mk(), NOW, undefined), NOISE);
   const css = readFileSync(root + 'www/pulse-card.js', 'utf8');
   assert.match(css, /\.tab\{[^\n]*font-size:10\.5px[^\n]*min-height:44px/);
-  assert.match(css, /\.tab\[aria-current=page\]\{color:\$\{TOKENS\.sceneActive\}\}/);
-  assert.match(css, /\.tabs\{[^\n]*rgba\(18,21,26,\.94\)[^\n]*border-top:1px solid \$\{TOKENS\.divider\}/);
-  assert.equal(P.TOKENS.sceneActive, '#f2c46b');
-  assert.equal(P.TOKENS.text3, '#8f9aa8');
+  assert.match(css, /\.tab\[aria-current=page\]\{color:\$\{TOKENS\.tint\}\}/);
+  assert.match(css, /\.tabs\{[^\n]*\$\{TOKENS\.tabBar\}[^\n]*border-top:1px solid \$\{TOKENS\.separator\}/);
+  assert.equal(Raw.THEMES.classic.tint, '#f2c46b');
+  assert.equal(Raw.THEMES.classic.textTertiary, '#8f9aa8');
+  assert.equal(Raw.THEMES.classic.tabBar, 'rgba(18,21,26,.94)');
 });
 
 ok('tab bar nav paths use the DASH constant and match real views', () => {
@@ -4000,7 +4016,6 @@ ok('cameras card sub line gives the reason per state, never restating the title'
   assert.match(P.render('cameras-head', {}, privacy(allPriv, 'normal'), NOW), /House is at home · cameras off/, 'the Cameras page keeps its fuller wording');
 });
 
-console.log(`\n${n} test groups passed`);
 
 ok('Pulse page paths: info-dashboard.yaml lists House first then Energy, Settings, Cameras; the old Now path is gone everywhere', () => {
   const dash = readFileSync(root + 'info-dashboard.yaml', 'utf8');
@@ -4351,3 +4366,142 @@ ok('every service call in the card goes through callService', () => {
   for (const other of ['callApi', 'fireEvent', 'callWS({ type: \'call_service', 'hass.connection.sendMessage', 'publish(']) assert.ok(!src.includes(other), `no ${other}`);
   for (const m of src.matchAll(/callWS\(\s*\{([^}]*)\}/g)) assert.match(m[1], /type:\s*'(history|recorder|media_source|config)\//, `callWS reads only: ${m[1]}`);
 });
+// ── Classic theme is byte-identical to the pre-theme card ────────────────────────────────────────
+// tests/fixtures/classic-golden.json holds a sha256 per rendered page (and for the stylesheet), taken from the
+// card as it was before design tokens existed. Pages now carry var(--pulse-token) instead of hex, so each page
+// is first resolved against the classic theme's values; a changed colour, class or word then shows as a changed hash.
+import { createHash } from 'node:crypto';
+const sha = (s) => createHash('sha256').update(s).digest('hex');
+const goldenPages = () => {
+  const rooms = P.ROOM_ORDER.map(FULL);
+  const calmRooms = P.ROOM_ORDER.map((k) => ({ ...FULL(k), target_reason: '', labels: [], pres_labels: [], heat_labels: [], ext_open: false }));
+  const scenarios = {
+    attention: withRooms(rooms, [{ room: 'Bedroom', key: 'bedroom', kind: 'window_open_heating_on', text: 'Open window while heating', nav: '/x' }]),
+    calm: withRooms(calmRooms, []),
+    bare: mk(),
+  };
+  const pages = {};
+  for (const [name, hass] of Object.entries(scenarios)) for (const [k, v] of Object.entries(renderAll(hass))) pages[`${name}/${k}`] = v;
+  // The full card list (every mode, room sheets open, cameras, house pages) on the richest fixture.
+  const rich = richHass();
+  for (const [label, m, c, ui] of allCards()) pages[`rich/${label}`] = Raw.render(m, c, rich, NOW, ui);
+  return pages;
+};
+const goldenFile = new URL('./fixtures/classic-golden.json', import.meta.url).pathname;
+if (process.env.PULSE_GOLDEN_WRITE) {
+  const pages = Object.fromEntries(Object.entries(goldenPages()).map(([k, v]) => [k, Raw.resolveVars ? Raw.resolveVars(v, 'classic') : v]));
+  writeFileSync(goldenFile, JSON.stringify({ style: sha(Raw.resolveVars ? Raw.resolveVars(Raw.STYLE, 'classic') : Raw.STYLE), pages: Object.fromEntries(Object.entries(pages).map(([k, v]) => [k, sha(v)])) }, null, 1) + '\n');
+  console.log('wrote', goldenFile);
+} else {
+  ok('classic theme renders the same pages and stylesheet as the card did before themes', () => {
+    const golden = JSON.parse(readFileSync(goldenFile, 'utf8'));
+    const resolve = (s) => (P.resolveVars ? P.resolveVars(s, 'classic') : s);
+    assert.equal(sha(resolve(P.STYLE)), golden.style, 'stylesheet changed');
+    const pages = goldenPages();
+    assert.deepEqual(Object.keys(pages).sort(), Object.keys(golden.pages).sort());
+    const changed = Object.keys(pages).filter((k) => sha(resolve(pages[k])) !== golden.pages[k]);
+    assert.deepEqual(changed, [], `pages changed under the classic theme: ${changed.slice(0, 8).join(', ')}`);
+  });
+}
+
+// ── Themes ───────────────────────────────────────────────────────────────────────────────────────
+const cardSrc = readFileSync(new URL('../www/pulse-card.js', import.meta.url), 'utf8');
+const ratio = (a, b) => { for (const c of [a, b]) assert.match(c, /^#[0-9a-f]{6}$/i, `${c} is a 6-digit hex`); return cr(a, b); };
+
+ok('colour literals appear only inside the THEMES block', () => {
+  const start = cardSrc.indexOf('  const THEMES = {');
+  const end = cardSrc.indexOf('  const DEFAULT_THEME');
+  assert.ok(start > 0 && end > start);
+  const outside = (cardSrc.slice(0, start) + cardSrc.slice(end)).split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+  const stray = outside.match(/(?<![&\w])#[0-9a-fA-F]{3,8}\b|\brgba?\(|\bhsla?\(/g);
+  assert.equal(stray, null, `colour literals outside THEMES: ${stray}`);
+});
+
+ok('every theme defines exactly the same tokens, and at least classic and rose-pine exist', () => {
+  assert.ok(Raw.THEMES.classic && Raw.THEMES['rose-pine']);
+  const want = Object.keys(Raw.THEMES.classic).sort();
+  for (const [name, t] of Object.entries(Raw.THEMES)) assert.deepEqual(Object.keys(t).sort(), want, name);
+  for (const k of Raw.COLOUR_KEYS) assert.ok(cardSrc.includes(`TOKENS.${k}`) || cardSrc.includes(`colour('${k}')`), `token ${k} is used by the card`);
+});
+
+ok('every theme is readable: text and textSecondary 4.5:1 on bg and surface, tint 3:1 on surface, inks on their fills', () => {
+  for (const [name, t] of Object.entries(Raw.THEMES)) {
+    for (const fg of ['text', 'textSecondary']) for (const bg of ['bg', 'surface']) assert.ok(ratio(t[fg], t[bg]) >= 4.5, `${name}: ${fg} on ${bg} ${ratio(t[fg], t[bg]).toFixed(2)}`);
+    assert.ok(ratio(t.tint, t.surface) >= 3, `${name}: tint on surface ${ratio(t.tint, t.surface).toFixed(2)}`);
+    assert.ok(ratio(t.tintInk, t.tint) >= 4.5, `${name}: tintInk on tint ${ratio(t.tintInk, t.tint).toFixed(2)}`);
+    assert.ok(ratio(t.attention, t.attentionBg) >= 4.5, `${name}: attention on attentionBg ${ratio(t.attention, t.attentionBg).toFixed(2)}`);
+    assert.ok(ratio(t.attention, t.attentionChip) >= 4.5, `${name}: attention on attentionChip ${ratio(t.attention, t.attentionChip).toFixed(2)}`);
+    assert.ok(ratio(t.text, t.control) >= 4.5, `${name}: text on control`);
+    assert.ok(ratio(t.textSoft, t.control) >= 4.5, `${name}: textSoft on control`);
+  }
+});
+
+ok('the theme is chosen by config, defaults to classic, and an unknown name fails loudly', () => {
+  const hass = withRooms(P.ROOM_ORDER.map(FULL), []);
+  assert.equal(Raw.render('rooms', {}, hass, NOW), Raw.render('rooms', { theme: 'classic' }, hass, NOW));
+  assert.doesNotThrow(() => Raw.render('rooms', { theme: 'rose-pine' }, hass, NOW));
+  for (const bad of ['nord', '', 'Classic', null, 3]) assert.throws(() => Raw.render('rooms', { theme: bad }, hass, NOW), /unknown theme/, String(bad));
+  assert.throws(() => Raw.themeOf({ theme: 'nord' }), /known: classic, rose-pine/);
+  assert.throws(() => Raw.styleFor({ theme: 'nord' }), /unknown theme/);
+});
+
+ok('a theme missing a token, or with a stray one, fails at validation', () => {
+  const full = Raw.THEMES.classic;
+  const without = (k) => { const { [k]: _gone, ...rest } = full; return rest; };
+  for (const k of Raw.COLOUR_KEYS.concat('priceStops')) assert.throws(() => Raw.checkThemes({ classic: full, odd: without(k) }), new RegExp(`missing: ${k}`), k);
+  assert.throws(() => Raw.checkThemes({ classic: full, odd: { ...full, extra: '#000000' } }), /unknown: extra/);
+  assert.throws(() => Raw.checkThemes({ classic: full, odd: { ...full, bg: '' } }), /token "bg"/);
+  assert.throws(() => Raw.checkThemes({ classic: full, odd: { ...full, priceStops: [[1, 2, 3]] } }), /priceStops/);
+  assert.throws(() => Raw.TOKENS.nope, /unknown colour token "nope"/);
+  assert.throws(() => Raw.colour('nope'), /unknown colour token/);
+});
+
+ok('the stylesheet carries the theme as --pulse-* variables on :host and the markup only references them', () => {
+  const css = Raw.styleFor({ theme: 'rose-pine' });
+  assert.match(css, /^:host\{--pulse-bg:#191724;/);
+  for (const k of Raw.COLOUR_KEYS) assert.ok(css.includes(`--pulse-${k}:${Raw.THEMES['rose-pine'][k]}`), k);
+  assert.ok(!Raw.styleFor({}).includes('#191724'));
+  const vars = new Set([...Raw.STYLE.matchAll(/var\(--pulse-(\w+)\)/g)].map((m) => m[1]));
+  for (const v of vars) assert.ok(Raw.COLOUR_KEYS.includes(v), v);
+});
+
+ok('price colours follow the theme: same algorithm, the theme\'s stops, and readable figures on its surface', () => {
+  const day = mk({ 'event.octopus_energy_electricity_24e8140196_1012483035417_current_day_rates': { state: 'x', attributes: { rates: real } } });
+  const fills = (theme) => Raw.render('energy-day', { theme }, day, Date.parse('2026-10-25T18:29:00Z'), {}).match(/fill="#[0-9a-f]{6}"/g).join();
+  assert.notEqual(fills('rose-pine'), fills('classic'));
+  assert.equal(fills('classic'), fills(undefined));
+  const roseNow = (cents) => Raw.render('energy-head', { theme: 'rose-pine' }, mk({ [`${BASE}_current_rate`]: { state: String(cents / 100), attributes: {} } }), NOW);
+  const colourOf = (html) => html.match(/line-height:1.15;color:(#[0-9a-f]{6})/)[1];
+  assert.equal(colourOf(roseNow(-2)), Raw.THEMES['rose-pine'].priceNegative);
+  assert.notEqual(colourOf(roseNow(60)), colourOf(roseNow(-2)), 'the extreme price is its own colour (lightened for text until readable)');
+  for (const v of [-5, 0, 5, 15, 25, 35, 44, 50]) assert.ok(ratio(colourOf(roseNow(v)), Raw.THEMES['rose-pine'].surface) >= 4.5, `${v}p`);
+});
+
+// ── Copy table ───────────────────────────────────────────────────────────────────────────────────
+ok('every COPY key is used by the card and every COPY reference names a key', () => {
+  const body = cardSrc.replace(/^\s*(\/\/|\*).*$/gm, '');
+  const refs = new Set([...body.matchAll(/\bCOPY\.(\w+)\.(\w+)/g)].map((m) => `${m[1]}.${m[2]}`));
+  const keys = new Set();
+  for (const area of Object.keys(Raw.COPY)) for (const key of Object.keys(Raw.COPY[area])) keys.add(`${area}.${key}`);
+  assert.deepEqual([...refs].filter((r) => !keys.has(r)), [], 'references without a key');
+  assert.deepEqual([...keys].filter((k) => !refs.has(k)), [], 'keys nothing references');
+  assert.deepEqual(Object.keys(Raw.COPY).sort(), ['cameras', 'common', 'energy', 'feed', 'home', 'room', 'settings']);
+});
+
+ok('a missing COPY key throws at runtime instead of printing undefined', () => {
+  assert.throws(() => Raw.COPY.home.nope, /no COPY\.home\.nope/);
+  assert.equal(Raw.COPY.home.needsAttentionCount(1), '1 needs attention');
+  assert.equal(Raw.COPY.home.needsAttentionCount(3), '3 need attention');
+  assert.equal(Raw.COPY.home.roomsOccupied(2), '2 rooms');
+  assert.equal(Raw.COPY.cameras.recent(4), '4 recent');
+});
+
+ok('the wording tables sit together after COPY, ahead of any render code', () => {
+  const at = (needle) => { const i = cardSrc.indexOf(needle); assert.ok(i > 0, needle); return i; };
+  const copyAt = at('  const COPY = {');
+  const firstSection = at('  function sectionNowHeader');
+  for (const t of ['  const SUBSYSTEMS = {', '  const REASON_TEXT = {', '  const UNDECLARED = {']) assert.ok(at(t) > copyAt && at(t) < firstSection, t);
+  assert.ok(at('  const REASON_TEXT = {') - copyAt < 40000, 'the wording region is one block');
+});
+
+console.log(`\n${n} test groups passed`);
