@@ -1,15 +1,14 @@
 # Shared room page for the Pulse dashboard. One template, parameterised by room; every room view
 # (views/info-room-*.yaml) is a single call to it. Sections that do not apply to a room (readings, heating, media,
-# fan, scenes, individual lights, chart) hide themselves, so there is no per-room card list to copy.
+# fan, scenes, individual lights) hide themselves, so there is no per-room card list to copy.
 # The page reads top to bottom: header (back link, name, occupancy and lights, attention items), readings
-# (temperature, light level), Scenes (with the Individual lights row), Heating (inset list, then the 24 h chart),
+# (temperature, light level), Scenes (with the Individual lights row), Heating (the day plan drawn by pulse-card, the mode grid, then the inset list),
 # Presence (ending in the Automation row: the room's switches and tuning, inline), Media, the fan where a room has
 # one, and Activity. Each section is a titled inset list built by pulse-card from the House page's parts.
 #
-# Variables (for rooms without climate pass the conventional ids anyway; the chart hides itself):
+# Variables:
 #   room     key used by custom:pulse-card (see ROOMS in www/pulse-card.js) and by helper ids
-#   climate  climate entity for the 24h chart target line
-#   temp     room temperature sensor for the 24h chart
+#   climate, temp  no longer read: pulse-card takes the room's climate and temperature entities from ROOMS
 #   fan, fan_decision, fan_label  optional fan row under the scenes: its switch, the decision sensor
 #            whose reason explains it, and its title. Leave blank and the row hides itself.
 # streamline-card takes defaults only from `default` (a list of single-key maps); a template-level
@@ -38,114 +37,6 @@ pulse_room:
       - type: custom:pulse-card
         mode: heating
         room: '[[room]]'
-      # Only rooms with a temperature sensor chart: the numeric condition is false for a missing
-      # entity, so gardens and the upstairs hallway show nothing here. The section header is a pulse-card (so it
-      # is the same header as every other section); the chart itself has none.
-      # apexcharts cannot read CSS variables, so the colours below are the rose-pine theme's tokens as literals
-      # (a test holds each to its token in www/pulse-card.js): surface #1f1d2e, text #e0def4, tint #c4a7e7,
-      # heat #ebbcba, separator rgba(110,106,134,.35), textSecondary #908caa.
-      - type: conditional
-        conditions:
-          - condition: numeric_state
-            entity: '[[temp]]'
-            above: -100
-        card:
-          type: vertical-stack
-          cards:
-            - type: custom:pulse-card
-              mode: chart-head
-            - type: custom:apexcharts-card
-              header:
-                show: false
-              graph_span: 24h
-              apex_config:
-                chart:
-                  height: 170
-                  toolbar: {show: false}
-                  zoom: {enabled: false}
-                  background: '#1f1d2e'
-                legend:
-                  show: true
-                  position: bottom
-                  horizontalAlign: left
-                  fontSize: 11px
-                  labels: {colors: '#908caa'}
-                  markers: {size: 5}
-                dataLabels: {enabled: false}
-                grid: {borderColor: 'rgba(110,106,134,.35)'}
-                tooltip: {x: {format: HH:mm}}
-                xaxis:
-                  type: datetime
-                  tickAmount: 4
-                  axisBorder: {show: false}
-                  axisTicks: {show: false}
-                  labels:
-                    datetimeUTC: false
-                    format: HH:mm
-                    style: {colors: '#908caa', fontSize: 10px}
-              # Two axes: temperature, and a hidden 0..1 axis so heat demand draws as a band along the bottom.
-              # apexcharts-card forbids `yaxis` inside apex_config once this list is used.
-              yaxis:
-                - id: temp
-                  decimals: 0
-                  apex_config:
-                    # Whole-degree gridlines. Apex spreads the ticks evenly between min and max, so a bound
-                    # that is not a multiple of the interval count gives fractional ticks that the label
-                    # rounds (21, 19, 18, 16 on evenly spaced lines). Both bounds snap outwards to even
-                    # degrees, 0.5 to 2.5 clear of the data, and two intervals make the middle line a whole
-                    # degree too: three lines, each exactly at its label. Apex calls min then max with the
-                    # data's lowest and highest value of every series on this axis.
-                    min: |
-                      EVAL:function(value) {
-                        return Number.isFinite(value) ? 2 * Math.floor((value - 0.5) / 2) : undefined;
-                      }
-                    max: |
-                      EVAL:function(value) {
-                        return Number.isFinite(value) ? 2 * Math.ceil((value + 0.5) / 2) : undefined;
-                      }
-                    tickAmount: 2
-                    labels:
-                      style: {colors: '#908caa', fontSize: 10px}
-                      formatter: |
-                        EVAL:function(value) {
-                          return Math.round(value) + '°';
-                        }
-                - id: demand
-                  show: false
-                  min: 0
-                  max: 1
-              card_mod:
-                style: |
-                  ha-card { border: none; border-radius: 20px; box-shadow: none; background: #1f1d2e; }
-              series:
-                - entity: '[[temp]]'
-                  name: Room
-                  yaxis_id: temp
-                  color: '#e0def4'
-                  stroke_width: 2
-                  curve: smooth
-                  show: {legend_value: false}
-                - entity: '[[climate]]'
-                  attribute: temperature
-                  name: Target
-                  yaxis_id: temp
-                  color: '#c4a7e7'
-                  stroke_width: 2
-                  curve: stepline
-                  show: {legend_value: false}
-                # hvac_action is the valve calling for heat. Unknown states (unavailable after a restart) map
-                # to null so they leave a gap rather than read as "not heating".
-                - entity: '[[climate]]'
-                  attribute: hvac_action
-                  name: Heating
-                  yaxis_id: demand
-                  type: area
-                  curve: stepline
-                  color: '#ebbcba'
-                  opacity: 0.3
-                  stroke_width: 0
-                  transform: "return x === 'heating' ? 1 : (x === 'idle' || x === 'off') ? 0 : null;"
-                  show: {legend_value: false}
       - type: custom:pulse-card
         mode: presence
         room: '[[room]]'

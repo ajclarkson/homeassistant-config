@@ -2302,25 +2302,6 @@ ok('heating mode tap writes the helper, and a disabled mode neither writes nor t
   assert.equal(P.HAPTICS[P.ACT_HAPTIC['heating-mode']], 'selection');
 });
 
-ok('room chart overlays heat demand from hvac_action on a hidden 0..1 axis, with a legend', () => {
-  const t = loadYaml('info_templates.yaml').pulse_room.card.cards;
-  const chart = t.find((c) => c.type === 'conditional').card.cards.find((c) => c.type === 'custom:apexcharts-card');
-  const demand = chart.series.find((x) => x.attribute === 'hvac_action');
-  assert.equal(demand.entity, '[[climate]]');
-  assert.equal(demand.yaxis_id, 'demand');
-  assert.equal(demand.type, 'area');
-  const run = (x) => new Function('x', demand.transform)(x);
-  assert.deepEqual(['heating', 'idle', 'off', 'unavailable', null].map(run), [1, 0, 0, null, null]);
-  const ids = chart.yaxis.map((a) => a.id);
-  assert.deepEqual(ids, ['temp', 'demand']);
-  assert.equal(chart.apex_config.yaxis, undefined, 'apexcharts-card forbids yaxis in apex_config beside the yaxis list');
-  assert.ok(chart.series.every((x) => ids.includes(x.yaxis_id)), 'every series names a declared axis');
-  assert.equal(chart.apex_config.legend.show, true);
-  const fmt = chart.yaxis.find((x) => x.id === 'temp').apex_config.labels.formatter;
-  assert.match(fmt, /^EVAL:function/);
-  assert.equal(new Function(`return (${fmt.replace(/^EVAL:/, '')})`)()(18.6), '19°', 'temperature axis labels carry the degree sign');
-});
-
 ok('heating holds read as heating, not occupancy: banner, heating row and occupied row', () => {
   const bed = quietRoom('bedroom', { occupied: true, lights_on: 2, target: 5, mode_target: 5, mode_name: 'minimum', heating_active: 'minimum', heating_source: 'safety', hvac_action: 'idle', pres_labels: ['Bed occupied'], heat_labels: ['Window open'], labels: ['Bed occupied', 'Window open'], verdict: 'Occupied · lights on · held occupied by Bed occupied · heating suspended: window open' });
   const hass = withRooms([bed], []);
@@ -2346,8 +2327,8 @@ ok('heating holds read as heating, not occupancy: banner, heating row and occupi
 
 ok('room page puts readings and lighting straight under the head, before the chart; Automation is a row of Presence, so the page has no Automation card of its own', () => {
   const cards = loadYaml('info_templates.yaml').pulse_room.card.cards;
-  const order = cards.map((c) => (c.type === 'conditional' ? 'chart' : c.mode));
-  assert.deepEqual(order, ['room-head', 'readings', 'lights', 'heating', 'chart', 'presence', 'media', 'device', 'room-feed']);
+  const order = cards.map((c) => c.mode);
+  assert.deepEqual(order, ['room-head', 'readings', 'lights', 'heating', 'presence', 'media', 'device', 'room-feed']);
 });
 
 ok('speaker play button is quiet unless playing; the amber pause button marks active playback', () => {
@@ -3545,20 +3526,20 @@ ok('lights wording: every lights phrase comes from lightsState', () => {
 });
 
 ok('room page order: header, readings, Scenes with Individual lights, Heating, Presence ending in Automation, Media, Activity', () => {
-  const cards = loadYaml('info_templates.yaml').pulse_room.card.cards.filter((c) => c.mode !== 'device').map((c) => (c.type === 'conditional' ? 'chart' : c.mode));
-  assert.deepEqual(cards, ['room-head', 'readings', 'lights', 'heating', 'chart', 'presence', 'media', 'room-feed']);
+  const cards = loadYaml('info_templates.yaml').pulse_room.card.cards.filter((c) => c.mode !== 'device').map((c) => c.mode);
+  assert.deepEqual(cards, ['room-head', 'readings', 'lights', 'heating', 'presence', 'media', 'room-feed']);
   // Rendered in template order for a room that has every section, the headings come out in that order.
   const hass = withRooms([quietRoom('parlour', { occupied: true, lights_on: 2, target: 20, mode_target: 20, mode_name: 'comfort' })], [], {
     'input_boolean.parlour_automation_lights_enabled': { state: 'on', attributes: {} },
   });
-  const html = cards.map((m) => (m === 'chart' ? P.render('chart-head', {}, hass, NOW) : P.render(m, { room: 'parlour' }, hass, NOW))).join('');
+  const html = cards.map((m) => P.render(m, { room: 'parlour' }, hass, NOW)).join('');
   // Lights and Automation are disclosure rows, which stand in for their section headers.
   const heads = [...html.matchAll(/<h2>([^<]+)<\/h2>|data-act="disclose" data-id="parlour:(\w+)"/g)].map((m) => m[1] || `row:${m[2]}`);
-  assert.deepEqual(heads, ['Scenes', 'row:lights', 'Heating', 'Last 24 hours', 'Presence', 'row:automation', 'Media', 'Activity']);
+  assert.deepEqual(heads, ['Scenes', 'row:lights', 'Heating', 'Presence', 'row:automation', 'Media', 'Activity']);
   assert.match(html.slice(0, html.indexOf('<h2>Scenes')), /^<div class="p"><div class="hm hm-first"><div class="hm-head"><a [^>]*Back to House[\s\S]*<h1 class="hm-big">Parlour<\/h1><span class="hm-line">Occupied · Lamps on<\/span>/, 'the back link, the title and the subtitle come first');
   assert.doesNotMatch(html, /Why it/, 'no separate explanation card');
   // The bathroom puts the fan row beside Media, so the order of the named sections is unchanged.
-  const bath = loadYaml('info_templates.yaml').pulse_room.card.cards.map((c) => (c.type === 'conditional' ? 'chart' : c.mode));
+  const bath = loadYaml('info_templates.yaml').pulse_room.card.cards.map((c) => c.mode);
   assert.deepEqual(bath.filter((m) => m !== 'device'), cards);
   // Every room view still calls the one template.
   for (const f of readdirSync(root + 'views').filter((x) => /^info-room-/.test(x) && !/garden/.test(x))) {
@@ -4872,33 +4853,6 @@ ok('timeline: colon-form declined sentences split into subject line and capitali
   assert.doesNotMatch(bare, /tl-l2/, 'no reason, one line');
 });
 
-ok('the room chart axis puts whole-degree gridlines exactly at their labels', () => {
-  const temp = loadYaml('info_templates.yaml').pulse_room.card.cards.find((c) => c.type === 'conditional').card.cards.find((c) => c.type === 'custom:apexcharts-card').yaxis.find((a) => a.id === 'temp').apex_config;
-  const fn = (text) => new Function(`return (${text.replace(/^EVAL:/, '')})`)();
-  const lo = fn(temp.min);
-  const hi = fn(temp.max);
-  assert.equal(temp.tickAmount, 2);
-  let seen = 0;
-  for (let m = 5; m <= 30; m += 0.1) for (const span of [0, 0.3, 1.7, 3.4, 5.8, 9]) {
-    const a = lo(m);
-    const b = hi(m + span);
-    const step = (b - a) / temp.tickAmount;
-    assert.ok(Number.isInteger(a) && Number.isInteger(b) && Number.isInteger(step), `whole-degree lines for ${m}..${m + span}: ${a}, ${b}`);
-    assert.ok(a <= m - 0.5 && a > m - 2.5 - 1e-9 && b >= m + span + 0.5 && b < m + span + 2.5 + 1e-9, 'covers the data with 0.5 to 2.5 degrees of padding');
-    assert.ok(b - a >= 2, 'never a flat axis');
-    seen += 1;
-  }
-  assert.ok(seen > 1000);
-  assert.deepEqual([lo(15.6), hi(21.4)], [14, 22]);
-  assert.equal(lo(NaN), undefined, 'a bad value leaves the data extent');
-  assert.equal(hi(undefined), undefined);
-  // The gridline labels round to themselves.
-  const label = fn(temp.labels.formatter);
-  for (const v of [14, 18, 22]) assert.equal(label(v), `${v}°`);
-  // The Energy and price charts are drawn by pulse-card with no value axis, so they share no tick code.
-  assert.doesNotMatch(readFileSync(root + 'www/pulse-card.js', 'utf8'), /tickAmount|niceTicks/);
-});
-
 // ── Haptics ──────────────────────────────────────────────────────────────────────────────────────
 const fakeNode = () => { const events = []; return { events, dispatchEvent: (e) => { events.push(e); return true; } }; };
 
@@ -4983,6 +4937,294 @@ ok('haptic: rendering and hass tracking never take a node, and the hass setter p
   const paint = src.slice(src.indexOf('      _paint(fromHass = false) {'), src.indexOf('\n      }\n', src.indexOf('      _paint(fromHass = false) {')));
   assert.ok(paint.length > 50, 'found _paint');
   assert.doesNotMatch(paint, /haptic/i);
+});
+
+// ── Heating day plan ──
+const PLANS = JSON.parse(readFileSync(new URL('./fixtures/heating-plans.json', import.meta.url), 'utf8'));
+const planSensor = (c) => ({ 'sensor.parlour_heating_plan': { state: c.state, attributes: { blocks: PLANS.weekday, ...c.attributes } } });
+const planAt = (name, report = { temp: 18.4 }, over = {}) => {
+  const c = { ...PLANS.cases[name], ...over };
+  return { now: Date.parse(c.now), hass: heatHass(report, planSensor(c)), c };
+};
+const planHtml = (name, ui, report, over) => { const { now, hass } = planAt(name, report, over); return P.render('heating', { room: 'parlour' }, hass, now, ui); };
+const countOf = (html, re) => (html.match(re) || []).length;
+const sane = (html) => assert.doesNotMatch(html, /NaN|undefined|Infinity|\[object/);
+const epoch = (iso) => Date.parse(iso) / 1000;
+const DAY0 = '2026-10-25T';
+const histFixture = () => ({
+  'sensor.parlour_sensor_climate_temperature': [
+    { s: '17.0', lu: epoch(`${DAY0}00:00:00Z`) }, { s: '17.2', lu: epoch(`${DAY0}02:00:00Z`) }, { s: '17.4', lu: epoch(`${DAY0}02:01:00Z`) },
+    { s: 'unavailable', lu: epoch(`${DAY0}02:05:00Z`) }, { s: '99', lu: epoch(`${DAY0}02:10:00Z`) }, { s: '18.1', lu: epoch(`${DAY0}04:20:00Z`) }, { s: '18.4', lu: epoch(`${DAY0}07:00:00Z`) },
+  ],
+  'climate.parlour_trv': [
+    { s: 'heat', a: { hvac_action: 'idle' }, lu: epoch(`${DAY0}00:00:00Z`) }, { s: 'heat', a: { hvac_action: 'heating' }, lu: epoch(`${DAY0}01:00:00Z`) },
+    { s: 'heat', a: { hvac_action: 'idle' }, lu: epoch(`${DAY0}02:00:00Z`) }, { s: 'heat', a: { hvac_action: 'heating' }, lu: epoch(`${DAY0}06:00:00Z`) },
+  ],
+});
+const PARLOUR = P.ROOMS.parlour;
+const heatData = (nowIso = `${DAY0}10:00:00Z`) => ({ day: '2026-10-25', ...P.parseHeatHistory(histFixture(), PARLOUR, Date.parse(`${DAY0}00:00:00Z`), Date.parse(nowIso)) });
+
+ok('day plan: every source reads, and the contract is checked', () => {
+  for (const name of ['schedule', 'schedule_wrap', 'safety', 'house_mode', 'manual', 'manual_over_day']) {
+    const { now, hass } = planAt(name);
+    const v = P.dayPlan(hass, 'parlour', now);
+    assert.equal(v.ok, true, name);
+    assert.equal(v.plan.active.mode, PLANS.cases[name].state, name);
+    assert.deepEqual(v.temps, { comfort: 20, baseline_day: 18, baseline_night: 16.5, minimum: 5 });
+  }
+  const eff = (name) => { const { now, hass } = planAt(name); return P.dayPlan(hass, 'parlour', now).eff; };
+  assert.equal(eff('schedule'), null, 'the schedule is the plan, not an override');
+  assert.deepEqual([eff('safety').mode, eff('safety').to, eff('safety').byHand], ['minimum', 1440, false], 'no end: held to the end of the strip');
+  assert.deepEqual([eff('house_mode').mode, eff('house_mode').to], ['baseline_night', 1440]);
+  assert.deepEqual([eff('manual').mode, eff('manual').from, eff('manual').to, eff('manual').byHand], ['comfort', 17 * 60, 19 * 60, true]);
+  // The override runs past a midnight: clamped to the strip.
+  const { hass } = planAt('manual');
+  const next = { ...hass, states: { ...hass.states, 'sensor.parlour_heating_plan': { state: 'comfort', attributes: { ...hass.states['sensor.parlour_heating_plan'].attributes, override: { mode: 'comfort', until: '2026-10-26T01:00:00Z' } } } } };
+  assert.equal(P.dayPlan(next, 'parlour', Date.parse(PLANS.cases.manual.now)).eff.to, 1440);
+});
+
+ok('day plan: a missing, unavailable, stale or broken plan is named, never drawn', () => {
+  const why = (hass, now) => P.dayPlan(hass, 'parlour', now).why;
+  const { now, hass } = planAt('stale');
+  assert.equal(why(hass, now), 'stale');
+  assert.equal(why(heatHass({}), now), 'missing', 'no sensor');
+  assert.equal(why(heatHass({}, { 'sensor.parlour_heating_plan': { state: 'unavailable', attributes: {} } }), now), 'missing');
+  assert.equal(why(heatHass({}, { 'sensor.parlour_heating_plan': { state: 'unknown', attributes: {} } }), now), 'missing');
+  const ok1 = planAt('schedule');
+  const broken = (patch) => heatHass({}, { 'sensor.parlour_heating_plan': { state: 'comfort', attributes: { ...ok1.hass.states['sensor.parlour_heating_plan'].attributes, ...patch } } });
+  for (const patch of [
+    { date: '25/10/2026' }, { date: undefined }, { blocks: [] }, { blocks: 'nope' }, { blocks: [{ start: '6:00', end: '16:15', mode: 'comfort' }] },
+    { blocks: [{ start: '06:00', end: '24:00', mode: 'comfort' }] }, { blocks: [{ start: '06:00', end: '16:15', mode: 'turbo' }] }, { blocks: [{ start: '06:00', end: '16:15', mode: 'auto' }] },
+    { blocks: [...PLANS.weekday, 'x'] }, { active: null }, { active: { mode: 'comfort', source: '', until: null } }, { active: { mode: 'comfort', source: 'schedule', until: 'soon' } },
+    { override: 'yes' }, { override: { mode: 'comfort', until: null } }, { override: { mode: 'turbo', until: '2026-10-25T19:00:00Z' } },
+  ]) assert.equal(why(broken(patch), ok1.now), 'invalid', JSON.stringify(patch));
+  // A global that is unavailable cannot be drawn.
+  assert.equal(why(heatHass({}, { ...planSensor(ok1.c), 'input_number.global_temperature_comfort': { state: 'unavailable', attributes: {} } }), ok1.now), 'invalid');
+  assert.equal(P.dayPlan(heatHass({}), now, now).ok, false);
+  assert.throws(() => P.zonedClock(NaN), /needs a time/);
+  // The blocks can arrive as a JSON string.
+  assert.equal(P.dayPlan(broken({ blocks: JSON.stringify(PLANS.weekday) }), 'parlour', ok1.now).ok, true);
+});
+
+ok('day plan: a block that wraps midnight is two segments', () => {
+  const { now, hass } = planAt('schedule_wrap');
+  const v = P.dayPlan(hass, 'parlour', now);
+  assert.deepEqual(v.segs.map((s) => [s.mode, s.from, s.to]), [['baseline_night', 0, 360], ['baseline_day', 360, 975], ['comfort', 975, 1320], ['baseline_night', 1320, 1440]]);
+  const html = planHtml('schedule_wrap');
+  sane(html);
+  assert.equal(countOf(html, /opacity="0\.22"/g), 2, 'night is drawn at both ends');
+  assert.match(html, /<rect x="0\.0"[^>]*width="81\.5"/, 'the morning end starts at the left edge');
+  assert.deepEqual(P.planSegments([{ from: 1320, to: 0, mode: 'minimum' }]).map((s) => [s.from, s.to]), [[1320, 1440]], 'ending exactly at midnight leaves no sliver');
+});
+
+ok('day plan: the schedule draws areas by warmth, the target step line, the dimmed future and the now marker', () => {
+  const html = planHtml('schedule', { heatData: heatData() });
+  sane(html);
+  assert.match(html, /<svg class="plan" viewBox="0 0 326 134"[^>]*role="img" aria-label="Today(?:'|&#39;)s heating plan\. Now Day 18\.0 degrees until 16:15\./);
+  const ops = [...html.matchAll(/<rect x="[\d.]+" y="[\d.]+" width="[\d.]+" height="[\d.]+" fill="#f08a4b" opacity="([\d.]+)"/g)].map((m) => m[1]);
+  assert.deepEqual(ops, ['0.22', '0.42', '0.75', '0.22'], 'night, day, comfort, night in time order');
+  assert.equal(countOf(html, /class="plan-future"/g), 1);
+  const future = html.match(/class="plan-future" x="([\d.]+)"/)[1];
+  assert.equal(Number(future), Number((10 * 60 / 1440 * 326).toFixed(1)), 'the future starts at now');
+  assert.match(html, /<path d="M0\.0 [\d.]+H81\.5V[\d.]+H220\.7V[\d.]+H298\.8V[\d.]+H326\.0" fill="none" stroke="#f08a4b" stroke-width="2"\/>/, 'one step line across the day');
+  assert.doesNotMatch(html, /plan-override|plan-replaced/);
+  assert.match(html, /<text[^>]*>now<\/text>/);
+  assert.match(html, /Comfort 20\.0°/, 'the warmest block is labelled');
+  for (const h of ['00', '06', '12', '18']) assert.match(html, new RegExp(`>${h}</text>`));
+  assert.match(html, /class="plan-dot"/);
+  assert.match(html, /class="plan-room"/);
+  assert.equal(countOf(html, /class="plan-heat"/g), 2, 'a heating bar per span');
+});
+
+ok('day plan: the card says what the room is doing and the next blocks trail their temperature', () => {
+  const html = planHtml('schedule', { heatData: heatData() });
+  assert.match(html, /plan-big[^>]*>18\.4°</);
+  assert.match(html, />Day · 18\.0°</);
+  assert.match(html, />until 16:15 · radiator idle</);
+  const rows = [...html.matchAll(/class="hm-rt">([^<]*)<\/div><div class="hm-rs">([^<]*)<\/div><\/div><span class="hm-val num">([^<]*)</g)].map((m) => m.slice(1));
+  assert.deepEqual(rows, [['Comfort', 'From 16:15', '20.0°'], ['Night', 'From 22:00', '16.5°']]);
+  assert.match(planHtml('schedule', undefined, { temp: 18.4, hvac_action: 'heating' }), />until 16:15 · radiator heating</);
+  // Late in the evening only one block is left, and with none left the rows go.
+  assert.equal(countOf(planHtml('schedule_wrap'), /class="hm-rs">From/g), 0);
+});
+
+ok('day plan: an override is drawn in the tint over its span with the replaced plan dashed', () => {
+  const html = planHtml('manual', { heatData: heatData(`${DAY0}17:00:00Z`) });
+  sane(html);
+  const x = (min) => (min / 1440 * 326).toFixed(1);
+  assert.match(html, new RegExp(`<path class="plan-override" d="M${x(1020)} [\\d.]+H${x(1140)}" fill="none" stroke="#f2c46b" stroke-width="2"/>`));
+  assert.match(html, /class="plan-replaced"[^>]*stroke-dasharray="3 3"/);
+  assert.equal(countOf(html, /fill="#f2c46b" opacity="0\.4"/g), 1, 'the override area');
+  // The comfort area stops where the override starts and the plan resumes after it.
+  const comfort = [...html.matchAll(/<rect x="([\d.]+)" y="[\d.]+" width="([\d.]+)" height="[\d.]+" fill="#f08a4b" opacity="0\.75"/g)].map((m) => [m[1], Math.round(Number(m[1]) + Number(m[2]))]);
+  assert.deepEqual(comfort, [[x(975), x(1020)], [x(1140), x(1320)]].map(([a, b]) => [a, Math.round(Number(b))]));
+  assert.match(html, />by hand until 19:00 · radiator idle</);
+  assert.match(html, new RegExp(`class="plan-mode-t num" style="color:#f2c46b"`));
+  const rows = [...html.matchAll(/class="hm-rs">([^<]*)</g)].map((m) => m[1]);
+  assert.deepEqual(rows.slice(0, 2), ['From 19:00 · schedule resumes', 'From 22:00']);
+  assert.equal(footnote(html), 'Holds until 19:00');
+});
+
+ok('day plan: safety and house mode draw what the controller chose; the footnote keeps its reason', () => {
+  const safety = planHtml('safety', undefined, { temp: 18, heating_source: 'safety', heat_labels: ['Window open'] });
+  assert.match(safety, /class="plan-override"/);
+  assert.match(safety, />held for now · radiator idle</);
+  assert.match(footnote(safety), /^A window or door is open/);
+  const house = planHtml('house_mode', undefined, { temp: 18, heating_source: 'house_mode' }, {});
+  assert.match(house, /class="plan-override"/);
+  assert.equal(footnote(planHtml('schedule')), 'Holds until 16:15', 'schedule: the block end');
+});
+
+ok('day plan: the Auto tile reads what the controller chose', () => {
+  // The report still says Day; the plan says Comfort.
+  const html = planHtml('manual_over_day', undefined, { temp: 18, heating_active: 'baseline_day', heating_source: 'schedule' });
+  assert.equal(tileSub(html, 'auto'), 'Follows the schedule', 'a manual choice is not the schedule');
+  const sched = planHtml('schedule', undefined, { temp: 18, heating_active: 'comfort', heating_source: 'schedule' });
+  assert.equal(tileSub(sched, 'auto'), 'Day 18.0°');
+  assert.equal(tileSub(planHtml('safety'), 'auto'), 'Follows the schedule');
+});
+
+ok('day plan: a stale or missing plan falls back to the mode grid with a footnote', () => {
+  const stale = planHtml('stale');
+  assert.doesNotMatch(stale, /<svg class="plan"|plan-card/);
+  assert.equal(countOf(stale, /data-act="heating-mode"/g), 5);
+  assert.deepEqual([...stale.matchAll(/<p class="hm-foot">([^<]*)<\/p>/g)].map((m) => m[1]), ['Holds until the schedule next changes', 'The heating plan is not for today, so the day is not drawn']);
+  const none = P.render('heating', { room: 'parlour' }, heatHass({}), NOW);
+  assert.match(none, /There is no heating plan to show yet/);
+  assert.equal(countOf(none, /data-act="heating-mode"/g), 5);
+  // Never a note in place of the grid's own reason.
+  const locked = P.render('heating', { room: 'parlour' }, heatHass({ heating_enabled: false }), NOW);
+  assert.match(footnote(locked), /^Heating automation is off/);
+});
+
+ok('day plan: no history draws the plan without the line, bar or heated row; yesterday\'s history is ignored', () => {
+  for (const ui of [undefined, {}, { heatData: null }, { heatData: { day: '2026-10-24', temps: [{ min: 60, v: 17 }, { min: 120, v: 18 }], spans: [[0, 60]] } }, { heatData: { day: '2026-10-25', temps: [], spans: null } }]) {
+    const html = planHtml('schedule', ui);
+    sane(html);
+    assert.match(html, /<svg class="plan"/);
+    assert.doesNotMatch(html, /plan-room|plan-heat|Heated today/, JSON.stringify(ui));
+    assert.match(html, /class="plan-dot"/, 'the live reading still marks now');
+  }
+  assert.doesNotMatch(planHtml('schedule', undefined, { temp: null }), /plan-dot|plan-room/, 'no reading, no dot');
+  const heated = planHtml('schedule', { heatData: heatData() });
+  assert.match(heated, /Heated today<\/div><\/div><span class="hm-val num">5 h</, 'one hour, then 06:00 to now');
+});
+
+ok('day plan: hostile numbers cannot leave the picture', () => {
+  const ui = { heatData: { day: '2026-10-25', temps: [{ min: 30, v: 17 }, { min: 9999, v: 1e9 }, { min: -5, v: -1e9 }, { min: 200, v: 18 }], spans: [[-100, 50], [1400, 99999], [30, 10]] } };
+  const html = planHtml('schedule', ui, { temp: 999 });
+  sane(html);
+  for (const m of html.matchAll(/\sy="(-?[\d.]+)"|cy="(-?[\d.]+)"/g)) assert.ok(Number(m[1] || m[2]) >= 0 && Number(m[1] || m[2]) <= 134, m[0]);
+  for (const m of html.matchAll(/\sx="(-?[\d.]+)"|cx="(-?[\d.]+)"/g)) assert.ok(Number(m[1] || m[2]) >= 0 && Number(m[1] || m[2]) <= 326, m[0]);
+});
+
+ok('day plan: both themes draw with their own tokens', () => {
+  const { now, hass } = planAt('manual');
+  const rp = Raw.render('heating', { room: 'parlour' }, hass, now, { heatData: heatData(`${DAY0}17:00:00Z`) });
+  const cl = Raw.render('heating', { room: 'parlour', theme: 'classic' }, hass, now, { heatData: heatData(`${DAY0}17:00:00Z`) });
+  const t = Raw.THEMES;
+  for (const [html, th] of [[rp, t['rose-pine']], [cl, t.classic]]) {
+    for (const k of ['heat', 'tint', 'text', 'surface', 'textSecondary']) assert.ok(html.includes(th[k]), `${k} ${th[k]}`);
+  }
+  assert.ok(!rp.includes(t.classic.heat) && !cl.includes(t['rose-pine'].heat), 'no token leaks across themes');
+  assert.doesNotMatch(rp.replace(/var\(--pulse-\w+\)/g, ''), /#[0-9a-f]{6}\b(?!.*<\/svg>)/i, 'colour literals appear only inside the picture');
+});
+
+ok('heating history: rows parse in either wire form, bad rows drop, spans clip to the day', () => {
+  const midnight = Date.parse(`${DAY0}00:00:00Z`);
+  const now = Date.parse(`${DAY0}10:00:00Z`);
+  const h = P.parseHeatHistory(histFixture(), PARLOUR, midnight, now);
+  // 02:00 and 02:01 share a five-minute bucket (the later wins); unavailable and 99 are dropped.
+  assert.deepEqual(h.temps.map((p) => [p.min, p.v]), [[0, 17], [121, 17.4], [260, 18.1], [420, 18.4]]);
+  assert.deepEqual(h.spans, [[60, 120], [360, 600]], 'the last span runs to now');
+  assert.equal(P.parseHeatHistory({ ...histFixture(), 'climate.parlour_trv': [] }, PARLOUR, midnight, now).spans, null, 'no climate rows, no heated row');
+  const full = { 'sensor.parlour_sensor_climate_temperature': [{ state: '19', last_updated: `${DAY0}03:00:00+00:00` }], 'climate.parlour_trv': [{ state: 'heat', attributes: { hvac_action: 'heating' }, last_changed: `${DAY0}03:00:00Z` }, { state: 'unavailable', last_changed: `${DAY0}04:00:00Z` }] };
+  const f = P.parseHeatHistory(full, PARLOUR, midnight, now);
+  assert.deepEqual([f.temps, f.spans], [[{ min: 180, v: 19 }], [[180, 240]]], 'the long form reads too, and unavailable ends a span');
+  const before = P.parseHeatHistory({ 'sensor.parlour_sensor_climate_temperature': [{ s: '15', lu: epoch('2026-10-24T22:00:00Z') }], 'climate.parlour_trv': [{ s: 'heat', a: { hvac_action: 'heating' }, lu: epoch('2026-10-24T22:00:00Z') }] }, PARLOUR, midnight, now);
+  assert.deepEqual([before.temps[0].min, before.spans[0]], [0, [0, 600]], 'the carried-in start state clips to midnight');
+  assert.deepEqual(P.parseHeatHistory({}, PARLOUR, midnight, now), { temps: [], spans: null });
+  assert.deepEqual(P.parseHeatHistory({ 'sensor.parlour_sensor_climate_temperature': ['x', null, { s: '18' }] }, PARLOUR, midnight, now).temps, []);
+  assert.throws(() => P.parseHeatHistory(null, PARLOUR, midnight, now), /not an object/);
+  const req = P.heatRequest(PARLOUR, midnight, now);
+  assert.deepEqual([req.type, req.entity_ids, req.start_time, req.end_time, req.significant_changes_only, req.minimal_response], ['history/history_during_period', ['sensor.parlour_sensor_climate_temperature', 'climate.parlour_trv'], `${DAY0}00:00:00.000Z`, `${DAY0}10:00:00.000Z`, false, false]);
+});
+
+await okAsync('heating history loader: on load, then at most every five minutes, never overlapping; stale responses are ignored', async () => {
+  const calls = [];
+  const pending = [];
+  const hass = { config: { time_zone: 'UTC' }, callWS: (req) => { calls.push(req); return new Promise((res, rej) => pending.push({ res, rej })); } };
+  const t0 = Date.parse(`${DAY0}10:00:00Z`);
+  let changes = 0;
+  const L = P.makeHeatLoader();
+  const go = (now) => L.ensure(hass, 'parlour', now, () => { changes += 1; });
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+  go(t0); go(t0 + 1000); go(t0 + 2000);
+  assert.equal(calls.length, 1, 'one request in flight, however many hass updates');
+  pending[0].res(histFixture());
+  await flush();
+  assert.equal(changes, 1);
+  assert.equal(L.data.day, '2026-10-25');
+  go(t0 + P.HEAT_REFRESH_MS - 1);
+  assert.equal(calls.length, 1, 'not before five minutes');
+  go(t0 + P.HEAT_REFRESH_MS);
+  assert.equal(calls.length, 2);
+  // Cancelled (the card unmounted): the late answer neither lands nor repaints.
+  L.cancel();
+  pending[1].res(histFixture());
+  await flush();
+  assert.equal(changes, 1);
+  // A failure keeps what is drawn, retries later, and says so once in the console.
+  const warn = console.warn; const warned = [];
+  console.warn = (...a) => warned.push(a.join(' '));
+  try {
+    go(t0 + 10 * 60000);
+    assert.equal(calls.length, 3);
+    pending[2].rej(new Error('boom'));
+    await flush();
+    assert.equal(L.data.day, '2026-10-25', 'the earlier history stays');
+    go(t0 + 10 * 60000 + 1000);
+    assert.equal(calls.length, 3, 'no retry before the delay');
+    go(t0 + 10 * 60000 + P.HEAT_RETRY_MS);
+    assert.equal(calls.length, 4);
+  } finally { console.warn = warn; }
+  assert.deepEqual(warned.length, 1);
+  // A newer day drops yesterday's data and supersedes an old request.
+  const tomorrow = Date.parse('2026-10-26T00:05:00Z');
+  go(tomorrow);
+  assert.equal(L.data, null);
+  assert.equal(calls.length, 5);
+  pending[3].res(histFixture());
+  await flush();
+  assert.equal(L.data, null, 'the answer for the old request is ignored');
+  assert.equal(calls[4].start_time, '2026-10-26T00:00:00.000Z');
+  // Not a heated room, or no websocket: nothing happens.
+  const quiet = P.makeHeatLoader();
+  quiet.ensure(hass, 'hallway_upstairs', t0, () => {});
+  quiet.ensure({}, 'parlour', t0, () => {});
+  assert.equal(calls.length, 5);
+  // A throwing call is a failure, not a crash.
+  const boom = P.makeHeatLoader();
+  console.warn = () => {};
+  try { boom.ensure({ callWS: () => { throw new Error('sync'); } }, 'parlour', t0, () => {}); await flush(); } finally { console.warn = warn; }
+  assert.equal(boom.data, null);
+});
+
+ok('heating card: history rides on ui without changing the render signature, and the apexcharts block is gone', () => {
+  const src = readFileSync(root + 'www/pulse-card.js', 'utf8');
+  assert.match(src, /Object\.defineProperty\(this\._ui, 'heatData', \{ get: \(\) => this\._heat\.data, enumerable: false \}\)/);
+  assert.match(src, /this\._heat\.cancel\(\)/, 'unmount cancels');
+  assert.doesNotMatch(readFileSync(root + 'info_templates.yaml', 'utf8'), /apexcharts|chart-head/);
+  assert.throws(() => P.render('chart-head', {}, mk(), NOW));
+  // The gate redraws when the revision moves and not otherwise.
+  const gate = P.makeRenderGate();
+  const { now, hass } = planAt('schedule');
+  const cfg = { room: 'parlour' };
+  const ui = { heatRev: 0 };
+  gate.run('heating', cfg, hass, now, ui, false);
+  assert.equal(gate.run('heating', cfg, hass, now + 1000, ui, false).skipped, true);
+  ui.heatRev = 1;
+  assert.equal(gate.run('heating', cfg, hass, now + 2000, ui, false).skipped, false);
 });
 
 // ── Classic theme is byte-identical to the pre-theme card ────────────────────────────────────────
@@ -5164,31 +5406,6 @@ ok('every control on the room and garden pages is a button or link with a name, 
     }
   }
   assert.deepEqual([...seen].sort(), ['brightness', 'garden-power', 'garden-theme', 'heating-mode', 'media-play', 'media-power', 'scene', 'setting-number', 'setting-toggle', 'toggle', 'volume'].sort());
-});
-
-ok('the apexcharts config cannot read CSS variables, so each literal in info_templates.yaml is pinned to the default theme\'s token', () => {
-  const t = Raw.THEMES[Raw.DEFAULT_THEME];
-  const stack = loadYaml('info_templates.yaml').pulse_room.card.cards.find((c) => c.type === 'conditional').card;
-  assert.equal(stack.type, 'vertical-stack');
-  assert.deepEqual(stack.cards.map((c) => c.mode || c.type), ['chart-head', 'custom:apexcharts-card'], 'the section header is the pulse-card one, the chart has none');
-  const chart = stack.cards[1];
-  assert.equal(chart.header.show, false);
-  const ax = chart.apex_config;
-  assert.equal(ax.chart.background, t.surface, 'card background = surface');
-  assert.match(chart.card_mod.style, new RegExp(`border: none; border-radius: 20px; box-shadow: none; background: ${t.surface};`), '20px radius, no border, no shadow');
-  assert.equal(ax.grid.borderColor, t.separator, 'grid = separator');
-  assert.equal(ax.legend.labels.colors, t.textSecondary);
-  assert.equal(ax.xaxis.labels.style.colors, t.textSecondary, 'axis = textSecondary');
-  assert.equal(chart.yaxis.find((a) => a.id === 'temp').apex_config.labels.style.colors, t.textSecondary);
-  const colourOf = (name) => chart.series.find((x) => x.name === name).color;
-  assert.equal(colourOf('Room'), t.text, 'room temperature = text');
-  assert.equal(colourOf('Target'), t.tint, 'target = tint');
-  assert.equal(colourOf('Heating'), t.heat, 'heating band = heating colour');
-  // No other colour literal hides in the chart.
-  const literals = JSON.stringify(chart).match(/#[0-9a-fA-F]{6}\b|rgba?\([^)]*\)/g);
-  const allowed = new Set([t.surface, t.text, t.tint, t.heat, t.textSecondary, t.separator]);
-  for (const l of literals) assert.ok(allowed.has(l), `${l} is a default-theme token value`);
-  assert.equal(P.render('chart-head', {}, mk(), NOW).match(/<h2>([^<]+)<\/h2>/)[1], 'Last 24 hours');
 });
 
 // A translucent rgba(r,g,b,a) laid over an opaque #rrggbb, as hex: what the eye sees.

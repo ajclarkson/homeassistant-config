@@ -1,0 +1,126 @@
+{
+  "_note": "Plans as sensor.{room}_heating_plan carries them (payload shape: homerun-automations heating plan publisher). `now` is the instant the case is rendered at; the zone is UTC.",
+  "weekday": [
+    {
+      "start": "06:00",
+      "end": "16:15",
+      "mode": "baseline_day"
+    },
+    {
+      "start": "16:15",
+      "end": "22:00",
+      "mode": "comfort"
+    },
+    {
+      "start": "22:00",
+      "end": "06:00",
+      "mode": "baseline_night"
+    }
+  ],
+  "cases": {
+    "schedule": {
+      "now": "2026-10-25T10:00:00Z",
+      "state": "baseline_day",
+      "attributes": {
+        "date": "2026-10-25",
+        "context": "weekday",
+        "active": {
+          "mode": "baseline_day",
+          "source": "schedule",
+          "until": "2026-10-25T16:15:00Z"
+        },
+        "override": null
+      }
+    },
+    "schedule_wrap": {
+      "now": "2026-10-25T23:30:00Z",
+      "state": "baseline_night",
+      "attributes": {
+        "date": "2026-10-25",
+        "context": "weekday",
+        "active": {
+          "mode": "baseline_night",
+          "source": "schedule",
+          "until": "2026-10-26T06:00:00Z"
+        },
+        "override": null
+      }
+    },
+    "safety": {
+      "now": "2026-10-25T10:00:00Z",
+      "state": "minimum",
+      "attributes": {
+        "date": "2026-10-25",
+        "context": "weekday",
+        "active": {
+          "mode": "minimum",
+          "source": "safety",
+          "until": null
+        },
+        "override": null
+      }
+    },
+    "house_mode": {
+      "now": "2026-10-25T10:00:00Z",
+      "state": "baseline_night",
+      "attributes": {
+        "date": "2026-10-25",
+        "context": "weekday",
+        "active": {
+          "mode": "baseline_night",
+          "source": "house_mode",
+          "until": null
+        },
+        "override": null
+      }
+    },
+    "manual": {
+      "now": "2026-10-25T17:00:00Z",
+      "state": "comfort",
+      "attributes": {
+        "date": "2026-10-25",
+        "context": "weekday",
+        "active": {
+          "mode": "comfort",
+          "source": "manual",
+          "until": "2026-10-25T19:00:00Z"
+        },
+        "override": {
+          "mode": "comfort",
+          "until": "2026-10-25T19:00:00Z"
+        }
+      }
+    },
+    "manual_over_day": {
+      "now": "2026-10-25T10:00:00Z",
+      "state": "comfort",
+      "attributes": {
+        "date": "2026-10-25",
+        "context": "weekday",
+        "active": {
+          "mode": "comfort",
+          "source": "manual",
+          "until": "2026-10-25T16:15:00Z"
+        },
+        "override": {
+          "mode": "comfort",
+          "until": "2026-10-25T16:15:00Z"
+        }
+      }
+    },
+    "stale": {
+      "now": "2026-10-25T10:00:00Z",
+      "state": "baseline_day",
+      "attributes": {
+        "date": "2026-10-24",
+        "context": "weekday",
+        "active": {
+          "mode": "baseline_day",
+          "source": "schedule",
+          "until": "2026-10-24T16:15:00Z"
+        },
+        "override": null
+      }
+    }
+  }
+}
