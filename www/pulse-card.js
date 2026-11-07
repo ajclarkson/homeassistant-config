@@ -138,7 +138,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 .oc{display:grid;grid-template-columns:20px 1fr auto;column-gap:12px;row-gap:6px;align-items:center;padding:12px 14px;min-height:64px;box-sizing:border-box;text-decoration:none;color:inherit}
 .oc .nm{font-size:16px;font-weight:600}
 .oc .t{text-align:right}
-.oc .sub{grid-column:2 / 4;display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:12px;color:#a3adba}
+.oc .sub{grid-column:1 / 4;display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:12px;color:#a3adba}
 .rgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 .rt{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-rows:auto auto;column-gap:8px;row-gap:${TILE.gap}px;padding:${TILE.padY}px 12px;height:${TILE_H}px;box-sizing:border-box;background:${TOKENS.surface};border-radius:14px;text-decoration:none;color:inherit}
 .rt .nm{grid-column:1;grid-row:1;display:flex;align-items:center;gap:6px;font-size:13.5px;font-weight:600;line-height:${TILE.nameLine}px;color:#cfd5dd;white-space:nowrap;min-width:0}
