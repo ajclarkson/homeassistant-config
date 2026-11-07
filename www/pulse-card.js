@@ -111,12 +111,13 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 .tag.off{background:${TOKENS.divider};color:${TOKENS.text2}}
 .tag.heat{background:${TOKENS.heatBg};color:${TOKENS.heat}}
 .link{display:flex;align-items:center;min-height:44px;font-size:13px;font-weight:600;color:${TOKENS.link}}
-.feed{display:grid;grid-template-columns:60px 1fr;gap:8px;font-size:12.5px;line-height:1.4;padding:8px 14px;border-top:1px solid ${TOKENS.divider}}
+.feed{display:grid;grid-template-columns:44px 16px minmax(0,1fr);gap:8px;font-size:12.5px;line-height:1.4;padding:8px 14px;border-top:1px solid ${TOKENS.divider}}
 .feed:first-child{border-top:0}
-.feed .a{color:${TOKENS.text3};display:flex;align-items:center;gap:4px}
+.feed .a{color:${TOKENS.text3}}
 .feed.muted{color:${TOKENS.text2}}
 .feed.warn{color:${TOKENS.amber}}
-.feed .g{display:inline-flex}
+.feed .si{display:flex;align-items:center;justify-content:center;height:1.4em;color:${TOKENS.text3}}
+.sl{font-size:12px;line-height:16px;min-height:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .item{display:grid;grid-template-columns:22px 1fr auto;gap:10px;align-items:start;padding:12px 14px;border-top:1px solid ${TOKENS.divider}}
 .item:first-child{border-top:0}
 .item svg,.ic{width:18px;height:18px;stroke:${TOKENS.text2};fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;margin-top:1px}
@@ -945,11 +946,13 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       default: return `Couldn't run: ${pretty(d.abort_kind) || 'unknown problem'}`;
     }
   }
+  // A guard abort is an automation's precondition not being met: routine, never a problem.
+  const isGuard = (e) => e.kind === 'abort' && e.detail.abort_kind === 'guard';
   // The one place an entry becomes words, plus how to show it: `ok` for something done, `muted` for a rule that
   // chose not to act, `warn` for a run that could not happen. A declared reason with no wording still renders
   // (never blank) and is reported by unexplainedReasons.
   function sentenceFor(e, hass) {
-    if (e.kind !== 'decision') return { text: problemSentence(e, hass), tone: 'warn' };
+    if (e.kind !== 'decision') return { text: problemSentence(e, hass), tone: isGuard(e) ? 'muted' : 'warn' };
     const tone = e.outcome === 'declined' ? 'muted' : 'ok';
     if (e.outcome === undefined) return { text: undeclaredSentence(e), tone };
     const fn = own(REASON_TEXT, `${e.subsystem}:${e.reason}`);
@@ -1023,18 +1026,25 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   function activityOf(hass, history, withPlace) {
     const rows = [];
     for (const e of history.entries) {
+      // Routine on the House feed, where it would only be noise; a room page still shows it, muted.
+      if (withPlace && isGuard(e)) continue;
       const sentence = sentenceFor(e, hass);
-      const text = withPlace ? placed(e.location, sentence.text) : sentence.text;
+      const text = withPlace ? placed(e.location, sentence.text, e.subsystem) : sentence.text;
       const last = rows[rows.length - 1];
-      if (last && last.text === text && last.tone === sentence.tone) last.count += 1;
-      else rows.push({ ts: e.ts, text, tone: sentence.tone, count: 1 });
+      if (last && last.text === text && last.tone === sentence.tone && last.subsystem === e.subsystem) last.count += 1;
+      else rows.push({ ts: e.ts, text, tone: sentence.tone, subsystem: e.subsystem, count: 1 });
     }
     return { rows, note: history.note };
   }
-  // House-wide rows say where: "Kitchen · Lights off · room empty". Whole-house automations have no room.
-  function placed(location, text) {
-    if (!location || location === 'house') return text;
-    return `${own(ROOMS, location) ? ROOMS[location].short : capFirst(pretty(location))} · ${text}`;
+  // House feed rows say what they are about: a room's short name, or for whole-house entries the subsystem
+  // noun ("Energy · Spun 3 Octopus wheels"). The prefix is left off when the sentence already opens with that
+  // noun (or its first word: "House mode" under "House set to away"), so nothing reads "Lights · Lights off".
+  function placed(location, text, subsystem) {
+    if (location && location !== 'house') return `${own(ROOMS, location) ? ROOMS[location].short : capFirst(pretty(location))} · ${text}`;
+    const noun = subsystemOf(subsystem).noun;
+    const first = noun.split(' ')[0].toLowerCase();
+    const lead = text.toLowerCase();
+    return lead === first || lead.startsWith(first + ' ') ? text : `${noun} · ${text}`;
   }
   function roomActivity(hass, key) {
     return activityOf(hass, readHistory(hass, `sensor.${key}_history`), false);
@@ -1042,14 +1052,15 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   function houseActivity(hass) {
     return activityOf(hass, readHistory(hass, 'sensor.house_history'), true);
   }
-  const DIDNT_GLYPH = 'M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16zM6.3 6.3l11.4 11.4';
+  // One fixed-width icon column between the time and the text keeps every row's text at the same x. The icon
+  // is decoration (aria-hidden): the subject in the text carries the meaning.
   function activityRows(rows, limit) {
     return rows.slice(0, limit).map((r) => {
-      // The glyph sits beside the time so every row's text starts at the same x.
-      const glyph = r.tone === 'muted' ? `<span class="g">${svg(DIDNT_GLYPH, 12)}</span>` : '';
-      return `<div class="feed ${r.tone}"><span class="a">${esc(hhmm(r.ts))}${glyph}</span><span>${esc(r.text)}${r.count > 1 ? ` <b>x${r.count}</b>` : ''}</span></div>`;
+      const icon = svg(ICON[subsystemOf(r.subsystem).icon], 14);
+      return `<div class="feed ${r.tone}"><span class="a">${esc(hhmm(r.ts))}</span><span class="si" aria-hidden="true">${icon}</span><span>${esc(r.text)}${r.count > 1 ? ` <b>x${r.count}</b>` : ''}</span></div>`;
     }).join('');
   }
+  const quietRow = (msg) => `<div class="feed"><span class="a"></span><span class="si"></span><span style="color:${TOKENS.text2}">${esc(msg)}</span></div>`;
 
   // ── Icons ────────────────────────────────────────────────────────────────────────────────────
   const ICON = {
@@ -1074,7 +1085,32 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     leaf: 'M5 19c0-8 5-13 14-14 0 9-5 14-14 14zM5 19l8-8',
     skull: 'M12 3a7 7 0 0 0-7 7c0 2.5 1.2 4 3 5v3h8v-3c1.8-1 3-2.5 3-5a7 7 0 0 0-7-7zM9.5 11h.01M14.5 11h.01M10 18v2M14 18v2',
     tree: 'M12 3l5 7h-3l4 6H6l4-6H7l5-7zM12 16v5',
+    droplet: 'M12 3c3 4 6 7 6 11a6 6 0 0 1-12 0c0-4 3-7 6-11z',
+    speaker: 'M7 3h10a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM12 12a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM12 7h.01',
+    paw: 'M12 12c-3 0-5 2.5-5 5 0 2 1.5 3 3 3 1 0 1.5-.5 2-.5s1 .5 2 .5c1.5 0 3-1 3-3 0-2.5-2-5-5-5zM4 10a1.5 2 0 1 0 3 0 1.5 2 0 1 0-3 0zM8 5.5a1.5 2 0 1 0 3 0 1.5 2 0 1 0-3 0zM13 5.5a1.5 2 0 1 0 3 0 1.5 2 0 1 0-3 0zM17 10a1.5 2 0 1 0 3 0 1.5 2 0 1 0-3 0z',
+    laptop: 'M5 6h14v9H5zM2 19h20',
+    fan: 'M12 12c0-4 1-7 3.5-7S18 8 12 12zM12 12c4 0 7 1 7 3.5S16 18 12 12zM12 12c0 4-1 7-3.5 7S6 16 12 12zM12 12c-4 0-7-1-7-3.5S8 6 12 12z',
+    guest: 'M10 4.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7zM3 20a7 7 0 0 1 14 0M19 8v6M16 11h6',
+    dot: 'M12 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4z',
   };
+  // The subject and icon of each homerun subsystem on the activity feeds: the one table. A test holds it to
+  // the catalogue, so a new subsystem fails loudly here instead of showing up as a bare dot.
+  const SUBSYSTEMS = {
+    lighting: { noun: 'Lights', icon: 'bulb' },
+    heating: { noun: 'Heating', icon: 'flame' },
+    occupied: { noun: 'Occupancy', icon: 'person' },
+    energy: { noun: 'Energy', icon: 'bolt' },
+    cameras: { noun: 'Cameras', icon: 'camera' },
+    fan: { noun: 'Fan', icon: 'fan' },
+    shower: { noun: 'Shower', icon: 'droplet' },
+    sonos: { noun: 'Speakers', icon: 'speaker' },
+    house_mode: { noun: 'House mode', icon: 'home' },
+    mo: { noun: 'Mo', icon: 'paw' },
+    thermal: { noun: 'Windows', icon: 'window' },
+    wfh_inference: { noun: 'Working from home', icon: 'laptop' },
+    modifier: { noun: 'Guest mode', icon: 'guest' },
+  };
+  const subsystemOf = (id) => own(SUBSYSTEMS, id) || { noun: capFirst(pretty(id)), icon: 'dot' };
   const svg = (path, size, extra) => `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"${extra || ''}><path d="${path}"/></svg>`;
   // Occupancy indicator (the dot stays health): filled person = occupied, outlined dim = empty,
   // dashed amber = occupancy sensor unavailable.
@@ -1845,14 +1881,17 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const roomCount = !off && rooms > 0 ? `${rooms} ${plural(rooms, 'room', 'rooms')}` : '';
     const inside = num(state(hass, 'sensor.house_average_temperature'));
     const outside = num(attr(hass, 'weather.forecast_home', 'temperature'));
-    const patio = state(hass, 'input_boolean.patio_door_heating_suspended') === 'on' ? ' · patio open' : '';
-    const hSub = [roomCount, inside !== null ? `in ${fmt1(inside)}°` : '', outside !== null ? `out ${fmt1(outside)}°` : ''].filter(Boolean).join(' · ') + patio || 'no readings';
-    return `<div class="lbl" style="margin:4px 4px -10px">House</div><div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px"><div class="card" style="padding:12px 14px${soon ? ';background:' + TOKENS.amberTag : ''}"><div class="lbl">Bins</div><div style="font-size:15px;font-weight:600;margin-top:4px${soon ? ';color:' + TOKENS.amber : ''}">${esc(binTitle)}</div><div style="font-size:12px;color:${soon ? TOKENS.amber : TOKENS.text2}">${esc(binSub)}</div></div><a class="card tap" data-act="nav" data-path="${SETTINGS_PATH}" aria-label="Open settings" style="padding:12px 14px;display:block"><div class="lbl">Heating</div><div style="font-size:15px;font-weight:600;margin-top:4px">${esc(hTitle)}</div><div style="font-size:12px;color:${TOKENS.text2}">${esc(hSub)}</div></a></div>`;
+    const patio = state(hass, 'input_boolean.patio_door_heating_suspended') === 'on' ? 'patio open' : '';
+    // Two fixed lines, each unwrappable on a phone: what is calling for heat, then the temperatures.
+    const hLine1 = [roomCount, patio].filter(Boolean).join(' · ');
+    const hLine2 = [inside !== null ? `in ${fmt1(inside)}°` : '', outside !== null ? `out ${fmt1(outside)}°` : ''].filter(Boolean).join(' · ') || 'no readings';
+    const sl = (t, color) => `<div class="sl"${color ? ` style="color:${color}"` : ''}>${t ? esc(t) : '&nbsp;'}</div>`;
+    return `<div class="lbl" style="margin:4px 4px -10px">House</div><div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px"><div class="card" style="padding:12px 14px${soon ? ';background:' + TOKENS.amberTag : ''}"><div class="lbl">Bins</div><div style="font-size:15px;font-weight:600;margin-top:4px${soon ? ';color:' + TOKENS.amber : ''}">${esc(binTitle)}</div>${sl(binSub, soon ? TOKENS.amber : TOKENS.text2)}${sl('', TOKENS.text2)}</div><a class="card tap" data-act="nav" data-path="${SETTINGS_PATH}" aria-label="Open settings" style="padding:12px 14px;display:block"><div class="lbl">Heating</div><div style="font-size:15px;font-weight:600;margin-top:4px">${esc(hTitle)}</div>${sl(hLine1, TOKENS.text2)}${sl(hLine2, TOKENS.text2)}</a></div>`;
   }
 
   function sectionFeed(hass, now) {
     const { rows, note } = houseActivity(hass);
-    const quiet = (msg) => `<div class="feed"><span class="a"></span><span style="color:${TOKENS.text2}">${esc(msg)}</span></div>`;
+    const quiet = quietRow;
     const body = (rows.length ? activityRows(rows, FEED_ROWS) : quiet('Nothing recorded yet')) + (note ? quiet(note) : '');
     return `<div class="lbl" style="margin:4px 4px -10px">What the house did</div><div class="card">${body}</div>`;
   }
@@ -2796,7 +2835,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const r = camUi(ui).rec[c.k] || { open: false };
     const toggle = `<button class="tog tap" data-act="camera-rec" data-camera="${c.k}" aria-expanded="${!!r.open}"><div><div class="h">Recordings</div><div class="s">${r.open && r.status === 'ok' ? `${r.items.length} recent` : 'Clips of people and movement'}</div></div><span style="color:${TOKENS.text2};display:flex;transform:rotate(${r.open ? 180 : 0}deg)">${svg(ICON.chev, 20)}</span></button>`;
     if (!r.open) return toggle;
-    const msg = (t) => `<div class="feed"><span class="a"></span><span style="color:${TOKENS.text2}">${t}</span></div>`;
+    const msg = (t) => `<div class="feed"><span class="a"></span><span class="si"></span><span style="color:${TOKENS.text2}">${t}</span></div>`;
     let body;
     if (r.status === 'loading' || !r.status) body = msg('Loading recordings…');
     else if (r.status === 'error') body = msg("Couldn't load recordings") + `<button class="tog tap" data-act="camera-rec-refresh" data-camera="${c.k}"><div><div class="h">Try again</div></div></button>`;
@@ -2819,7 +2858,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 
   function sectionRoomFeed(hass, key, now) {
     const { rows, note } = roomActivity(hass, key);
-    const quiet = (msg) => `<div class="feed"><span class="a"></span><span style="color:${TOKENS.text2}">${esc(msg)}</span></div>`;
+    const quiet = quietRow;
     const body = (rows.length ? activityRows(rows, ACTIVITY_ROWS) : quiet('Nothing recorded for this room yet')) + (note ? quiet(note) : '');
     return `<div class="lbl" style="margin:4px 4px -10px">Recent activity</div><div class="card">${body}</div>`;
   }
@@ -3220,7 +3259,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     }
   }
 
-  const api = { parsedAttr, setOptimise, trackHass, depsUnchanged, makeRenderGate, RENDER_MAX_AGE_MS, deriveScenes, sceneRegistry, ROOM_TABLE, lightsStory, lightsState, verdictFor, houseActivity, parseHistory, readHistory, sentenceFor, roomActivity, unexplainedReasons, REASON_TEXT, UNDECLARED, SUPPRESS_SOURCES, TILE, TILE_H, tileNeededHeight, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, SETTINGS_PATH, takesTaps, coverNeed, topGuard, sheetFit, splitSheet, touchGuard, lockScroll, scrollTargets, SHEET_MARK, STILL, HEAD_MODES, TOP_GUARD_MAX, CAMERAS_PATH, PENDING_MS, cameraParts, cameraToggle, cameraPending, perform, pendingStart, pendingFor, pendingKey, markPending, ERROR_MS, parseClips, frigateClipsId, roomGroups, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, GARDEN_ORDER, ALL_ROOM_KEYS, THEME_LABELS, THEME_ICON, ICON, gardenModel, gardenSub, themeSource, shortDate, ALLOWED, writeAllowed, HOUSE_NUMBERS, HOUSE_MODIFIER, HOUSE_VACATION_HOURS, CAMERAS, PTZ_DIRS, DEVICE_REASONS, ROOM_SETTINGS, MO_TOGGLES, settingFor, settingsOpen, settingsClose, tabTarget, render, priceColour, PRICE_STOPS, PRICE_EXTREME_P, roomModel, attentionItems, handleAction, callService, num, parseList };
+  const api = { parsedAttr, setOptimise, trackHass, depsUnchanged, makeRenderGate, RENDER_MAX_AGE_MS, deriveScenes, sceneRegistry, ROOM_TABLE, lightsStory, lightsState, verdictFor, houseActivity, parseHistory, readHistory, sentenceFor, roomActivity, unexplainedReasons, REASON_TEXT, UNDECLARED, SUPPRESS_SOURCES, TILE, TILE_H, tileNeededHeight, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, SETTINGS_PATH, takesTaps, coverNeed, topGuard, sheetFit, splitSheet, touchGuard, lockScroll, scrollTargets, SHEET_MARK, STILL, HEAD_MODES, TOP_GUARD_MAX, CAMERAS_PATH, PENDING_MS, cameraParts, cameraToggle, cameraPending, perform, pendingStart, pendingFor, pendingKey, markPending, ERROR_MS, parseClips, frigateClipsId, roomGroups, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, GARDEN_ORDER, ALL_ROOM_KEYS, THEME_LABELS, THEME_ICON, ICON, SUBSYSTEMS, subsystemOf, placed, gardenModel, gardenSub, themeSource, shortDate, ALLOWED, writeAllowed, HOUSE_NUMBERS, HOUSE_MODIFIER, HOUSE_VACATION_HOURS, CAMERAS, PTZ_DIRS, DEVICE_REASONS, ROOM_SETTINGS, MO_TOGGLES, settingFor, settingsOpen, settingsClose, tabTarget, render, priceColour, PRICE_STOPS, PRICE_EXTREME_P, roomModel, attentionItems, handleAction, callService, num, parseList };
   root.PulseLib = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 

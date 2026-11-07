@@ -295,16 +295,18 @@ ok('history parser: malformed payloads give an empty list and a visible note, ne
   assert.equal(P.readHistory(mk({ 'sensor.x_history': { state: 'unavailable', attributes: {} } }), 'sensor.x_history').note, 'History unavailable');
 });
 
-ok('Recent activity rows by kind: acted plain, declined muted with the didn\'t glyph, abort and failure amber, repeats collapse', () => {
+ok('Recent activity rows by kind: acted plain, declined muted, guard muted, failure amber, repeats collapse', () => {
   const abort = histEntry(4, { kind: 'abort', decision: '', reason: '', outcome: undefined, detail: { abort_kind: 'guard' } });
   const failed = histEntry(5, { kind: 'action_failed', decision: '', reason: '', outcome: undefined, detail: { failure: 'error', action: 'scene.turn_on', entity: 'scene.kitchen_all' } });
   const entries = [histEntry(1), histEntry(2), luxHigh(3), abort, failed];
   const html = P.render('room-feed', { room: 'kitchen' }, mk(histSensor('kitchen', entries, {})), NOW);
-  assert.match(html, /<div class="feed ok"><span class="a">18:41<\/span><span>Lights off · room empty <b>x2<\/b>/);
-  assert.match(html, /<div class="feed muted"><span class="a">18:39<span class="g"><svg[^>]*>[\s\S]*?<\/svg><\/span><\/span><span>Stayed off: bright enough \(85 lx, on at 40 or below\)/);
-  assert.match(html, /<div class="feed warn"><span class="a">18:38<\/span><span>Held back/);
-  assert.match(html, /<div class="feed warn"><span class="a">18:37<\/span><span>scene\.kitchen_all couldn&#39;t be controlled \(turn on\)/);
+  const SI = String.raw`<span class="si" aria-hidden="true"><svg[^>]*>[\s\S]*?<\/svg><\/span>`;
+  assert.match(html, new RegExp(`<div class="feed ok"><span class="a">18:41</span>${SI}<span>Lights off · room empty <b>x2</b>`));
+  assert.match(html, new RegExp(`<div class="feed muted"><span class="a">18:39</span>${SI}<span>Stayed off: bright enough \\(85 lx, on at 40 or below\\)`));
+  assert.match(html, new RegExp(`<div class="feed muted"><span class="a">18:38</span>${SI}<span>Held back</span>`), 'a guard is routine: muted on a room page, not amber');
+  assert.match(html, new RegExp(`<div class="feed warn"><span class="a">18:37</span>${SI}<span>scene\\.kitchen_all couldn&#39;t be controlled \\(turn on\\)`));
   assert.equal((html.match(/class="feed /g) || []).length, 4, 'one row per distinct entry; homerun stores no plumbing, so the card has nothing to hide');
+  assert.doesNotMatch(html, /⊘/);
   assert.match(P.render('room-feed', { room: 'kitchen' }, mk(histSensor('kitchen', [])), NOW), /Nothing recorded for this room yet/);
   const unreadable = P.render('room-feed', { room: 'kitchen' }, mk(histSensor('kitchen', [good(), 5])), NOW);
   assert.match(unreadable, /1 entry could not be read/);
@@ -482,8 +484,8 @@ ok('House feed reads sensor.house_history, says where, and a stored info_decisio
   const stale = { 'sensor.info_decision_feed': { state: 'x', attributes: { entries: JSON.stringify([{ loc: 'kitchen', ts: '2026-10-25T18:20:00+00:00', sentence: 'OLD FEED SENTENCE' }]) } } };
   const hass = mk({ ...histSensor('house', [histEntry(1, { location: 'kitchen' }), histEntry(5, { location: 'house', subsystem: 'energy', decision: 'spin', reason: 'wheels_spun', automation_id: 'house:wheel' })]), ...stale });
   const feed = P.render('feed', {}, hass, NOW);
-  assert.match(feed, /<span class="a">18:41<\/span><span>Kitchen · Lights off · room empty/);
-  assert.match(feed, /<span class="a">18:37<\/span><span>Spun the Octopus wheels/, 'whole-house entries carry no place');
+  assert.match(feed, /<span class="a">18:41<\/span>[\s\S]*?<span>Kitchen · Lights off · room empty/);
+  assert.match(feed, /<span class="a">18:37<\/span>[\s\S]*?<span>Energy · Spun the Octopus wheels/, 'whole-house entries carry their subsystem noun');
   assert.doesNotMatch(feed, /OLD FEED SENTENCE/, 'the old feed sensor is no longer read');
   assert.match(P.render('feed', {}, house([]), NOW), /Nothing recorded yet/);
   assert.match(P.render('feed', {}, mk(), NOW), /Nothing recorded yet[\s\S]*History unavailable/, 'no sensor: say so rather than imply a quiet house');
@@ -2049,7 +2051,7 @@ ok('every fixed height or clipping rule is accounted for (a new one needs its ar
   // range input: 44px row holds the 24px thumb
   assert.ok(px(decl(rule('.lt input[type=range]').body, 'height')) >= 24);
   const clip = cssRules().filter((r) => /overflow:hidden/.test(r.body)).map((r) => r.sel).sort();
-  assert.deepEqual(clip, ['.card', '.chip', '.rt .b .badge', '.rt .b>span:not(.badge)', '.rt .nm span', '.sr'].sort());
+  assert.deepEqual(clip, ['.card', '.chip', '.rt .b .badge', '.rt .b>span:not(.badge)', '.rt .nm span', '.sl', '.sr'].sort()); // .sl: one 12px line in a 16px line box, clipped sideways only (ellipsis backstop)
   // none of the clipping rules also fixes a height except the visually-hidden helper
   for (const r of cssRules().filter((x) => /overflow:hidden/.test(x.body) && x.sel !== '.sr')) assert.equal(px(decl(r.body, 'height')), null, r.sel);
   // flexible regions use min-height only
@@ -3837,13 +3839,20 @@ ok('house label: bins-heating opens the House group (Bins, Heating, Cameras), af
 ok('heating card: short title, room count leads the sub line only when heating is on and rooms are calling', () => {
   const heat = (extra, rooms) => P.render('bins-heating', {}, withRooms(calmRooms(rooms), [], { 'sensor.house_average_temperature': { state: '17.7', attributes: {} }, 'weather.forecast_home': { state: 'cloudy', attributes: { temperature: 3.7 } }, ...extra }), NOW);
   const three = heat({}, { kitchen: { hvac_action: 'heating' }, parlour: { hvac_action: 'heating' }, bedroom: { hvac_action: 'heating' } });
-  assert.match(three, /Boiler firing<\/div><div[^>]*>3 rooms · in 17\.7° · out 3\.7°</);
+  assert.match(three, /Boiler firing<\/div><div class="sl"[^>]*>3 rooms<\/div><div class="sl"[^>]*>in 17\.7° · out 3\.7°<\/div>/, 'two fixed lines');
   assert.doesNotMatch(three, /Boiler firing ·/);
-  assert.match(heat({}, { kitchen: { hvac_action: 'heating' } }), />1 room · in 17\.7°/);
-  assert.match(heat({}, {}), /Boiler firing<\/div><div[^>]*>in 17\.7° · out 3\.7°</, 'no count at 0');
+  assert.match(heat({}, { kitchen: { hvac_action: 'heating' } }), />1 room<\/div><div class="sl"[^>]*>in 17\.7° · out 3\.7°</);
+  assert.match(heat({}, {}), /Boiler firing<\/div><div class="sl"[^>]*>&nbsp;<\/div><div class="sl"[^>]*>in 17\.7° · out 3\.7°</, 'no count at 0: the first line is kept blank');
   const off = heat({ 'input_boolean.house_heating_enabled': { state: 'off', attributes: {} } }, { kitchen: { hvac_action: 'heating' } });
-  assert.match(off, /Heating off<\/div><div[^>]*>in 17\.7° · out 3\.7°</, 'no count when heating is off');
-  assert.match(heat({ 'input_boolean.patio_door_heating_suspended': { state: 'on', attributes: {} } }, { kitchen: { hvac_action: 'heating' } }), />1 room · in 17\.7° · out 3\.7° · patio open</);
+  assert.match(off, /Heating off<\/div><div class="sl"[^>]*>&nbsp;<\/div><div class="sl"[^>]*>in 17\.7° · out 3\.7°</, 'no count when heating is off');
+  assert.match(heat({ 'input_boolean.patio_door_heating_suspended': { state: 'on', attributes: {} } }, { kitchen: { hvac_action: 'heating' } }), />1 room · patio open<\/div><div class="sl"[^>]*>in 17\.7° · out 3\.7°</);
+  assert.match(heat({ 'input_boolean.patio_door_heating_suspended': { state: 'on', attributes: {} } }, {}), />patio open<\/div><div class="sl"[^>]*>in 17\.7°/, 'patio open alone has no leading separator');
+  const html = heat({}, { kitchen: { hvac_action: 'heating' } });
+  // Layout is checked as markup and CSS (no browser): each line is a fixed-height single line with an ellipsis backstop.
+  assert.match(P.STYLE, /\.sl\{[^}]*white-space:nowrap;overflow:hidden;text-overflow:ellipsis/);
+  assert.match(P.STYLE, /\.sl\{[^}]*line-height:16px;min-height:16px/);
+  assert.equal(count(html, /class="sl"/g), 4, 'Bins and Heating both carry two fixed lines, so the cards are the same height');
+  assert.match(html, /grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/, 'columns can shrink below their content, so the ellipsis can engage');
   assert.match(heat({ 'binary_sensor.house_heating_boiler_firing': { state: 'off', attributes: {} } }, {}), /Boiler idle/);
 });
 
@@ -3858,22 +3867,91 @@ ok('feed: suppress sources get a plain phrase from a table, unknown sources keep
   assert.equal(text('toString'), 'Stayed off: held off by toString', 'inherited object keys are not sources');
 });
 
-ok('feed: declined glyph lives in the time column so every row text starts alike; rows use the room short name', () => {
-  const house = [histEntry(1, { location: 'hallway_upstairs' }), luxHigh(2), histEntry(3, { location: 'hallway_downstairs' })];
-  const pages = [P.render('feed', {}, mk(histSensor('house', house)), NOW), P.render('room-feed', { room: 'kitchen' }, mk(histSensor('kitchen', [histEntry(1), luxHigh(2), histEntry(3, { reason: 'other' })])), NOW)];
+ok('feed rows: time, one icon column, then text, so every text starts at the same x; rows use the room short name', () => {
+  const house = [histEntry(1, { location: 'hallway_upstairs' }), luxHigh(2), histEntry(3, { location: 'house', subsystem: 'weird_new' })];
+  const pages = [P.render('feed', {}, mk(histSensor('house', house)), NOW), P.render('room-feed', { room: 'kitchen' }, mk(histSensor('kitchen', [histEntry(1), luxHigh(2), histEntry(3, { subsystem: 'weird_new' })])), NOW)];
   for (const html of pages) {
     const rows = html.split('<div class="feed ').slice(1).map((r) => r.replace(/^[^>]*>/, ''));
     assert.equal(rows.length, 3);
-    for (const r of rows) assert.match(r, /^<span class="a">[\s\S]*?<\/span><span>[^<]/, 'the text column starts with text, never an icon');
-    assert.match(html, /<span class="a">\d\d:\d\d<span class="g"><svg/);
-    assert.equal(count(html, /class="g"/g), 1, 'only the declined row carries the glyph');
-    assert.match(html, /class="feed muted"/, 'declined rows stay muted');
+    for (const r of rows) assert.match(r, /^<span class="a">\d\d:\d\d<\/span><span class="si" aria-hidden="true"><svg[^>]*aria-hidden="true"><path d="[^"]+"\/><\/svg><\/span><span>[^<]/, 'time only, then an aria-hidden icon, then text');
+    assert.match(html, /class="feed muted"/, 'declined rows are told apart by muted text');
+    assert.doesNotMatch(html, /class="g"|⊘/, 'no declined glyph');
+    assert.match(html, new RegExp(P.ICON.dot.replace(/[.]/g, '\\.') + '"'), 'an unknown subsystem gets the neutral dot');
   }
   assert.match(pages[0], /Hallway up · /);
-  assert.match(pages[0], /Hallway down · /);
-  assert.doesNotMatch(pages[0], /Hallway upstairs|Hallway downstairs/);
-  assert.match(P.STYLE, /\.feed\{[^\n]*grid-template-columns:60px 1fr/);
-  assert.match(P.STYLE, /\.feed \.a\{[^\n]*display:flex/);
+  assert.match(pages[0], /<span>Weird new occupancy off<\/span>/, 'unknown subsystem: prettified id as its own subject, not doubled');
+  assert.doesNotMatch(pages[0], /Hallway upstairs/);
+  // Layout is only checked as markup and CSS here (no browser): fixed columns, time column back to its original width.
+  assert.match(P.STYLE, /\.feed\{[^\n]*grid-template-columns:44px 16px minmax\(0,1fr\)/);
+  assert.doesNotMatch(P.STYLE, /\.feed \.g\b|\.feed \.a\{[^}]*display:flex/);
+  assert.match(P.STYLE, /\.feed \.si\{[^\n]*justify-content:center/);
+  const quiet = P.render('feed', {}, mk(), NOW);
+  assert.match(quiet, /<span class="a"><\/span><span class="si"><\/span><span style/, 'the empty-state rows keep the three columns');
+});
+
+ok('subsystem table: every catalogue subsystem has a noun and an icon that exists; unknown ones fall back', () => {
+  const missing = [...new Set(catalog.automations.map((a) => a.subsystem))].filter((x) => !Object.prototype.hasOwnProperty.call(P.SUBSYSTEMS, x));
+  assert.deepEqual(missing, [], `subsystems in the catalogue with no feed noun/icon in SUBSYSTEMS: ${missing.join(', ')}`);
+  for (const [id, v] of Object.entries(P.SUBSYSTEMS)) {
+    assert.ok(typeof v.noun === 'string' && /^[A-Z]/.test(v.noun), `${id}: noun`);
+    assert.ok(Object.prototype.hasOwnProperty.call(P.ICON, v.icon), `${id}: icon ${v.icon} is in ICON`);
+  }
+  assert.deepEqual(P.subsystemOf('brand_new_thing'), { noun: 'Brand new thing', icon: 'dot' });
+  assert.deepEqual(P.subsystemOf('toString'), { noun: 'ToString', icon: 'dot' }, 'inherited object keys are not subsystems');
+});
+
+ok('house feed subject: whole-house rows get the subsystem noun, unless the sentence already opens with it', () => {
+  const at = (over) => P.placed(over.location || 'house', over.text, over.subsystem);
+  assert.equal(at({ subsystem: 'energy', text: 'Spun 2 Octopus wheels' }), 'Energy · Spun 2 Octopus wheels');
+  assert.equal(at({ subsystem: 'house_mode', text: 'Not set to asleep: bed empty' }), 'House mode · Not set to asleep: bed empty');
+  assert.equal(at({ subsystem: 'house_mode', text: 'House set to away · everyone left' }), 'House set to away · everyone left', 'first word of the noun counts');
+  assert.equal(at({ subsystem: 'lighting', text: 'Lights off · sunrise' }), 'Lights off · sunrise');
+  assert.equal(at({ subsystem: 'cameras', text: 'Cameras on · house away' }), 'Cameras on · house away');
+  assert.equal(at({ subsystem: 'mo', text: 'Mo spotted · Kitchen' }), 'Mo spotted · Kitchen');
+  assert.equal(at({ subsystem: 'mo', text: 'Moment of truth' }), 'Mo · Moment of truth', 'a word that merely begins with the noun is not the noun');
+  assert.equal(at({ subsystem: 'lighting', text: 'Stayed off: house asleep' }), 'Lights · Stayed off: house asleep');
+  assert.equal(at({ subsystem: 'shower', text: 'Shower detected · humidity rising fast' }), 'Shower detected · humidity rising fast');
+  assert.equal(at({ subsystem: 'fan', text: 'Fan on · shower started' }), 'Fan on · shower started');
+  assert.equal(at({ subsystem: 'modifier', text: 'Home office released · guest mode off' }), 'Guest mode · Home office released · guest mode off');
+  assert.equal(at({ subsystem: 'x_y', text: 'Did a thing' }), 'X y · Did a thing');
+  assert.equal(at({ location: 'kitchen', subsystem: 'lighting', text: 'Lights off' }), 'Kitchen · Lights off', 'rooms keep their short name');
+  assert.equal(at({ location: '', subsystem: 'energy', text: 'Hi' }), 'Energy · Hi');
+  // End to end, from a stored entry: the real wording under its subject.
+  const wheel = histEntry(5, { location: 'house', subsystem: 'energy', decision: 'spin', reason: 'wheels_spun', facts: { count: 2 } });
+  const mode = histEntry(6, { location: 'house', subsystem: 'house_mode', decision: 'x', reason: 'bed_not_occupied', outcome: 'declined' });
+  const sun = histEntry(7, { location: 'house', subsystem: 'lighting', decision: 'turn_off', reason: 'sunrise' });
+  const rows = P.houseActivity(mk(histSensor('house', [wheel, mode, sun]))).rows.map((r) => r.text);
+  assert.deepEqual(rows, ['Energy · Spun 2 Octopus wheels', 'House mode · Not set to asleep: bed empty', 'Lights off · sunrise']);
+  // Every wording the card has, under its own noun, never doubles the noun.
+  for (const key of Object.keys(P.REASON_TEXT)) {
+    const [sub] = key.split(':');
+    const text = P.REASON_TEXT[key]({}, { name: () => '' });
+    const noun = P.subsystemOf(sub).noun;
+    assert.doesNotMatch(P.placed('house', text, sub), new RegExp(`^${noun} · ${noun.split(' ')[0]}\\b`, 'i'), `${key} doubles its subject`);
+  }
+});
+
+ok('guard aborts: hidden from the House feed, muted on room pages, never a problem', () => {
+  const guard = (ago, over = {}) => histEntry(ago, { kind: 'abort', decision: '', reason: 'bed_occupied', outcome: undefined, detail: { abort_kind: 'guard' }, ...over });
+  const unhandled = histEntry(8, { kind: 'abort', decision: '', reason: '', outcome: undefined, detail: { abort_kind: 'unhandled_error' }, location: 'house' });
+  const unavailable = histEntry(9, { kind: 'abort', decision: '', reason: '', outcome: undefined, detail: { abort_kind: 'unavailable_input', entity: 'sensor.x' }, location: 'house' });
+  const houseGuard = guard(3, { location: 'house', subsystem: 'energy' });
+  const house = P.render('feed', {}, mk(histSensor('house', [histEntry(1, { location: 'house', subsystem: 'energy', decision: 'spin', reason: 'wheels_spun' }), houseGuard, guard(4), unhandled, unavailable])), NOW);
+  assert.doesNotMatch(house, /Held back/, 'guards never reach the House feed');
+  assert.equal(count(house, /class="feed /g), 3, 'the other rows stay');
+  assert.match(house, /class="feed warn"[\s\S]*?Couldn&#39;t run: it failed unexpectedly/, 'real aborts stay amber');
+  assert.match(house, /class="feed warn"[\s\S]*?Couldn&#39;t run: .*unavailable/);
+  const room = P.render('room-feed', { room: 'kitchen' }, mk(histSensor('kitchen', [guard(2)])), NOW);
+  assert.match(room, /class="feed muted"[\s\S]*Held back/);
+  assert.doesNotMatch(room, /class="feed warn"/);
+  assert.equal(P.sentenceFor(guard(1), mk()).tone, 'muted');
+  assert.equal(P.sentenceFor(unhandled, mk()).tone, 'warn');
+  // The lights story and tag must not call a guard a problem.
+  const held = story({}, histSensor('kitchen', [guard(1), histEntry(60)]));
+  assert.deepEqual([held.state, held.tone], ['declined', 'muted'], 'a held-back run reads as a decline, not a Problem');
+  assert.match(held.why, /^Held back/);
+  const failedStory = story({}, histSensor('kitchen', [unhandled, histEntry(60)]));
+  assert.deepEqual([failedStory.state, failedStory.tone], ['problem', 'warn'], 'a genuine failure still is one');
 });
 
 ok('tiles narrow phone: long names ellipsize in their own column, the temperature never wraps or is pushed out', () => {
