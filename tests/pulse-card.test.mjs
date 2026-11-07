@@ -3727,10 +3727,12 @@ ok('lights note: a declined decision reads time first, no "Didn\'t act" prefix',
   assert.equal(P.REASON_TEXT['lighting:lux_high']({ lux: 85, lux_threshold: 40 }, {}), 'Stayed off: bright enough (85 lx, on at 40 or below)', 'REASON_TEXT is untouched');
 });
 
-ok('presence: the Clear value is unchanged (it is a status, not an action)', () => {
+ok('presence: no trailing value when nothing holds the room, and no action either (supersedes the old Clear pin)', () => {
   const html = P.render('presence', { room: 'parlour' }, withRooms([quietRoom('parlour', { occupied: false, pres_labels: [] })], []), NOW);
-  assert.match(html, /<span class="hm-val num">Clear<\/span>/);
+  assert.doesNotMatch(html, /hm-val|Clear/);
   assert.doesNotMatch(html, /data-act="clear/);
+  const held = P.render('presence', { room: 'parlour' }, withRooms([quietRoom('parlour', { occupied: true, pres_labels: ['Bed occupied'] })], []), NOW);
+  assert.match(held, /<span class="hm-val num">Bed<\/span>/, 'a hold keeps a value: its short label');
 });
 
 // ── Render cost: memoised parses, per-pass room models, skipped renders ──────────────────────────

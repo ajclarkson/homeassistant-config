@@ -239,7 +239,6 @@
       // The short word a presence hold shows beside the Occupied row; a hold with no entry shows its own label.
       holdShort: { 'Bed occupied': 'Bed', 'Doors closed': 'Doors', 'Sonos playing': 'Sonos' },
       holdMore: (n) => ` +${n}`,
-      rightNow: 'Right now', heatingNowStatus: 'Heating now', notHeatingStatus: 'Not heating', heatingOffStatus: 'Heating off',
       humidity: 'Humidity', normalTarget: 'Normal target', status: 'Status',
       manual: 'Manual', manualChange: 'Manual change', problem: 'Problem',
       hold: 'Hold', auto: 'Auto', suspended: 'Suspended', pending: 'Pending', heatingAutomationOff: 'Heating automation is off', pendingNote: 'Heating drops to minimum if it stays open',
