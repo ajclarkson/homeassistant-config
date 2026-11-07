@@ -72,6 +72,7 @@
   //     3:1 by a test. sub<Subsystem> is one per homerun subsystem (activity rows); outside and bins lead those
   //     rows; occupied is an occupied room's tile; tileIdle is an empty room's or a declined decision's tile;
   //     attentionInk is the glyph on an attention tile (the fill is attention).
+  //   Rail: the thin vertical line of an activity timeline (quieter than a separator, so the dots lead).
   //   People: present and presenceAway are the avatar presence dots; chevron is the dim row arrow.
   //   Price: priceStops are [hue, saturation %, lightness %] for the five PRICE_AT prices, interpolated
   //     in HSL (hues may run below 0 to cross red); priceNegative, priceExtreme, priceNeutral.
@@ -97,7 +98,7 @@
       subModifier: '#ff453a', subModifierInk: '#000000',
       outside: '#30d158', outsideInk: '#000000', bins: '#32ade6', binsInk: '#000000', attentionInk: '#000000',
       occupied: '#ff9f0a', occupiedInk: '#000000', present: '#30d158', presenceAway: '#48484a',
-      chevron: '#5a626d', tileIdle: '#2c2c2e',
+      chevron: '#5a626d', tileIdle: '#2c2c2e', rail: '#2f3843',
     },
     // Rose Pine with Tokyo Night fill-ins.
     'rose-pine': {
@@ -121,7 +122,7 @@
       subModifier: '#f7768e', subModifierInk: '#191724',
       outside: '#31748f', outsideInk: '#e0def4', bins: '#7aa2f7', binsInk: '#191724', attentionInk: '#191724',
       occupied: '#9ccfd8', occupiedInk: '#191724', present: '#9ccfd8', presenceAway: '#524f67',
-      chevron: '#524f67', tileIdle: '#2a2740',
+      chevron: '#524f67', tileIdle: '#2a2740', rail: '#26233a',
     },
   };
   const DEFAULT_THEME = 'rose-pine';
@@ -234,7 +235,11 @@
       scenes: 'Scenes', automation: 'Automation', fan: 'Fan', last24h: 'Last 24 hours',
       temperature: 'Temperature', lightLevel: 'Light level', luxUnit: 'lx', luxDark: 'Dark, lights come on', luxBright: 'Bright enough',
       occupied: 'Occupied', empty: 'Empty', occupancyUnavailable: 'Occupancy unavailable',
-      held: 'Held', override: 'Override', clear: 'Clear',
+      override: 'Override',
+      // The short word a presence hold shows beside the Occupied row; a hold with no entry shows its own label.
+      holdShort: { 'Bed occupied': 'Bed', 'Doors closed': 'Doors', 'Sonos playing': 'Sonos' },
+      holdMore: (n) => ` +${n}`,
+      rightNow: 'Right now', heatingNowStatus: 'Heating now', notHeatingStatus: 'Not heating', heatingOffStatus: 'Heating off',
       humidity: 'Humidity', normalTarget: 'Normal target', status: 'Status',
       manual: 'Manual', manualChange: 'Manual change', problem: 'Problem',
       hold: 'Hold', auto: 'Auto', suspended: 'Suspended', pending: 'Pending', heatingAutomationOff: 'Heating automation is off', pendingNote: 'Heating drops to minimum if it stays open',
@@ -283,7 +288,9 @@
       offline: (names) => `${names} offline`,
     },
     feed: {
-      activity: 'Activity', nothingYet: 'Nothing recorded yet', roomNothingYet: 'Nothing recorded for this room yet', historyUnavailable: 'History unavailable',
+      activity: 'Activity', today: 'Today', yesterday: 'Yesterday',
+      day: (weekday, date, month) => `${weekday} ${date} ${month}`,
+      nothingYet: 'Nothing recorded yet', roomNothingYet: 'Nothing recorded for this room yet', historyUnavailable: 'History unavailable',
     },
     settings: {
       houseMode: 'House mode', holidayThreshold: 'Holiday threshold', centralHeating: 'Central heating', heating: 'Heating',
@@ -547,6 +554,8 @@
     },
     nouns: { lighting: 'Lights', occupied: 'Occupancy', heating: 'Heating' },
   };
+  // Words that keep their capital when a feed sentence follows its subject ("Parlour halloween..." would be wrong).
+  const KEEP_CAPITAL = /^(Halloween|Octopus|Mo|Sonos)(?=\s|$)/;
   const own = (table, key) => (Object.prototype.hasOwnProperty.call(table, key) ? table[key] : undefined);
 
   // Why a room is the way it is, for its subtitle, which has room for ONE reason. This is the priority order, most
@@ -670,7 +679,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 .hm{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;color:${TOKENS.text};display:flex;flex-direction:column;margin-top:max(0px,calc(${HM_SECTION_GAP}px - var(--row-gap,8px)))}
 .hm>*+*{margin-top:${HM_SECTION_GAP}px}
 .hm.hm-first{margin-top:0}
-.hm .num,.hm-price,.hm-val,.hm-time{font-family:ui-rounded,"SF Pro Rounded",-apple-system,system-ui,sans-serif;font-variant-numeric:tabular-nums}
+.hm .num,.hm-price,.hm-val{font-family:ui-rounded,"SF Pro Rounded",-apple-system,system-ui,sans-serif;font-variant-numeric:tabular-nums}
 .hm-top{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 ${HM_HEADER_INSET}px}
 .hm-hd{min-width:0}
 .hm-big{margin:0;font-size:34px;line-height:41px;font-weight:700;letter-spacing:.3px}
@@ -688,7 +697,6 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 .hm-list{background:${TOKENS.surface};border-radius:12px;overflow:hidden}
 .hm-row{position:relative;display:flex;align-items:center;gap:12px;min-height:60px;padding:0 14px;color:inherit;text-decoration:none}
 .hm-row+.hm-row::before{content:'';position:absolute;top:0;left:56px;right:0;height:.5px;background:${TOKENS.separator}}
-.hm-row.act{align-items:flex-start;padding:12px 14px}
 .hm-tile{width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex:none}
 .hm-text{flex:1;min-width:0}
 .hm-rt{font-size:17px;line-height:22px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -696,9 +704,23 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 .hm-val{flex:none;font-size:17px;line-height:22px;color:${TOKENS.textSecondary}}
 .hm-chev{flex:none;display:flex;width:14px;color:${TOKENS.chevron}}
 .hm-l1{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
-.hm-subj{font-size:17px;line-height:22px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.hm-time{flex:none;font-size:14px;line-height:19px;color:${TOKENS.textSecondary}}
-.hm-l2{font-size:15px;line-height:20px}
+.tl-day+.tl-day{margin-top:12px}
+.tl-day{display:flex;flex-direction:column;gap:8px}
+.tl-h{padding:0 ${HM_HEADER_INSET}px;font-size:15px;line-height:20px;font-weight:600;color:${TOKENS.textSecondary}}
+.hm-list.tl{padding:6px 0}
+.tl-row{display:grid;grid-template-columns:52px 20px minmax(0,1fr);column-gap:10px;padding:6px 14px 6px 12px}
+.tl-t{text-align:right;font-size:14px;line-height:20px;color:${TOKENS.textSecondary}}
+.tl-rail{position:relative;margin:-6px 0}
+.tl-rail::before{content:'';position:absolute;left:9px;width:2px;top:0;bottom:0;background:${TOKENS.rail}}
+.tl-row:first-child .tl-rail::before{top:16px}
+.tl-row:last-child .tl-rail::before{bottom:auto;height:16px;top:0}
+.tl-row:first-child:last-child .tl-rail::before{display:none}
+.tl-dot{position:absolute;left:4px;top:10px;width:12px;height:12px;border-radius:50%;box-sizing:border-box;background:${TOKENS.surface};border:2px solid transparent}
+.tl-row.acted .tl-dot{border-width:0}
+.tl-row.problem .tl-dot{border-width:0;background:${TOKENS.attention}}
+.tl-b{font-size:15px;line-height:20px;min-width:0;overflow-wrap:anywhere}
+.tl-s{font-weight:600}
+.tl-n{font-weight:600;color:${TOKENS.textSecondary}}
 .hm-row:focus-visible,.hm-card:focus-visible,.hm-line:focus-visible{outline:2px solid ${TOKENS.link};outline-offset:-2px}
 .hm-card{background:${TOKENS.surface};border-radius:20px;padding:16px;display:block;color:inherit;text-decoration:none}
 .hm-eh{display:flex;align-items:center;gap:6px;font-size:13px;line-height:18px;font-weight:600;color:${TOKENS.subEnergy}}
@@ -1320,7 +1342,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       const text = withPlace ? placed(e.location, sentence.text, e.subsystem) : sentence.text;
       const last = rows[rows.length - 1];
       if (last && last.text === text && last.tone === sentence.tone && last.subsystem === e.subsystem) last.count += 1;
-      else rows.push({ ts: e.ts, text, sentence: sentence.text, subject: subjectOf(e.location, e.subsystem), tone: sentence.tone, subsystem: e.subsystem, count: 1 });
+      else rows.push({ ts: e.ts, text, sentence: sentence.text, subject: subjectOf(e.location, e.subsystem), tone: sentence.tone, subsystem: e.subsystem, declined: e.outcome === 'declined', count: 1 });
     }
     return { rows, note: history.note };
   }
@@ -2230,28 +2252,78 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return `<div class="hm">${hmSection(COPY.home.house, heatingRow(hass) + camerasRow(hass, now) + binsRow(hass))}</div>`;
   }
 
-  // Activity on the House page: notification-style rows. The tile carries the subsystem's colour; a declined
-  // decision (a rule that chose not to act) is quiet: an idle tile with the glyph in the subsystem colour (or in
-  // secondary text when that colour would not show on the idle tile), and a secondary-text sentence.
-  const GLYPH_MIN_CONTRAST = 3;
-  function activityTile(subsystem, tone) {
+  // Activity: a timeline. Each day is its own inset container under a small day header; a row is a time, a dot on
+  // a rail, and one line of words: the subject in bold, the verb part, then the reason part in secondary text.
+  // The dot says what kind of entry it is: filled in the subsystem colour for something done, a ring for a rule
+  // that chose not to act, filled in the attention colour (with the text) for a run or action that failed.
+  const DOT_MIN_CONTRAST = 3; // a subsystem colour that would vanish on the surface falls back to secondary text
+  function dotColour(subsystem) {
     const s = subsystemOf(subsystem);
-    const glyph = ICON[s.icon];
-    if (!s.tile) return hmTile(TOKENS.tileIdle, TOKENS.textSecondary, glyph);
-    if (tone !== 'muted') return hmTile(TOKENS[s.tile], TOKENS[s.ink], glyph);
-    const shows = contrast(colour(s.tile), colour('tileIdle')) >= GLYPH_MIN_CONTRAST;
-    return hmTile(TOKENS.tileIdle, shows ? TOKENS[s.tile] : TOKENS.textSecondary, glyph);
+    return s.tile && contrast(colour(s.tile), colour('surface')) >= DOT_MIN_CONTRAST ? TOKENS[s.tile] : TOKENS.textSecondary;
   }
-  function feedRow(r) {
-    const colourOf = r.tone === 'muted' ? TOKENS.textSecondary : r.tone === 'warn' ? TOKENS.attention : TOKENS.text;
-    const count = r.count > 1 ? ` <b>x${r.count}</b>` : '';
-    return `<div class="hm-row act">${activityTile(r.subsystem, r.tone)}<div class="hm-text"><div class="hm-l1"><span class="hm-subj">${esc(r.subject)}</span><span class="hm-time num">${esc(hhmm(r.ts))}</span></div><div class="hm-l2" style="color:${colourOf}">${esc(r.sentence)}${count}</div></div></div>`;
+  const REASON_SEP = ' · ';
+  // The sentence in two parts at its first " · ": what happened, and why. No separator means all of it is the what.
+  function splitSentence(sentence) {
+    const i = sentence.indexOf(REASON_SEP);
+    return i < 0 ? { what: sentence, why: '' } : { what: sentence.slice(0, i), why: sentence.slice(i + REASON_SEP.length) };
+  }
+  // Subject then verb part, read as one phrase: "Parlour" + "Lights off" is "Parlour lights off". A verb part that
+  // already opens with the subject's first word ("Cameras on", "House set to away") shares it instead of repeating it.
+  function timelineLead(subject, what) {
+    const first = subject.split(' ')[0];
+    if (what.toLowerCase() === first.toLowerCase() || what.toLowerCase().startsWith(first.toLowerCase() + ' ')) return { lead: what.slice(0, first.length), rest: what.slice(first.length) };
+    return { lead: subject, rest: ' ' + (KEEP_CAPITAL.test(what) ? what : lowerFirst(what)) };
+  }
+  function timelineText(r) {
+    const { what, why } = splitSentence(r.sentence);
+    const { lead, rest } = timelineLead(r.subject, what);
+    const quiet = r.tone === 'warn' ? '' : ` style="color:${TOKENS.textSecondary}"`;
+    const count = r.count > 1 ? ` <span class="tl-n">x${r.count}</span>` : '';
+    return `<b class="tl-s">${esc(lead)}</b>${esc(rest)}${why ? `<span${quiet}>${esc(REASON_SEP + why)}</span>` : ''}${count}`;
+  }
+  function timelineRow(r, time) {
+    const kind = r.tone === 'warn' ? 'problem' : r.tone === 'muted' || r.declined ? 'declined' : 'acted';
+    const c = dotColour(r.subsystem);
+    const dotStyle = kind === 'acted' ? ` style="background:${c}"` : kind === 'declined' ? ` style="border-color:${c}"` : '';
+    const text = kind === 'problem' ? TOKENS.attention : kind === 'declined' ? TOKENS.textSecondary : TOKENS.text;
+    return `<div class="tl-row ${kind}"><span class="tl-t num">${esc(time)}</span><span class="tl-rail" aria-hidden="true"><i class="tl-dot"${dotStyle}></i></span><div class="tl-b" style="color:${text}">${timelineText(r)}</div></div>`;
+  }
+  // "Thu 5 Nov" in the HA time zone (the viewer's when HA names none or a bad one).
+  function dayParts(ms, tz) {
+    const fmt = (zone) => new Intl.DateTimeFormat('en-US', { ...(zone ? { timeZone: zone } : {}), weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(ms));
+    let parts;
+    try { parts = fmt(tz); } catch (e) { parts = fmt(undefined); }
+    const g = (t) => parts.find((x) => x.type === t).value;
+    return { date: localDate(ms, tz), label: COPY.feed.day(g('weekday'), g('day'), g('month')), time: `${g('hour')}:${g('minute')}` };
+  }
+  const prevDate = (ymd) => new Date(Date.parse(`${ymd}T00:00:00Z`) - 86400000).toISOString().slice(0, 10);
+  // Rows (newest first) in, day groups out: [{label, rows: [{r, time}]}], the time blank when it repeats the row above.
+  function dayGroups(rows, now, tz) {
+    const today = localDate(now, tz);
+    const yesterday = prevDate(today);
+    const groups = [];
+    for (const r of rows) {
+      const d = dayParts(parseTs(r.ts), tz);
+      let g = groups[groups.length - 1];
+      if (!g || g.date !== d.date) {
+        g = { date: d.date, label: d.date === today ? COPY.feed.today : d.date === yesterday ? COPY.feed.yesterday : d.label, rows: [], last: '' };
+        groups.push(g);
+      }
+      g.rows.push({ r, time: d.time === g.last ? '' : d.time });
+      g.last = d.time;
+    }
+    return groups;
   }
   const quietFeedRow = (msg) => `<div class="hm-row"><div class="hm-text"><div class="hm-rs">${esc(msg)}</div></div></div>`;
+  function timelineSection(rows, note, emptyText, now, hass) {
+    const tz = hass.config && hass.config.time_zone;
+    const days = dayGroups(rows, now, tz).map((g) => `<div class="tl-day"><div class="tl-h">${esc(g.label)}</div><div class="hm-list tl">${g.rows.map((x) => timelineRow(x.r, x.time)).join('')}</div></div>`).join('');
+    const quiet = (rows.length ? '' : quietFeedRow(emptyText)) + (note ? quietFeedRow(note) : '');
+    return `<div class="hm">${hmSection(COPY.feed.activity, days + (quiet ? hmList(quiet) : ''), { bare: true })}</div>`;
+  }
   function sectionFeed(hass, now) {
     const { rows, note } = houseActivity(hass);
-    const body = (rows.length ? rows.slice(0, FEED_ROWS).map(feedRow).join('') : quietFeedRow(COPY.feed.nothingYet)) + (note ? quietFeedRow(note) : '');
-    return `<div class="hm">${hmSection(COPY.feed.activity, body)}</div>`;
+    return timelineSection(rows.slice(0, FEED_ROWS), note, COPY.feed.nothingYet, now, hass);
   }
 
   // ── Top guard ────────────────────────────────────────────────────────────────────────────────
@@ -2510,6 +2582,15 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const sub = on ? (guest ? 'Set by guest mode · lights and heating treat the room as in use' : 'Room held occupied · lights and heating treat it as in use') : 'Holds the room occupied until switched off';
     return hmToggleRow({ title: COPY.room.keepRoomOccupied, sub, on, act: 'toggle', data: { entity: id } });
   }
+  // The trailing value of the Occupied row appears only when something holds the room, so it never reads as a button
+  // (an empty value is a quiet row; the subtitle already says there are no holds). Several holds: the first, then "+N".
+  function presenceValue(holds, override) {
+    if (holds.length) {
+      const first = own(COPY.room.holdShort, holds[0]) || holds[0];
+      return first + (holds.length > 1 ? COPY.room.holdMore(holds.length - 1) : '');
+    }
+    return override ? COPY.room.override : '';
+  }
   function sectionPresence(hass, key) {
     const m = roomModel(hass, key);
     const keep = keepOccupiedRow(hass, key);
@@ -2521,7 +2602,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       const pres = holds.length ? `${holds.join(' · ')} · empty a few minutes after ${holds.length > 1 ? 'the last one clears' : 'it clears'}` : m.occupied ? 'No holds · empty a few minutes after the last movement' : 'No holds';
       const ovr = m.override_text ? ` · ${m.override_text}` : '';
       const noMotion = state(hass, `input_boolean.${key}_sensor_motion_enabled`) === 'off' ? ' · Motion sensor off, so movement is ignored' : '';
-      row = hmRow({ title: occ, sub: `${pres}${ovr}${noMotion}`, value: holds.length ? COPY.room.held : m.override ? COPY.room.override : COPY.room.clear });
+      row = hmRow({ title: occ, sub: `${pres}${ovr}${noMotion}`, value: presenceValue(holds, m.override) });
     }
     return `<div class="hm">${hmSection(COPY.room.presence, row + keep, { plain: true })}</div>`;
   }
@@ -3120,11 +3201,10 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return toggle + body;
   }
 
-  // Activity: the same notification-style rows as the House page, led by what each entry is about.
-  function sectionRoomFeed(hass, key) {
+  // Activity: the same timeline as the House page. The page is the room, so rows lead with the subsystem noun.
+  function sectionRoomFeed(hass, key, now) {
     const { rows, note } = roomActivity(hass, key);
-    const body = (rows.length ? rows.slice(0, ACTIVITY_ROWS).map((r) => feedRow({ ...r, subject: subsystemOf(r.subsystem).noun })).join('') : quietFeedRow(COPY.feed.roomNothingYet)) + (note ? quietFeedRow(note) : '');
-    return `<div class="hm">${hmSection(COPY.feed.activity, body)}</div>`;
+    return timelineSection(rows.slice(0, ACTIVITY_ROWS).map((r) => ({ ...r, subject: subsystemOf(r.subsystem).noun })), note, COPY.feed.roomNothingYet, now, hass);
   }
 
   // ── Tap feedback ─────────────────────────────────────────────────────────────────────────────
@@ -3264,7 +3344,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     media: (h, c) => sectionMedia(h, c.room),
     device: (h, c) => sectionDevice(h, c),
     automation: (h, c, n, ui) => sectionAutomation(h, c.room, ui),
-    'room-feed': (h, c) => sectionRoomFeed(h, c.room),
+    'room-feed': (h, c, n) => sectionRoomFeed(h, c.room, n),
     'garden-lights': (h, c, n) => sectionGardenLights(h, c.room, n),
     'garden-theme': (h, c, n) => sectionGardenTheme(h, c.room, n),
     'house-head': (h, c, n) => sectionHouseHead(h, n),
@@ -3551,7 +3631,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return disclosureStore[id] === true;
   }
 
-  const api = { parsedAttr, disclosureStore, toggleDisclosure, setOptimise, trackHass, depsUnchanged, makeRenderGate, RENDER_MAX_AGE_MS, deriveScenes, sceneRegistry, ROOM_TABLE, lightsStory, lightsState, verdictFor, houseActivity, parseHistory, readHistory, sentenceFor, roomActivity, unexplainedReasons, REASON_TEXT, UNDECLARED, SUPPRESS_SOURCES, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, SETTINGS_PATH, takesTaps, coverNeed, topGuard, HEAD_MODES, TOP_GUARD_MAX, CAMERAS_PATH, PENDING_MS, cameraParts, cameraToggle, cameraPending, perform, pendingStart, pendingFor, pendingKey, markPending, ERROR_MS, parseClips, frigateClipsId, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, GARDEN_ORDER, ALL_ROOM_KEYS, THEME_LABELS, THEME_ICON, ICON, SUBSYSTEMS, subsystemOf, placed, gardenModel, gardenSub, themeSource, shortDate, ALLOWED, writeAllowed, HOUSE_NUMBERS, HOUSE_MODIFIER, HOUSE_VACATION_HOURS, CAMERAS, PTZ_DIRS, DEVICE_REASONS, ROOM_SETTINGS, MO_TOGGLES, settingFor, render, priceColour, PRICE_AT, PRICE_EXTREME_P, THEMES, COLOUR_KEYS, DEFAULT_THEME, TOKENS, COPY, checkThemes, themeOf, useTheme, colour, resolveVars, styleFor, roomModel, attentionItems, handleAction, callService, num, parseList };
+  const api = { parsedAttr, disclosureStore, toggleDisclosure, setOptimise, trackHass, depsUnchanged, makeRenderGate, RENDER_MAX_AGE_MS, deriveScenes, sceneRegistry, ROOM_TABLE, lightsStory, lightsState, verdictFor, houseActivity, parseHistory, readHistory, sentenceFor, roomActivity, splitSentence, timelineLead, unexplainedReasons, REASON_TEXT, UNDECLARED, SUPPRESS_SOURCES, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, SETTINGS_PATH, takesTaps, coverNeed, topGuard, HEAD_MODES, TOP_GUARD_MAX, CAMERAS_PATH, PENDING_MS, cameraParts, cameraToggle, cameraPending, perform, pendingStart, pendingFor, pendingKey, markPending, ERROR_MS, parseClips, frigateClipsId, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, GARDEN_ORDER, ALL_ROOM_KEYS, THEME_LABELS, THEME_ICON, ICON, SUBSYSTEMS, subsystemOf, placed, gardenModel, gardenSub, themeSource, shortDate, ALLOWED, writeAllowed, HOUSE_NUMBERS, HOUSE_MODIFIER, HOUSE_VACATION_HOURS, CAMERAS, PTZ_DIRS, DEVICE_REASONS, ROOM_SETTINGS, MO_TOGGLES, settingFor, render, priceColour, PRICE_AT, PRICE_EXTREME_P, THEMES, COLOUR_KEYS, DEFAULT_THEME, TOKENS, COPY, checkThemes, themeOf, useTheme, colour, resolveVars, styleFor, roomModel, attentionItems, handleAction, callService, num, parseList };
   root.PulseLib = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 
