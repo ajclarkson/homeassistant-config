@@ -154,7 +154,7 @@ ok('every mode renders for all 10 rooms with full report data (attention state)'
   assert.match(out.status, /<h2[^>]*>Needs attention<\/h2>/);
   assert.equal(rowTitle(rowOf(out.status, '/pulse-dashboard/room-bedroom')), 'Bedroom');
   assert.match(out['room-head:bedroom'], /Window open, heating on[\s\S]*Open window while heating/, 'the attention item sits under the header');
-  assert.match(out['heating:bedroom'], /class="hm-rt">Window open<\/div><\/div><span class="hm-val num">[\d.]+°/);
+  assert.match(out['heating:bedroom'], /class="hm-rt">Window open<\/div><\/div><span class="hm-val num">[\d.]+°/, 'a window-open target is explained under the grid');
   assert.match(out.rooms, /room-bedroom/, 'the room is still listed under Rooms');
   assert.match(out['presence:bedroom'], /Bed occupied/);
   assert.doesNotMatch(out['presence:bedroom'], /Bed occupied · Window open/);
@@ -167,7 +167,8 @@ ok('calm state: no attention, All good', () => {
   assert.doesNotMatch(out.status, /Needs attention|All good|Nothing needs attention/);
   assert.doesNotMatch(out['room-head:parlour'], /All good|hm-tight/, 'a calm room has no banner and no attention list');
   assert.match(out['room-head:parlour'], /<span class="hm-line">Occupied · lights off<\/span>/);
-  assert.match(out['heating:parlour'], /class="hm-rt">[A-Z][^<]*, from [^<]*<\/div><\/div><span class="hm-val num">[\d.]+°/);
+  assert.match(out['heating:parlour'], /class="hm-scenes">/, 'a calm room shows the mode grid');
+  assert.doesNotMatch(out['heating:parlour'], /, from /, 'the grid replaces the mode and source row');
   assert.doesNotMatch(out['room-head:parlour'], />Target</, 'the header carries no numbers');
 });
 
@@ -2202,12 +2203,103 @@ ok('tab bar fixed height has its arithmetic: 83px with a home indicator, bar con
 ok('room heating tile says whether the room is heating right now; unknown action says nothing', () => {
   const head = (over) => P.render('heating', { room: 'parlour' }, withRooms([quietRoom('parlour', { target: 20, mode_target: 20, mode_name: 'comfort', heating_active: 'comfort', heating_source: 'schedule', ...over })], []), NOW);
   const on = head({ hvac_action: 'heating' });
-  // One row: the mode and its source in words, the target trailing. Heating-now is the widget's sub line only.
-  assert.match(on, /class="hm-rt">Comfort, from schedule<\/div><\/div><span class="hm-val num">20\.0°<\/span>/);
-  assert.doesNotMatch(on, /Comfort 20\.0°|Right now|Heating now|class="hm-rt">Target</);
+  // The grid replaces the mode-and-source row. Heating-now is the widget's sub line only.
+  assert.doesNotMatch(on, /Comfort, from schedule/);
+  assert.doesNotMatch(on, /Right now|Heating now|class="hm-rt">Target</);
   for (const a of ['heating', 'idle', 'off', null]) assert.doesNotMatch(head({ hvac_action: a }), /Right now|Heating now|Not heating|Heating off/);
   const widget = (a) => P.render('readings', { room: 'parlour' }, withRooms([quietRoom('parlour', { temp: 19, target: 20, hvac_action: a })], []), NOW);
   assert.match(widget('heating'), /Heating to 20\.0°/);
+});
+
+// ── Heating mode grid ──
+const HEAT_ROOMS = P.ROOM_TABLE.filter((r) => r.climate).map((r) => r.key);
+const heatHass = (report, extra = {}) => withRooms([quietRoom('parlour', { target: 18, mode_target: 18, mode_name: 'baseline day', heating_active: 'baseline_day', heating_source: 'schedule', ...report })], [], {
+  'input_select.parlour_heating_manual_mode': { state: 'auto', attributes: {} },
+  'input_number.global_temperature_comfort': { state: '20', attributes: {} },
+  'input_number.global_temperature_baseline_day': { state: '18', attributes: {} },
+  'input_number.global_temperature_baseline_night': { state: '16.5', attributes: {} },
+  'input_number.global_temperature_minimum': { state: '5', attributes: {} },
+  'sensor.house_active_mode': { state: 'normal', attributes: {} },
+  ...extra,
+});
+const heatGrid = (report, extra) => P.render('heating', { room: 'parlour' }, heatHass(report, extra), NOW);
+const tile = (html, option) => (html.match(new RegExp(`<button[^>]*data-option="${option}"[^>]*>[\\s\\S]*?</button>`)) || [])[0];
+const tileSub = (html, option) => (tile(html, option).match(/hm-scene-s num">([^<]*)</) || [])[1];
+const footnote = (html) => html.match(/<p class="hm-foot">([^<]*)<\/p>/)[1];
+
+ok('every room with a climate entity has its mode helper, and only those', () => {
+  assert.deepEqual(HEAT_ROOMS, ['parlour', 'kitchen', 'hallway_downstairs', 'bedroom', 'bathroom', 'home_office', 'foreign_office']);
+  for (const k of HEAT_ROOMS) assert.equal(P.ROOMS[k].heatMode, `input_select.${k}_heating_manual_mode`);
+  for (const r of P.ROOM_TABLE.filter((x) => !x.climate)) assert.equal(r.heatMode, undefined, r.key);
+  const helpers = loadYaml('packages/helpers.yaml').input_select;
+  for (const k of HEAT_ROOMS) assert.deepEqual(helpers[`${k}_heating_manual_mode`].options, ['auto', 'comfort', 'baseline_day', 'baseline_night', 'minimum'], k);
+  assert.deepEqual(P.HEATING_MODES.map((m) => m.option), helpers.parlour_heating_manual_mode.options, 'tiles follow the helper options');
+});
+
+ok('heating grid: Auto full width with the schedule, four modes with their global temperatures', () => {
+  const out = heatGrid({});
+  assert.match(tile(out, 'auto'), /class="hm-scene on wide"/);
+  assert.equal(tileSub(out, 'auto'), 'Day 18.0°', 'what the schedule does now');
+  assert.deepEqual(['comfort', 'baseline_day', 'baseline_night', 'minimum'].map((o) => tileSub(out, o)), ['20.0°', '18.0°', '16.5°', '5.0°']);
+  assert.deepEqual([...out.matchAll(/data-option="(\w+)"[^>]*>[\s\S]*?<span class="hm-scene-t"><span>(\w+)<\/span>/g)].map((m) => m[2]), ['Auto', 'Comfort', 'Day', 'Night', 'Minimum']);
+  assert.doesNotMatch(out, /disabled/);
+  assert.equal(footnote(out), 'Holds until the schedule next changes');
+  assert.doesNotMatch(out, /Day, from schedule|Status/, 'rows the grid repeats are gone');
+  assert.match(out, /Humidity/, 'humidity stays');
+});
+
+ok('heating grid: the selected tile is the helper state', () => {
+  for (const o of ['auto', 'comfort', 'baseline_day', 'baseline_night', 'minimum']) {
+    const out = heatGrid({ heating_source: 'manual' }, { 'input_select.parlour_heating_manual_mode': { state: o, attributes: {} } });
+    const on = [...out.matchAll(/class="hm-scene( on)?[^"]*" data-act="heating-mode"[^>]*data-option="(\w+)"/g)].filter((m) => m[1]).map((m) => m[2]);
+    assert.deepEqual(on, [o]);
+    assert.match(tile(out, o), /aria-pressed="true"/);
+  }
+  const manual = heatGrid({ heating_source: 'manual', heating_active: 'comfort' }, { 'input_select.parlour_heating_manual_mode': { state: 'comfort', attributes: {} } });
+  assert.equal(tileSub(manual, 'auto'), 'Follows the schedule', 'a manual mode is not the schedule');
+});
+
+ok('heating grid: stages 1 to 3 disable every tile and the footnote says why', () => {
+  const cases = [
+    [{ heating_enabled: false }, {}, /^Heating automation is off for this room/],
+    [{ heating_source: 'safety', heat_labels: ['Window open'] }, {}, /^A window or door is open, so the room is held at minimum/],
+    [{ heating_source: 'safety', house_heating_off: true }, { 'input_boolean.house_heating_enabled': { state: 'off', attributes: {} } }, /^House heating is off/],
+    [{ heating_source: 'house_mode' }, { 'sensor.house_active_mode': { state: 'away', attributes: {} } }, /^The house is away, so heating follows the house/],
+    [{ heating_source: 'house_mode' }, { 'sensor.house_active_mode': { state: 'sleep', attributes: {} } }, /^The house is asleep/],
+    [{ heating_source: 'house_mode_vacation' }, { 'sensor.house_active_mode': { state: 'vacation', attributes: {} } }, /^The house is on holiday/],
+    [{ heating_source: 'house_mode' }, { 'sensor.house_active_mode': { state: 'unknown', attributes: {} } }, /^Heating follows the house mode/],
+    [{}, { 'input_select.parlour_heating_manual_mode': { state: 'unavailable', attributes: {} } }, /^The mode helper is unavailable/],
+  ];
+  for (const [report, extra, want] of cases) {
+    const out = heatGrid(report, extra);
+    assert.equal((out.match(/data-act="heating-mode"[^>]*disabled/g) || []).length, 5, JSON.stringify(report));
+    assert.match(footnote(out), want);
+  }
+  assert.equal((heatGrid({ heat_labels: ['Window open'] }).match(/ disabled/g) || []).length, 0, 'a window still inside its grace period does not disable the grid');
+  assert.match(heatGrid({ heating_enabled: false }), /aria-pressed="true"/, 'the selection still shows while disabled');
+});
+
+ok('heating grid: rooms without the helper show none; sparse reports do not throw', () => {
+  assert.equal(P.render('heating', { room: 'hallway_upstairs' }, heatHass({}), NOW), '');
+  const sparse = P.render('heating', { room: 'parlour' }, withRooms([{ k: 'parlour' }], []), NOW);
+  assert.match(sparse, /^<div class="p">|^$/);
+  assert.doesNotMatch(sparse, NOISE);
+});
+
+ok('heating mode tap writes the helper, and a disabled mode neither writes nor throws silently', () => {
+  const calls = [];
+  const hass = { ...heatHass({}), callService: (d, s, data) => { calls.push([d, s, data]); return Promise.resolve(); } };
+  const el = (option, room = 'parlour') => ({ dataset: { act: 'heating-mode', room, option } });
+  for (const o of ['auto', 'comfort', 'baseline_day', 'baseline_night', 'minimum']) P.handleAction(hass, el(o));
+  assert.deepEqual(calls.map((c) => c[2].option), ['auto', 'comfort', 'baseline_day', 'baseline_night', 'minimum']);
+  assert.ok(calls.every((c) => c[0] === 'input_select' && c[1] === 'select_option' && c[2].entity_id === 'input_select.parlour_heating_manual_mode'));
+  assert.throws(() => P.handleAction(hass, el('turbo')), /unknown heating mode/);
+  assert.throws(() => P.handleAction(hass, el('auto', 'hallway_upstairs')), /no heating mode helper/);
+  assert.throws(() => P.handleAction(hass, el('auto', 'toString')), /no heating mode helper/);
+  const locked = { ...heatHass({ heating_enabled: false }), callService: () => assert.fail('must not be called') };
+  assert.throws(() => P.handleAction(locked, el('comfort')), /locked/);
+  assert.equal(P.ACT_HAPTIC['heating-mode'], 'segmented');
+  assert.equal(P.HAPTICS[P.ACT_HAPTIC['heating-mode']], 'selection');
 });
 
 ok('room chart overlays heat demand from hvac_action on a hidden 0..1 axis, with a legend', () => {
@@ -4637,7 +4729,11 @@ ok('writes outside the patterns throw', () => {
     ['input_boolean', 'toggle', 'input_boolean.house_heating_enabled'],
     ['input_number', 'set_value', 'input_number.bathroom_automation_shower_rise'], // calibration, not exposed on purpose
     ['input_number', 'set_value', 'input_number.front_garden_automation_porch_hold'],
-    ['input_select', 'select_option', 'input_select.parlour_heating_manual_mode'],
+    ['input_select', 'select_option', 'input_select.hallway_upstairs_heating_manual_mode'], // a room with no climate has no helper
+    ['input_select', 'select_option', 'input_select.back_garden_heating_manual_mode'],
+    ['input_select', 'select_option', 'input_select.parlour_heating_manual_mode\n'],
+    ['input_select', 'select_option', 'input_select.xparlour_heating_manual_mode'],
+    ['input_number', 'set_value', 'input_select.parlour_heating_manual_mode'],
     ['input_select', 'select_option', 'input_select.anything'],
     ['input_boolean', 'turn_on', 'input_boolean.house_heating_enabled\n'], // anchored
     ['input_boolean', 'turn_on', 'xinput_boolean.house_heating_enabled'],
@@ -5067,7 +5163,7 @@ ok('every control on the room and garden pages is a button or link with a name, 
       for (const m of html.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)) assert.ok(/aria-label="[^"]+"/.test(m[1]) || m[2].replace(/<svg[\s\S]*?<\/svg>/g, '').replace(/<[^>]+>/g, '').trim() !== '', `${k}/${mode}: an unnamed button ${m[1]}`);
     }
   }
-  assert.deepEqual([...seen].sort(), ['brightness', 'garden-power', 'garden-theme', 'media-play', 'media-power', 'scene', 'setting-number', 'setting-toggle', 'toggle', 'volume'].sort());
+  assert.deepEqual([...seen].sort(), ['brightness', 'garden-power', 'garden-theme', 'heating-mode', 'media-play', 'media-power', 'scene', 'setting-number', 'setting-toggle', 'toggle', 'volume'].sort());
 });
 
 ok('the apexcharts config cannot read CSS variables, so each literal in info_templates.yaml is pinned to the default theme\'s token', () => {
