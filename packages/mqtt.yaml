@@ -50,6 +50,43 @@ mqtt:
       unique_id: foreign_office_heating_source
       state_topic: "foreign_office/heating/source"
 
+    # Heating Plan Topics (day plan JSON; state is the active mode, attributes the whole plan)
+    - name: "Parlour Heating Plan"
+      unique_id: parlour_heating_plan
+      state_topic: "parlour/heating/plan"
+      value_template: "{{ value_json.active.mode }}"
+      json_attributes_topic: "parlour/heating/plan"
+    - name: "Kitchen Heating Plan"
+      unique_id: kitchen_heating_plan
+      state_topic: "kitchen/heating/plan"
+      value_template: "{{ value_json.active.mode }}"
+      json_attributes_topic: "kitchen/heating/plan"
+    - name: "Hallway Downstairs Heating Plan"
+      unique_id: hallway_downstairs_heating_plan
+      state_topic: "hallway_downstairs/heating/plan"
+      value_template: "{{ value_json.active.mode }}"
+      json_attributes_topic: "hallway_downstairs/heating/plan"
+    - name: "Bedroom Heating Plan"
+      unique_id: bedroom_heating_plan
+      state_topic: "bedroom/heating/plan"
+      value_template: "{{ value_json.active.mode }}"
+      json_attributes_topic: "bedroom/heating/plan"
+    - name: "Bathroom Heating Plan"
+      unique_id: bathroom_heating_plan
+      state_topic: "bathroom/heating/plan"
+      value_template: "{{ value_json.active.mode }}"
+      json_attributes_topic: "bathroom/heating/plan"
+    - name: "Home Office Heating Plan"
+      unique_id: home_office_heating_plan
+      state_topic: "home_office/heating/plan"
+      value_template: "{{ value_json.active.mode }}"
+      json_attributes_topic: "home_office/heating/plan"
+    - name: "Foreign Office Heating Plan"
+      unique_id: foreign_office_heating_plan
+      state_topic: "foreign_office/heating/plan"
+      value_template: "{{ value_json.active.mode }}"
+      json_attributes_topic: "foreign_office/heating/plan"
+
     # Lighting Decision Helpers (per room)
     - name: "Parlour Lighting Decision"
       unique_id: parlour_lighting_decision
