@@ -167,8 +167,8 @@ ok('calm state: no attention, All good', () => {
   assert.doesNotMatch(out.status, /Needs attention|All good|Nothing needs attention/);
   assert.doesNotMatch(out['room-head:parlour'], /All good|hm-tight/, 'a calm room has no banner and no attention list');
   assert.match(out['room-head:parlour'], /<span class="hm-line">Occupied · lights off<\/span>/);
-  assert.match(out['heating:parlour'], /class="hm-scenes">/, 'a calm room shows the mode grid');
-  assert.doesNotMatch(out['heating:parlour'], /, from /, 'the grid replaces the mode and source row');
+  assert.match(out['heating:parlour'], /class="segs five"/, 'a calm room shows the mode control');
+  assert.doesNotMatch(out['heating:parlour'], /, from /, 'the control replaces the mode and source row');
   assert.doesNotMatch(out['room-head:parlour'], />Target</, 'the header carries no numbers');
 });
 
@@ -2224,7 +2224,6 @@ const heatHass = (report, extra = {}) => withRooms([quietRoom('parlour', { targe
 });
 const heatGrid = (report, extra) => P.render('heating', { room: 'parlour' }, heatHass(report, extra), NOW);
 const tile = (html, option) => (html.match(new RegExp(`<button[^>]*data-option="${option}"[^>]*>[\\s\\S]*?</button>`)) || [])[0];
-const tileSub = (html, option) => (tile(html, option).match(/hm-scene-s num">([^<]*)</) || [])[1];
 const footnote = (html) => html.match(/<p class="hm-foot">([^<]*)<\/p>/)[1];
 
 ok('every room with a climate entity has its mode helper, and only those', () => {
@@ -2233,33 +2232,33 @@ ok('every room with a climate entity has its mode helper, and only those', () =>
   for (const r of P.ROOM_TABLE.filter((x) => !x.climate)) assert.equal(r.heatMode, undefined, r.key);
   const helpers = loadYaml('packages/helpers.yaml').input_select;
   for (const k of HEAT_ROOMS) assert.deepEqual(helpers[`${k}_heating_manual_mode`].options, ['auto', 'comfort', 'baseline_day', 'baseline_night', 'minimum'], k);
-  assert.deepEqual(P.HEATING_MODES.map((m) => m.option), helpers.parlour_heating_manual_mode.options, 'tiles follow the helper options');
+  assert.deepEqual(P.HEATING_MODES.map((m) => m.option), helpers.parlour_heating_manual_mode.options, 'segments follow the helper options');
 });
 
-ok('heating grid: Auto full width with the schedule, four modes with their global temperatures', () => {
+ok('heating control: one row of five segments, no temperatures, a short Min with the full word as its name', () => {
   const out = heatGrid({});
-  assert.match(tile(out, 'auto'), /class="hm-scene on wide"/);
-  assert.equal(tileSub(out, 'auto'), 'Day 18.0°', 'what the schedule does now');
-  assert.deepEqual(['comfort', 'baseline_day', 'baseline_night', 'minimum'].map((o) => tileSub(out, o)), ['20.0°', '18.0°', '16.5°', '5.0°']);
-  assert.deepEqual([...out.matchAll(/data-option="(\w+)"[^>]*>[\s\S]*?<span class="hm-scene-t"><span>(\w+)<\/span>/g)].map((m) => m[2]), ['Auto', 'Comfort', 'Day', 'Night', 'Minimum']);
+  assert.equal((out.match(/<div class="segs five"/g) || []).length, 1);
+  assert.deepEqual([...out.matchAll(/data-option="(\w+)" aria-pressed="\w+" aria-label="(\w+)">(\w+)<\/button>/g)].map((m) => [m[1], m[2], m[3]]),
+    [['auto', 'Auto', 'Auto'], ['comfort', 'Comfort', 'Comfort'], ['baseline_day', 'Day', 'Day'], ['baseline_night', 'Night', 'Night'], ['minimum', 'Minimum', 'Min']]);
   assert.doesNotMatch(out, /disabled/);
-  assert.equal(footnote(out), 'Holds until the schedule next changes');
-  assert.doesNotMatch(out, /Day, from schedule|Status/, 'rows the grid repeats are gone');
+  assert.doesNotMatch(tile(out, 'comfort'), /\d°/, 'temperatures live in the card, not the segments');
+  assert.equal(footnote(out), 'Follows the schedule');
+  assert.doesNotMatch(out, /Day, from schedule|Status|hm-scene/, 'rows the control repeats are gone');
   assert.match(out, /Humidity/, 'humidity stays');
 });
 
-ok('heating grid: the selected tile is the helper state', () => {
+ok('heating control: the selected segment is the helper state, and the footnote names a manual mode', () => {
   for (const o of ['auto', 'comfort', 'baseline_day', 'baseline_night', 'minimum']) {
     const out = heatGrid({ heating_source: 'manual' }, { 'input_select.parlour_heating_manual_mode': { state: o, attributes: {} } });
-    const on = [...out.matchAll(/class="hm-scene( on)?[^"]*" data-act="heating-mode"[^>]*data-option="(\w+)"/g)].filter((m) => m[1]).map((m) => m[2]);
+    const on = [...out.matchAll(/class="seg( on)?" data-act="heating-mode"[^>]*data-option="(\w+)"/g)].filter((m) => m[1]).map((m) => m[2]);
     assert.deepEqual(on, [o]);
     assert.match(tile(out, o), /aria-pressed="true"/);
   }
-  const manual = heatGrid({ heating_source: 'manual', heating_active: 'comfort' }, { 'input_select.parlour_heating_manual_mode': { state: 'comfort', attributes: {} } });
-  assert.equal(tileSub(manual, 'auto'), 'Follows the schedule', 'a manual mode is not the schedule');
+  const manual = heatGrid({ heating_source: 'manual' }, { 'input_select.parlour_heating_manual_mode': { state: 'comfort', attributes: {} } });
+  assert.equal(footnote(manual), 'Comfort 20.0° until the schedule next changes', 'no plan, so no end time');
 });
 
-ok('heating grid: stages 1 to 3 disable every tile and the footnote says why', () => {
+ok('heating control: stages 1 to 3 disable every segment and the footnote says why', () => {
   const cases = [
     [{ heating_enabled: false }, {}, /^Heating automation is off for this room/],
     [{ heating_source: 'safety', heat_labels: ['Window open'] }, {}, /^A window or door is open, so the room is held at minimum/],
@@ -2274,12 +2273,13 @@ ok('heating grid: stages 1 to 3 disable every tile and the footnote says why', (
     const out = heatGrid(report, extra);
     assert.equal((out.match(/data-act="heating-mode"[^>]*disabled/g) || []).length, 5, JSON.stringify(report));
     assert.match(footnote(out), want);
+    assert.doesNotMatch(out, /Follows the schedule/);
   }
-  assert.equal((heatGrid({ heat_labels: ['Window open'] }).match(/ disabled/g) || []).length, 0, 'a window still inside its grace period does not disable the grid');
+  assert.equal((heatGrid({ heat_labels: ['Window open'] }).match(/ disabled/g) || []).length, 0, 'a window still inside its grace period does not disable the control');
   assert.match(heatGrid({ heating_enabled: false }), /aria-pressed="true"/, 'the selection still shows while disabled');
 });
 
-ok('heating grid: rooms without the helper show none; sparse reports do not throw', () => {
+ok('heating control: rooms without the helper show none; sparse reports do not throw', () => {
   assert.equal(P.render('heating', { room: 'hallway_upstairs' }, heatHass({}), NOW), '');
   const sparse = P.render('heating', { room: 'parlour' }, withRooms([{ k: 'parlour' }], []), NOW);
   assert.match(sparse, /^<div class="p">|^$/);
@@ -5029,7 +5029,6 @@ ok('day plan: the schedule draws areas by warmth, the target step line, the dimm
   assert.match(html, /<path d="M0\.0 [\d.]+H81\.5V[\d.]+H220\.7V[\d.]+H298\.8V[\d.]+H326\.0" fill="none" stroke="#f08a4b" stroke-width="2"\/>/, 'one step line across the day');
   assert.doesNotMatch(html, /plan-override|plan-replaced/);
   assert.match(html, /<text[^>]*>now<\/text>/);
-  assert.match(html, /Comfort 20\.0°/, 'the warmest block is labelled');
   for (const h of ['00', '06', '12', '18']) assert.match(html, new RegExp(`>${h}</text>`));
   assert.match(html, /class="plan-dot"/);
   assert.match(html, /class="plan-room"/);
@@ -5062,7 +5061,9 @@ ok('day plan: an override is drawn in the tint over its span with the replaced p
   assert.match(html, new RegExp(`class="plan-mode-t num" style="color:#f2c46b"`));
   const rows = [...html.matchAll(/class="hm-rs">([^<]*)</g)].map((m) => m[1]);
   assert.deepEqual(rows.slice(0, 2), ['From 19:00 · schedule resumes', 'From 22:00']);
-  assert.equal(footnote(html), 'Holds until 19:00');
+  const { now, hass } = planAt('manual');
+  const chosen = P.render('heating', { room: 'parlour' }, { ...hass, states: { ...hass.states, 'input_select.parlour_heating_manual_mode': { state: 'comfort', attributes: {} } } }, now);
+  assert.equal(footnote(chosen), 'Comfort 20.0° until 19:00, then back to the schedule');
 });
 
 ok('day plan: safety and house mode draw what the controller chose; the footnote keeps its reason', () => {
@@ -5072,23 +5073,24 @@ ok('day plan: safety and house mode draw what the controller chose; the footnote
   assert.match(footnote(safety), /^A window or door is open/);
   const house = planHtml('house_mode', undefined, { temp: 18, heating_source: 'house_mode' }, {});
   assert.match(house, /class="plan-override"/);
-  assert.equal(footnote(planHtml('schedule')), 'Holds until 16:15', 'schedule: the block end');
+  assert.equal(footnote(planHtml('schedule')), 'Follows the schedule', 'Auto holds nothing, so no end time');
 });
 
-ok('day plan: the Auto tile reads what the controller chose', () => {
-  // The report still says Day; the plan says Comfort.
-  const html = planHtml('manual_over_day', undefined, { temp: 18, heating_active: 'baseline_day', heating_source: 'schedule' });
-  assert.equal(tileSub(html, 'auto'), 'Follows the schedule', 'a manual choice is not the schedule');
-  const sched = planHtml('schedule', undefined, { temp: 18, heating_active: 'comfort', heating_source: 'schedule' });
-  assert.equal(tileSub(sched, 'auto'), 'Day 18.0°');
-  assert.equal(tileSub(planHtml('safety'), 'auto'), 'Follows the schedule');
+ok('day plan: the control sits inside the card under the chart and above the next-block rows', () => {
+  const html = planHtml('schedule');
+  const at = (re) => html.search(re);
+  assert.ok(at(/<svg class="plan"/) < at(/class="segs five"/) && at(/class="segs five"/) < at(/class="hm-rs">From/));
+  assert.ok(at(/class="segs five"/) < at(/<\/div><p class="hm-foot"|<div class="hm-feet">/), 'the footnote is outside the card');
+  assert.doesNotMatch(html, /Comfort 20\.0°<\/text>/, 'no label drawn on the chart');
+  assert.doesNotMatch(html, /<text[^>]*font-size="11"/);
 });
 
-ok('day plan: a stale or missing plan falls back to the mode grid with a footnote', () => {
+ok('day plan: a stale or missing plan falls back to the mode control in a card with a footnote', () => {
   const stale = planHtml('stale');
   assert.doesNotMatch(stale, /<svg class="plan"|plan-card/);
+  assert.match(stale, /<div class="hm-card"><div class="segs five"/);
   assert.equal(countOf(stale, /data-act="heating-mode"/g), 5);
-  assert.deepEqual([...stale.matchAll(/<p class="hm-foot">([^<]*)<\/p>/g)].map((m) => m[1]), ['Holds until the schedule next changes', 'The heating plan is not for today, so the day is not drawn']);
+  assert.deepEqual([...stale.matchAll(/<p class="hm-foot">([^<]*)<\/p>/g)].map((m) => m[1]), ['Follows the schedule', 'The heating plan is not for today, so the day is not drawn']);
   const none = P.render('heating', { room: 'parlour' }, heatHass({}), NOW);
   assert.match(none, /There is no heating plan to show yet/);
   assert.equal(countOf(none, /data-act="heating-mode"/g), 5);
