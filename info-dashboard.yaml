@@ -7,6 +7,8 @@
 # www/pulse-card.js (ALLOWED); anything else throws.
 # The Cameras page also uses button.press (pan/tilt, to that camera's four move buttons only) and the
 # media_source websocket calls browse_media / resolve_media (Frigate clips).
+# Taps on switches, steppers, pickers, scene tiles and sliders send Home Assistant's `haptic` event (see HAPTICS in
+# www/pulse-card.js). Haptics play in the HA companion app; iOS Safari has no vibration API.
 # Pages (tab order): House (first, the landing page), Energy, Cameras, Settings. The four are normal views listed in the tab strip (HA's tabs, or
 # Material You's bottom bar). Room and garden pages are normal views hidden from the tab strip (visible: false), reached by link, with Pulse's own header and a back link to House. Mobile (/mobile-dashboard) and the wallboard are not linked from here and are untouched.
 streamline_templates: !include info_templates.yaml

@@ -3288,6 +3288,44 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   const PENDING_MS = 8000;
   const ERROR_MS = 6000;
 
+  // ── Haptics ──────────────────────────────────────────────────────────────────────────────────
+  // Home Assistant's frontend listens for a composed `haptic` event on window: the companion app plays the
+  // native haptic, a browser maps it to navigator.vibrate (iOS Safari has no vibration API, so nothing plays
+  // there). The card only has to dispatch it from its host element; it crosses the shadow root on its own.
+  const HAPTIC_TYPES = ['success', 'warning', 'failure', 'light', 'medium', 'heavy', 'selection'];
+  function haptic(node, type) {
+    if (!HAPTIC_TYPES.includes(type)) throw new Error(`pulse-card: unknown haptic "${type}"`);
+    if (!node || typeof node.dispatchEvent !== 'function' || typeof CustomEvent === 'undefined') return;
+    node.dispatchEvent(new CustomEvent('haptic', { detail: type, bubbles: true, composed: true }));
+  }
+  // Interaction kind -> haptic. A choice among options is a `selection`; a switch, press or slider commit is
+  // `light`; `failure` is played when a user action ends in the card's error state. No `success`: the control
+  // changing is the confirmation.
+  const HAPTICS = {
+    scene: 'selection', segmented: 'selection', stepper: 'selection',
+    toggle: 'light', press: 'light', media: 'light', slider: 'light',
+    error: 'failure',
+  };
+  // Every data-act the card dispatches -> a HAPTICS kind, or null for "deliberately silent" (navigation and
+  // disclosure). A new control must be added here, so it cannot ship without a haptic decision.
+  const ACT_HAPTIC = {
+    'scene': 'scene',
+    'energy-day': 'segmented', 'cost-fuel': 'segmented', 'house-modifier': 'segmented', 'garden-theme': 'segmented',
+    'house-threshold': 'stepper', 'house-number': 'stepper', 'setting-number': 'stepper',
+    'toggle': 'toggle', 'setting-toggle': 'toggle', 'mo-toggle': 'toggle', 'camera-toggle': 'toggle', 'cameras-all': 'toggle',
+    'garden-power': 'toggle', 'media-power': 'toggle',
+    'camera-ptz': 'press', 'use-calendar': 'press',
+    'media-play': 'media',
+    'brightness': 'slider', 'volume': 'slider',
+    'nav': null, 'disclose': null, 'camera-rec': null, 'camera-rec-refresh': null, 'camera-clip': null,
+  };
+  // Plays the haptic for a tap on a control, at tap time (the user's input, not the state coming back).
+  function tapHaptic(node, act) {
+    if (!Object.prototype.hasOwnProperty.call(ACT_HAPTIC, act)) throw new Error(`pulse-card: no haptic decision for "${act}"`);
+    const kind = ACT_HAPTIC[act];
+    if (kind !== null) haptic(node, HAPTICS[kind]);
+  }
+
   // An element's identity is its data-* attributes (camelCase, as in el.dataset), sorted. A click and the HTML
   // render() marked therefore agree on the key without any id being added to the markup.
   const pendingKey = (ds) => Object.keys(ds).sort().map((k) => `${k}=${ds[k]}`).join('&');
@@ -3375,13 +3413,14 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   // Runs one write with feedback. `run` starts the write (and marks it pending); a rejection, or a synchronous
   // throw, clears the mark and sets the card's error. The real error goes to the console so a programming
   // mistake (an unknown table key) is not hidden behind the friendly sentence.
-  async function guarded(hass, ui, ds, now, run) {
+  async function guarded(hass, ui, ds, now, run, node) {
     ui.error = null;
     try {
       await run();
     } catch (err) {
       pendingClear(ui, ds);
       ui.error = { text: `Couldn't reach ${reachName(hass, ds)}`, at: now };
+      haptic(node, HAPTICS.error); // here, where the error is set, so a re-render never repeats it
       if (typeof console !== 'undefined') console.warn('pulse-card: write failed', err && err.message ? err.message : err);
     }
   }
@@ -3389,8 +3428,8 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     pendingStart(ui, hass, { ...el.dataset }, now);
     return handleAction(hass, el, value);
   };
-  function perform(hass, ui, el, value, now) {
-    return guarded(hass, ui, { ...el.dataset }, now, writeRun(hass, ui, el, value, now));
+  function perform(hass, ui, el, value, now, node) {
+    return guarded(hass, ui, { ...el.dataset }, now, writeRun(hass, ui, el, value, now), node);
   }
   const errorBanner = (ui, now) => (isObj(ui) && isObj(ui.error) && Math.max(0, now - ui.error.at) < ERROR_MS
     ? `<div class="err" role="alert">${esc(ui.error.text)}</div>` : '');
@@ -3704,7 +3743,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return disclosureStore[id] === true;
   }
 
-  const api = { parsedAttr, disclosureStore, toggleDisclosure, setOptimise, trackHass, depsUnchanged, makeRenderGate, RENDER_MAX_AGE_MS, deriveScenes, sceneRegistry, ROOM_TABLE, lightsStory, lightsState, verdictFor, houseActivity, parseHistory, readHistory, sentenceFor, roomActivity, splitSentence, timelineLead, unexplainedReasons, REASON_TEXT, UNDECLARED, SUPPRESS_SOURCES, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, SETTINGS_PATH, takesTaps, invisibleControl, disarm, rearm, coverNeed, topGuard, HEAD_MODES, TOP_GUARD_MAX, CAMERAS_PATH, PENDING_MS, cameraParts, cameraToggle, cameraPending, perform, pendingStart, pendingFor, pendingKey, markPending, ERROR_MS, parseClips, frigateClipsId, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, GARDEN_ORDER, ALL_ROOM_KEYS, THEME_LABELS, THEME_ICON, ICON, SUBSYSTEMS, subsystemOf, placed, gardenModel, gardenSub, themeSource, shortDate, ALLOWED, writeAllowed, HOUSE_NUMBERS, HOUSE_MODIFIER, HOUSE_VACATION_HOURS, CAMERAS, PTZ_DIRS, DEVICE_REASONS, ROOM_SETTINGS, MO_TOGGLES, settingFor, render, priceColour, PRICE_AT, PRICE_EXTREME_P, THEMES, COLOUR_KEYS, DEFAULT_THEME, TOKENS, COPY, checkThemes, themeOf, useTheme, colour, resolveVars, styleFor, roomModel, attentionItems, handleAction, callService, num, parseList };
+  const api = { parsedAttr, disclosureStore, toggleDisclosure, setOptimise, trackHass, depsUnchanged, makeRenderGate, RENDER_MAX_AGE_MS, deriveScenes, sceneRegistry, ROOM_TABLE, lightsStory, lightsState, verdictFor, houseActivity, parseHistory, readHistory, sentenceFor, roomActivity, splitSentence, timelineLead, unexplainedReasons, REASON_TEXT, UNDECLARED, SUPPRESS_SOURCES, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, SETTINGS_PATH, takesTaps, invisibleControl, disarm, rearm, coverNeed, topGuard, HEAD_MODES, TOP_GUARD_MAX, CAMERAS_PATH, PENDING_MS, cameraParts, cameraToggle, cameraPending, perform, pendingStart, pendingFor, pendingKey, markPending, ERROR_MS, haptic, tapHaptic, HAPTIC_TYPES, HAPTICS, ACT_HAPTIC, parseClips, frigateClipsId, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, GARDEN_ORDER, ALL_ROOM_KEYS, THEME_LABELS, THEME_ICON, ICON, SUBSYSTEMS, subsystemOf, placed, gardenModel, gardenSub, themeSource, shortDate, ALLOWED, writeAllowed, HOUSE_NUMBERS, HOUSE_MODIFIER, HOUSE_VACATION_HOURS, CAMERAS, PTZ_DIRS, DEVICE_REASONS, ROOM_SETTINGS, MO_TOGGLES, settingFor, render, priceColour, PRICE_AT, PRICE_EXTREME_P, THEMES, COLOUR_KEYS, DEFAULT_THEME, TOKENS, COPY, checkThemes, themeOf, useTheme, colour, resolveVars, styleFor, roomModel, attentionItems, handleAction, callService, num, parseList };
   root.PulseLib = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 
@@ -3890,7 +3929,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       // nothing else would repaint a card whose entity never answered.
       async _write(ds, run) {
         const now = Date.now();
-        const done = guarded(this._hass, this._ui, ds, now, run);
+        const done = guarded(this._hass, this._ui, ds, now, run, this);
         this._paint();
         setTimeout(() => this._paint(), PENDING_MS + 100);
         setTimeout(() => this._paint(), ERROR_MS + 100);
@@ -4147,6 +4186,8 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       _click(ev) {
         const el = ev.target && ev.target.closest ? ev.target.closest('[data-act]') : null;
         if (!el || !this._hass) return;
+        // Sliders buzz on commit (_change), not on the click that ends a drag.
+        if (el.type !== 'range') tapHaptic(this, el.dataset.act);
         if (el.dataset.act === 'nav') {
           ev.preventDefault();
           const path = el.dataset.path || '';
@@ -4184,6 +4225,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         const el = ev.target;
         if (!el || el.type !== 'range' || !this._hass) return;
         this._busy = false;
+        tapHaptic(this, el.dataset.act);
         this._act(el, el.value);
       }
       _act(el, value) {

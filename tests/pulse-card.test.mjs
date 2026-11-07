@@ -4803,6 +4803,92 @@ ok('the room chart axis puts whole-degree gridlines exactly at their labels', ()
   assert.doesNotMatch(readFileSync(root + 'www/pulse-card.js', 'utf8'), /tickAmount|niceTicks/);
 });
 
+// ── Haptics ──────────────────────────────────────────────────────────────────────────────────────
+const fakeNode = () => { const events = []; return { events, dispatchEvent: (e) => { events.push(e); return true; } }; };
+
+ok('haptic: validates the type and dispatches a composed, bubbling event carrying it', () => {
+  assert.deepEqual([...P.HAPTIC_TYPES].sort(), ['failure', 'heavy', 'light', 'medium', 'selection', 'success', 'warning']);
+  for (const type of P.HAPTIC_TYPES) {
+    const node = fakeNode();
+    P.haptic(node, type);
+    assert.equal(node.events.length, 1);
+    const [ev] = node.events;
+    assert.equal(ev.type, 'haptic');
+    assert.equal(ev.detail, type);
+    assert.equal(ev.bubbles, true);
+    assert.equal(ev.composed, true);
+  }
+  assert.throws(() => P.haptic(fakeNode(), 'buzz'), /unknown haptic "buzz"/);
+  assert.throws(() => P.haptic(null, 'buzz'), /unknown haptic/, 'a bad type throws even with no node');
+  assert.doesNotThrow(() => P.haptic(null, 'light'));
+  assert.doesNotThrow(() => P.haptic({}, 'light'));
+});
+
+ok('haptic: every HAPTICS entry is an allowed type, and success is never used', () => {
+  for (const [kind, type] of Object.entries(P.HAPTICS)) assert.ok(P.HAPTIC_TYPES.includes(type), kind);
+  assert.ok(!Object.values(P.HAPTICS).includes('success'));
+});
+
+ok('haptic: every action the card dispatches maps to a HAPTICS entry or is explicitly silent', () => {
+  const src = readFileSync(root + 'www/pulse-card.js', 'utf8');
+  const handler = src.slice(src.indexOf('  function handleAction('), src.indexOf('  // ── Disclosure state'));
+  const seen = new Set();
+  for (const re of [/data-act="([a-z][a-z-]*)"/g, /\bact: '([a-z][a-z-]*)'/g, /dataset\.act === '([a-z][a-z-]*)'/g]) for (const m of src.matchAll(re)) seen.add(m[1]);
+  for (const m of handler.matchAll(/case '([a-z][a-z-]*)':/g)) seen.add(m[1]);
+  assert.ok(seen.size >= 20, `found the actions (${seen.size})`);
+  for (const act of seen) assert.ok(Object.prototype.hasOwnProperty.call(P.ACT_HAPTIC, act), `action "${act}" needs a haptic decision in ACT_HAPTIC`);
+  for (const act of Object.keys(P.ACT_HAPTIC)) assert.ok(seen.has(act), `ACT_HAPTIC lists "${act}" but the card has no such action`);
+  for (const [act, kind] of Object.entries(P.ACT_HAPTIC)) assert.ok(kind === null || Object.prototype.hasOwnProperty.call(P.HAPTICS, kind), `${act} -> ${kind}`);
+  const silent = Object.keys(P.ACT_HAPTIC).filter((a) => P.ACT_HAPTIC[a] === null).sort();
+  assert.deepEqual(silent, ['camera-clip', 'camera-rec', 'camera-rec-refresh', 'disclose', 'nav']);
+});
+
+ok('haptic: a tap plays the mapped type; silent actions and unknown actions behave', () => {
+  const play = (act) => { const n = fakeNode(); P.tapHaptic(n, act); return n.events.map((e) => e.detail); };
+  assert.deepEqual(play('scene'), ['selection']);
+  assert.deepEqual(play('energy-day'), ['selection']);
+  assert.deepEqual(play('cost-fuel'), ['selection']);
+  assert.deepEqual(play('house-number'), ['selection']);
+  assert.deepEqual(play('setting-number'), ['selection']);
+  for (const a of ['toggle', 'setting-toggle', 'mo-toggle', 'camera-toggle', 'cameras-all', 'garden-power', 'media-power', 'camera-ptz', 'media-play', 'volume', 'brightness']) assert.deepEqual(play(a), ['light'], a);
+  for (const a of ['nav', 'disclose', 'camera-rec', 'camera-clip']) assert.deepEqual(play(a), [], a);
+  assert.throws(() => play('mystery'), /no haptic decision for "mystery"/);
+});
+
+await okAsync('haptic: failure plays once when the error is set, not on re-render, and not on success', async () => {
+  const warn = console.warn;
+  console.warn = () => {};
+  try {
+    const node = fakeNode();
+    const ui = { pending: {}, error: null };
+    const bad = { ...scenesHass(), callService: () => Promise.reject(new Error('boom')) };
+    await P.perform(bad, ui, fakeEl(SCENE_TAP), undefined, NOW, node);
+    assert.deepEqual(node.events.map((e) => e.detail), ['failure']);
+    for (let i = 0; i < 5; i += 1) P.render('lights', { room: 'parlour' }, bad, NOW + i * 100, ui);
+    assert.equal(node.events.length, 1, 'rendering the error banner does not replay it');
+    // A write the allow-list refuses ends in the same error state, and counts as one failure.
+    await P.perform(bad, ui, fakeEl({ act: 'toggle', entity: 'automation.x' }), undefined, NOW, node);
+    assert.equal(node.events.length, 2);
+    const good = { ...scenesHass(), callService: () => Promise.resolve() };
+    await P.perform(good, ui, fakeEl(SCENE_TAP), undefined, NOW, node);
+    assert.equal(node.events.length, 2, 'a successful write plays no success haptic');
+  } finally { console.warn = warn; }
+});
+
+ok('haptic: rendering and hass tracking never take a node, and the hass setter plays nothing', () => {
+  // render() and trackHass() are handed no element to dispatch from, so a repaint cannot play a haptic.
+  assert.equal(P.render.length <= 5, true);
+  assert.equal(P.trackHass.length, 1);
+  const src = readFileSync(root + 'www/pulse-card.js', 'utf8');
+  const from = src.indexOf('      set hass(hass) {');
+  const setter = src.slice(from, src.indexOf('\n      }\n', from));
+  assert.ok(setter.length > 50, 'found the hass setter');
+  assert.doesNotMatch(setter, /haptic/i);
+  const paint = src.slice(src.indexOf('      _paint(fromHass = false) {'), src.indexOf('\n      }\n', src.indexOf('      _paint(fromHass = false) {')));
+  assert.ok(paint.length > 50, 'found _paint');
+  assert.doesNotMatch(paint, /haptic/i);
+});
+
 // ── Classic theme is byte-identical to the pre-theme card ────────────────────────────────────────
 // tests/fixtures/classic-golden.json holds a sha256 per rendered page (and for the stylesheet), taken from the
 // card as it was before design tokens existed. Pages now carry var(--pulse-token) instead of hex, so each page
