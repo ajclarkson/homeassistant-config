@@ -43,6 +43,15 @@
   // taller where the safe area is.
   const TABBAR_H = 'calc(49px + max(34px, env(safe-area-inset-bottom, 0px)))';
 
+  // House page spacing. HM_SECTION_GAP is the one visible space above every section header and widget, measured
+  // from the previous list or widget, whichever card each lives in. The cards sit in HA's grid, which adds its own
+  // row gap between cards, so a card's top margin is HM_SECTION_GAP less that gap (the --row-gap variable, 8px if
+  // unset) and inside a card each block gets the full HM_SECTION_GAP. The header card is first and has no margin.
+  // HM_HEADER_INSET indents titles and section headers from the list edge, as iOS does. The lists themselves have
+  // no side margin: HA's view padding is the inset.
+  const HM_SECTION_GAP = 36;
+  const HM_HEADER_INSET = 4;
+
   // ── Themes (single definition of every colour) ───────────────────────────────────────────────
   // Tokens are named by role, not hue, so a theme can change a hue without a name lying. Every theme
   // defines every token; the card picks one by `theme:` in its config (default `rose-pine`; `classic` is the
@@ -200,15 +209,15 @@
       roomsOccupiedCount: (n) => `${n} occupied`,
       moreItems: (n) => `+${n} more`,
       personLabel: (name, status) => `${name}, ${status}`,
-      // "At home · Guest · 2 rooms occupied": the house mode, the modifier if one is set, then how many rooms are in use.
-      headerLine: (mode, modifier, occupied) => [mode, modifier, `${occupied === 0 ? 'No' : occupied} ${plural(occupied, 'room', 'rooms')} occupied`].filter(Boolean).join(' · '),
-      // "Someone in bed" for the bed hold; any other hold keeps the label the report gives it.
-      holdLabel: (label) => (label === 'Bed occupied' ? 'Someone in bed' : label),
-      // The lights line, and a recent action of the house's own after it: "Lights off · 7 min ago", "Lamps · set 4 min ago".
-      lightsNote: (lights, note) => {
-        const when = str(note).replace(/^(lights|scene) /, '').replace(/^(on|off) (?=\d|just)/, '');
-        return when ? `${lights} · ${when}` : lights;
-      },
+      // "At home" or "At home · Guest": the house mode and the modifier if one is set. How many rooms are in use
+      // is said once, on the Rooms header.
+      headerLine: (mode, modifier) => [mode, modifier].filter(Boolean).join(' · '),
+      // A room's reason as the lower-case tail of its subtitle: "someone in bed", "doors closed", "Sonos playing".
+      // The bed hold is reworded; a proper noun keeps its capital; any other label only loses its first capital.
+      reasonText: (label) => (label === 'Bed occupied' ? 'someone in bed' : /^Sonos\b/.test(label) ? label : label.charAt(0).toLowerCase() + label.slice(1)),
+      // The room subtitle: the lights, then ONE reason, or (only when there is none) when the scene was set:
+      // "Lamps · someone in bed", "Full · doors closed", "Lamps · set 4 min ago", "Lights off".
+      roomLine: (lights, reason, setAgo) => [lights, reason || str(setAgo).replace(/^scene /, '')].filter(Boolean).join(' · '),
       // "3 rooms heating · 17.7° in, 3.7° out · patio open"; the temperatures are already formatted ('' = no reading).
       heatingLine: (rooms, inside, outside, patio) => {
         const temps = [inside ? `${inside} in` : '', outside ? `${outside} out` : ''].filter(Boolean).join(', ') || 'no readings';
@@ -238,9 +247,9 @@
       historyUnavailableBody: 'The recorded cost history could not be read; the latest published day is shown above',
       dailyCost: 'Daily cost', electricity: 'Electricity', gas: 'Gas', usageLive: 'Usage (smart meter, live)',
       meterNote: "Live from the meter; the Octopus figures above are the supplier's, days late, and the two are not reconciled",
-      runningNow: (until) => `Running now${until ? `, until ${until}` : ''}`,
-      // "Next half hour 38.8p · using 188 W"; either part drops out when it is unknown.
-      nextHalfHour: (price, usage) => [price ? `Next half hour ${price}` : '', usage ? `using ${usage}` : ''].filter(Boolean).join(' · '),
+      runningNow: (until) => `Now${until ? `, until ${until}` : ''}`,
+      // "Next 38.8p · using 188 W"; either part drops out when it is unknown. Short, so it holds one line on a phone.
+      nextHalfHour: (price, usage) => [price ? `Next ${price}` : '', usage ? `using ${usage}` : ''].filter(Boolean).join(' · '),
       // The cheapest window: "09:00 – 11:00" today, "Tomorrow 09:00 – 11:00" (or the weekday) on another day.
       windowOn: (day, from, to) => `${day === 'Today' ? '' : `${day} `}${from} – ${to}`,
       avg: (price) => ` · avg ${price}`,
@@ -518,6 +527,27 @@
   };
   const own = (table, key) => (Object.prototype.hasOwnProperty.call(table, key) ? table[key] : undefined);
 
+  // Why a room is the way it is, for its subtitle, which has room for ONE reason. This is the priority order, most
+  // important first; the first row that finds a label wins. Heating holds lead because they change what the house
+  // does (heating is suspended); then the bed, then any other presence hold the report names; Sonos playing and
+  // doors closed are weak signals, so they only speak when nothing stronger does; a manual change comes last.
+  const presenceHold = (m, test) => m.pres_labels.find(test) || '';
+  const ROOM_REASONS = [
+    { why: 'a window or door open suspends heating', find: (m) => m.heat_labels[0] || '' },
+    { why: 'someone in bed', find: (m) => presenceHold(m, (l) => l === 'Bed occupied') },
+    { why: 'any other presence hold', find: (m) => presenceHold(m, (l) => l !== 'Bed occupied' && !/^(Sonos playing|Doors closed)$/.test(l)) },
+    { why: 'a speaker is playing', find: (m) => presenceHold(m, (l) => l === 'Sonos playing') },
+    { why: 'the doors are shut', find: (m) => presenceHold(m, (l) => l === 'Doors closed') },
+    { why: 'someone changed the lights by hand', find: (m) => (m.manual ? COPY.room.manualChange : '') },
+  ];
+  function roomReason(m) {
+    for (const r of ROOM_REASONS) {
+      const label = r.find(m);
+      if (label) return COPY.home.reasonText(label);
+    }
+    return '';
+  }
+
   function undeclaredSentence(e) {
     const noun = own(UNDECLARED.nouns, e.subsystem) || capFirst(pretty(e.subsystem));
     const d = own(UNDECLARED.decisions, e.decision);
@@ -624,21 +654,22 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 .u{padding:14px;flex:1;min-width:0}
 .u .v{font-size:22px;font-weight:700;letter-spacing:-.4px;margin-top:4px}
 .u .v span{font-size:12px;font-weight:500;color:${TOKENS.textSecondary}}
-.hm{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;color:${TOKENS.text};padding:0 16px;display:flex;flex-direction:column;gap:24px}
+.hm{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;color:${TOKENS.text};display:flex;flex-direction:column;margin-top:max(0px,calc(${HM_SECTION_GAP}px - var(--row-gap,8px)))}
+.hm>*+*{margin-top:${HM_SECTION_GAP}px}
+.hm.hm-first{margin-top:0}
 .hm .num,.hm-price,.hm-val,.hm-time{font-family:ui-rounded,"SF Pro Rounded",-apple-system,system-ui,sans-serif;font-variant-numeric:tabular-nums}
-.hm-top{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:56px}
+.hm-top{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 ${HM_HEADER_INSET}px}
 .hm-hd{min-width:0}
 .hm-big{margin:0;font-size:34px;line-height:41px;font-weight:700;letter-spacing:.3px}
 .hm-line{display:block;font-size:15px;line-height:20px;color:${TOKENS.textSecondary};min-height:20px}
-.hm-avs{display:flex;flex:none;padding-right:4px}
+.hm-avs{display:flex;flex:none;gap:6px}
 .hm-av{position:relative;box-sizing:border-box;width:36px;height:36px;border-radius:50%;background:${TOKENS.control};border:2px solid ${TOKENS.bg};display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;color:${TOKENS.text}}
-.hm-av+.hm-av{margin-left:-8px}
-.hm-pd{position:absolute;right:-4px;bottom:-4px;width:10px;height:10px;border-radius:50%;box-shadow:0 0 0 2px ${TOKENS.bg}}
+.hm-pd{position:absolute;right:-2px;bottom:-2px;width:10px;height:10px;border-radius:50%;box-shadow:0 0 0 2px ${TOKENS.bg}}
 .hm-head{display:flex;flex-direction:column;gap:4px}
-.hm-mo{font-size:13px;line-height:18px;color:${TOKENS.textSecondary}}
-.hm-foot{margin:0;font-size:13px;line-height:18px;color:${TOKENS.textSecondary}}
+.hm-mo{padding:0 ${HM_HEADER_INSET}px;font-size:13px;line-height:18px;color:${TOKENS.textSecondary}}
+.hm-foot{margin:0;padding:0 ${HM_HEADER_INSET}px;font-size:13px;line-height:18px;color:${TOKENS.textSecondary}}
 .hm-sec{display:flex;flex-direction:column;gap:8px}
-.hm-h{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+.hm-h{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:0 ${HM_HEADER_INSET}px}
 .hm-h h2{margin:0;font-size:20px;line-height:25px;font-weight:700}
 .hm-tr{font-size:15px;line-height:20px;font-weight:400;color:${TOKENS.textSecondary}}
 .hm-list{background:${TOKENS.surface};border-radius:12px;overflow:hidden}
@@ -664,8 +695,8 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 .hm-price small{font-size:20px;font-weight:600;margin-left:2px;color:${TOKENS.textSecondary}}
 .hm-es{font-size:13px;line-height:18px;color:${TOKENS.textSecondary}}
 .hm-bars{display:flex;align-items:flex-end;gap:3px;height:44px;flex:none}
-.hm-bar{width:7px;border-radius:4px;opacity:.6}
-.hm-bar.now{opacity:1;box-shadow:0 0 0 1.5px ${TOKENS.text}}
+.hm-bar{width:7px;border-radius:4px;opacity:.55}
+.hm-bar.now{opacity:1}
 .hm-efoot{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-top:14px;padding-top:12px;border-top:.5px solid ${TOKENS.separator};font-size:15px;line-height:20px}
 .hm-efoot .hm-es{font-size:15px;line-height:20px}
 @media (max-width:359px){.hm-price{font-size:36px}}
@@ -1303,6 +1334,8 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     power: 'M12 3v9M6.3 6.3a8 8 0 1 0 11.4 0',
     moon: 'M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z',
     flame: 'M12 3c1 3 4 4.5 4 8a4 4 0 0 1-8 0c0-1.5.6-2.6 1.5-3.5C10 9 11 6 12 3z',
+    // A flame that fills its 24 box (the small one above is for inline use at 14px); the House heating tile.
+    flameFull: 'M12 2.5c.6 3.8 5.6 6.2 5.6 11.8a5.6 5.6 0 0 1-11.2 0c0-2.3 1.1-3.9 2.4-5.1.1 1.7.9 2.7 2 2.9C10.2 8.8 10.9 5.4 12 2.5z',
     person: 'M12 4.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7zM5 20a7 7 0 0 1 14 0',
     bed: 'M4 20v-8a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8M4 16h16M7 10V7a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v3',
     back: 'M15 5l-7 7 7 7',
@@ -1411,10 +1444,10 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const mode = state(hass, 'sensor.house_active_mode');
     const mod = state(hass, 'input_select.house_active_mode_modifier');
     const modifier = usable(mod) && mod !== 'none' ? (own(MODIFIERS, mod) ? MODIFIERS[mod].label : mod) : '';
-    const line = COPY.home.headerLine(houseModeText(mode, hass, at).title, modifier, occupiedRooms(hass).length);
+    const line = COPY.home.headerLine(houseModeText(mode, hass, at).title, modifier);
     // The Mo line is unchanged in content: the owner is redesigning it separately.
     const ate = moAte(hass, at).replace('yesterday', 'yest');
-    return `<div class="hm"><div class="hm-head"><div class="hm-top"><div class="hm-hd"><h1 class="hm-big">${COPY.home.title}</h1><a class="hm-line tap" data-act="nav" data-path="${SETTINGS_PATH}" aria-label="${COPY.common.openSettings}">${esc(line)}</a></div><div class="hm-avs">${avatar(hass, 'person.adam', 'Adam')}${avatar(hass, 'person.sarah', 'Sarah')}</div></div><div class="hm-mo">${COPY.home.mo}${ate ? ' · ' + esc(ate) : ''}</div></div></div>`;
+    return `<div class="hm hm-first"><div class="hm-head"><div class="hm-top"><div class="hm-hd"><h1 class="hm-big">${COPY.home.title}</h1><a class="hm-line tap" data-act="nav" data-path="${SETTINGS_PATH}" aria-label="${COPY.common.openSettings}">${esc(line)}</a></div><div class="hm-avs">${avatar(hass, 'person.adam', 'Adam')}${avatar(hass, 'person.sarah', 'Sarah')}</div></div><div class="hm-mo">${COPY.home.mo}${ate ? ' · ' + esc(ate) : ''}</div></div></div>`;
   }
 
   // Now / Next (graded colours) and Usage (unit-aware). A reading that has not updated for 10 minutes
@@ -1474,7 +1507,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   // Electricity widget: the current price, what is next, a mini chart of the coming slots, and the cheapest
   // two-hour window. The whole card opens the Energy page.
   const MINI_SLOTS = 9;
-  const MINI_MIN_H = 8; // px; the cheapest bar is never invisible
+  const MINI_MIN_H = 4; // px; a zero or negative price still shows as a stub, not nothing
   const MINI_MAX_H = 44;
   // The current half hour and the ones after it, today's list followed by tomorrow's.
   function upcomingSlots(hass, at) {
@@ -1483,10 +1516,10 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   }
   function miniBars(slots) {
     if (!slots.length) return '';
-    const lo = Math.min(...slots.map((s) => s.v));
     const hi = Math.max(...slots.map((s) => s.v));
-    // Equal prices would divide by zero; they get one mid-height bar each.
-    const height = (v) => (hi === lo ? (MINI_MIN_H + MINI_MAX_H) / 2 : MINI_MIN_H + ((v - lo) / (hi - lo)) * (MINI_MAX_H - MINI_MIN_H));
+    // From a zero baseline, so a bar's height is its price against the dearest shown slot: a cheap slot looks cheap
+    // instead of being stretched to a dot. When nothing is above zero every bar is the stub.
+    const height = (v) => (hi > 0 ? Math.max(MINI_MIN_H, Math.min(MINI_MAX_H, (v / hi) * MINI_MAX_H)) : MINI_MIN_H);
     const bars = slots.map((s) => `<span class="hm-bar${s.state === 'current' ? ' now' : ''}" style="height:${Math.round(height(s.v))}px;background:${priceColour(s.v)}"></span>`).join('');
     return `<div class="hm-bars" aria-hidden="true">${bars}</div>`;
   }
@@ -1573,11 +1606,12 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     if (!m.hasReport) return COPY.home.noReport;
     const lights = lightsState(m, activeScene(hass, k));
     const lightsText = !lights.on ? COPY.home.lightsOff : lights.badge === 'On' ? COPY.home.lightsOn : lights.badge;
-    const holds = m.pres_labels.slice(0, 1).map(COPY.home.holdLabel).concat(m.heat_labels.slice(0, 1));
-    const parts = holds.concat(COPY.home.lightsNote(lightsText, recentNote(hass, k, now)));
-    if (m.manual && !holds.length) parts.push(COPY.room.manualChange);
-    if (!m.cfg.climate) parts.push(COPY.home.noTemperatureSensor);
-    return parts.join(' · ');
+    const reason = roomReason(m);
+    // Only a scene change is worth a time; "marked occupied", "lights off 7 min ago" and the rest are not.
+    const note = recentNote(hass, k, now);
+    const line = COPY.home.roomLine(lightsText, reason, /^scene set /.test(note) ? note : '');
+    // The missing-sensor note explains the blank value; it only fits when the line has nothing else to say.
+    return !m.cfg.climate && !reason && line === lightsText ? `${line} · ${COPY.home.noTemperatureSensor}` : line;
   }
   function roomRow(hass, k, now) {
     const m = roomModel(hass, k);
@@ -2102,7 +2136,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     // The room count means nothing when heating is off or no room is calling for heat.
     const sub = COPY.home.heatingLine(!off && rooms > 0 ? rooms : 0, inside === null ? '' : `${fmt1(inside)}°`, outside === null ? '' : `${fmt1(outside)}°`, patio);
     const title = off ? COPY.home.heatingOff : firing ? COPY.home.boilerFiring : COPY.home.boilerIdle;
-    return hmRow({ tile: hmTile(TOKENS.subHeating, TOKENS.subHeatingInk, ICON.flame), title, sub, path: SETTINGS_PATH, label: COPY.common.openSettings });
+    return hmRow({ tile: hmTile(TOKENS.subHeating, TOKENS.subHeatingInk, ICON.flameFull, true), title, sub, path: SETTINGS_PATH, label: COPY.common.openSettings });
   }
   // Nothing when the house has no camera entities at all. An offline camera is an attention matter: the tile and
   // the subtitle say so.
