@@ -335,7 +335,7 @@ ok('Recent activity rows by kind: acted plain, declined muted, guard muted, fail
   assert.match(html, line('18:41', 'acted', '<b class="tl-s">Lights</b> off<span style="color:#a3adba"> · room empty</span> <span class="tl-n">x2</span>'));
   assert.match(html, line('18:39', 'declined', '<b class="tl-s">Lights</b> stayed off: bright enough \\(85 lx, on at 40 or below\\)</div>'));
   assert.match(html, line('18:38', 'declined', '<b class="tl-s">Lights</b> held back</div>'), 'a guard is routine: a quiet row on a room page, not amber');
-  assert.match(html, line('18:37', 'problem', '<b class="tl-s">Lights</b> scene\\.kitchen_all couldn&#39;t be controlled \\(turn on\\)'));
+  assert.match(html, line('18:37', 'problem', '<b class="tl-s">Lights</b> couldn&#39;t be controlled \\(turn on\\)'));
   assert.match(html, /class="tl-row acted">[^]*?class="tl-b" style="color:#e8ebef"/);
   assert.match(html, /class="tl-row declined">[^]*?class="tl-b" style="color:#a3adba"/);
   assert.match(html, /class="tl-row problem">[^]*?class="tl-b" style="color:#f2b84b"/);
@@ -4100,6 +4100,36 @@ ok('timeline: day groups, time shown once per minute, subject sharing, hidden de
   assert.match(P.render('feed', {}, nzHass, Date.parse('2026-11-05T23:45:00Z')), /<div class="tl-h">Mon 26 Oct<\/div>/);
 });
 
+ok('problem rows never show an entity id: friendly name (case kept), else the room on Home or the noun on a room page', () => {
+  const failed = histEntry(1, { kind: 'action_failed', decision: '', reason: '', outcome: undefined, detail: { failure: 'error', action: 'scene.turn_on', entity: 'scene.kitchen_all' } });
+  const named = (name) => mk({ ...histSensor('house', [failed]), 'scene.kitchen_all': { state: 'unknown', attributes: name ? { friendly_name: name } : {} } });
+  const house = (name) => tlRows(P.render('feed', {}, named(name), NOW))[0];
+  assert.match(house('Kitchen Cabinets'), /<b class="tl-s">Kitchen<\/b> Cabinets couldn&#39;t be controlled \(turn on\)/, 'a capitalised friendly name keeps its case');
+  assert.match(house('hall lamp'), /<b class="tl-s">Kitchen<\/b> hall lamp couldn&#39;t be controlled/, 'a lower-case friendly name is left as it is');
+  assert.match(house(''), /<b class="tl-s">Kitchen<\/b> couldn&#39;t be controlled \(turn on\)/, 'no friendly name: the room');
+  assert.doesNotMatch(house(''), /scene\.kitchen_all/);
+  const roomPage = tlRows(P.render('room-feed', { room: 'kitchen' }, mk({ ...histSensor('kitchen', [failed]) }), NOW))[0];
+  assert.match(roomPage, /<b class="tl-s">Lights<\/b> couldn&#39;t be controlled \(turn on\)/, 'a room page falls back to the subsystem noun');
+  const whole = tlRows(P.render('feed', {}, mk(histSensor('house', [{ ...failed, location: 'house', subsystem: 'energy' }])), NOW))[0];
+  assert.match(whole, /<b class="tl-s">Energy<\/b> couldn&#39;t be controlled/, 'a whole-house entry falls back to the noun');
+  const timeout = histEntry(1, { kind: 'action_failed', decision: '', reason: '', outcome: undefined, detail: { failure: 'ack_timeout', entity: 'light.x' } });
+  assert.match(tlRows(P.render('feed', {}, mk(histSensor('house', [timeout])), NOW))[0], /<b class="tl-s">Kitchen<\/b> didn&#39;t respond/);
+  const guard = histEntry(1, { kind: 'abort', decision: '', reason: 'bed_occupied', outcome: undefined, detail: { abort_kind: 'guard', entity: 'light.unnamed' } });
+  const g = P.render('room-feed', { room: 'kitchen' }, mk(histSensor('kitchen', [guard])), NOW);
+  assert.doesNotMatch(g, /light\.unnamed/, 'a guard leaves out a device it cannot name');
+  const unavailable = histEntry(1, { kind: 'abort', decision: '', reason: '', outcome: undefined, detail: { abort_kind: 'unavailable_input', entity: 'sensor.nameless' } });
+  assert.doesNotMatch(P.render('feed', {}, mk(histSensor('house', [unavailable])), NOW), /sensor\.nameless/);
+});
+
+ok('a subsystem word that only names the room state is dropped after a room subject', () => {
+  assert.deepEqual(P.timelineLead('Parlour', 'Occupancy marked occupied', { noun: 'Occupancy', implied: true }), { lead: 'Parlour', rest: ' marked occupied' });
+  assert.deepEqual(P.timelineLead('Parlour', 'Lights off', { noun: 'Lights' }), { lead: 'Parlour', rest: ' lights off' }, 'a thing (lights) is kept');
+  assert.deepEqual(P.timelineLead('Occupancy', 'Occupancy marked occupied', { noun: 'Occupancy', implied: true }), { lead: 'Occupancy', rest: ' marked occupied' }, 'a subsystem subject is not dropped');
+  const e = histEntry(1, { location: 'parlour', subsystem: 'occupied', decision: 'set_occupied', reason: 'kitchen_motion_detected', outcome: undefined });
+  assert.match(P.render('feed', {}, mk(histSensor('house', [e])), NOW), /<b class="tl-s">Parlour<\/b> marked occupied<span style="color:#a3adba"> · kitchen motion<\/span>/);
+  assert.match(P.render('room-feed', { room: 'parlour' }, mk(histSensor('parlour', [e])), NOW), /<b class="tl-s">Occupancy<\/b> marked occupied/);
+});
+
 ok('sentence split: the first " · " divides the verb part from the reason part; no separator shows it whole', () => {
   assert.deepEqual(P.splitSentence('Lights off · room empty'), { what: 'Lights off', why: 'room empty' });
   assert.deepEqual(P.splitSentence('Held back · Hall light · bed occupied'), { what: 'Held back', why: 'Hall light · bed occupied' });
@@ -4529,7 +4559,7 @@ ok('every theme: tile glyphs read on their fills (3:1), including the declined, 
     // Timeline: the rail is quieter than the dots and text but still visible; every dot reads on the surface (3:1), in its
     // subsystem colour or, where that would vanish, in secondary text (the attention dot is checked just below).
     assert.notEqual(t.rail, t.surface);
-    assert.ok(ratio(t.rail, t.surface) >= 1.05 && ratio(t.rail, t.surface) < ratio(t.chevron, t.surface), `${name}: the rail is subtle but there ${ratio(t.rail, t.surface).toFixed(2)}`);
+    assert.ok(ratio(t.rail, t.surface) >= 1.1 && ratio(t.rail, t.surface) < ratio(t.chevron, t.surface), `${name}: the rail is subtle but there ${ratio(t.rail, t.surface).toFixed(2)}`);
     for (const [id, s] of Object.entries(Raw.SUBSYSTEMS)) {
       const dot = ratio(t[s.tile], t.surface) >= 3 ? t[s.tile] : t.textSecondary;
       assert.ok(ratio(dot, t.surface) >= 3, `${name}: ${id} timeline dot`);

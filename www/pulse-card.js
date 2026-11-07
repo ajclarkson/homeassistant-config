@@ -122,7 +122,7 @@
       subModifier: '#f7768e', subModifierInk: '#191724',
       outside: '#31748f', outsideInk: '#e0def4', bins: '#7aa2f7', binsInk: '#191724', attentionInk: '#191724',
       occupied: '#9ccfd8', occupiedInk: '#191724', present: '#9ccfd8', presenceAway: '#524f67',
-      chevron: '#524f67', tileIdle: '#2a2740', rail: '#26233a',
+      chevron: '#524f67', tileIdle: '#2a2740', rail: '#403d52',
     },
   };
   const DEFAULT_THEME = 'rose-pine';
@@ -307,12 +307,13 @@
     });
   }
 
+  // `implied`: the noun names the room's own state, so after a room subject it adds nothing ("Parlour marked occupied").
   // The subject, icon and tile colours (`tile` and `ink`, a THEMES token pair) of each homerun subsystem on the activity feeds: the one table. A test holds it to
   // the catalogue, so a new subsystem fails loudly here instead of showing up as a bare dot.
   const SUBSYSTEMS = {
     lighting: { noun: 'Lights', icon: 'bulb', tile: 'subLighting', ink: 'subLightingInk' },
     heating: { noun: 'Heating', icon: 'flame', tile: 'subHeating', ink: 'subHeatingInk' },
-    occupied: { noun: 'Occupancy', icon: 'person', tile: 'subOccupied', ink: 'subOccupiedInk' },
+    occupied: { noun: 'Occupancy', implied: true, icon: 'person', tile: 'subOccupied', ink: 'subOccupiedInk' },
     energy: { noun: 'Energy', icon: 'bolt', tile: 'subEnergy', ink: 'subEnergyInk' },
     cameras: { noun: 'Cameras', icon: 'camera', tile: 'subCameras', ink: 'subCamerasInk' },
     fan: { noun: 'Fan', icon: 'fan', tile: 'subFan', ink: 'subFanInk' },
@@ -339,12 +340,12 @@
   const fmtMinutes = (v) => { const n = num(v); return n === null ? 'a few minutes' : `${clampInt(n, 0, 24 * 60)} min`; };
   const fmtTheme = (v) => { const t = str(v).trim(); return t ? (THEME_LABELS[t.toLowerCase()] || capFirst(pretty(t))) : 'the new'; };
   // Entities are named by their friendly name, falling back to the id so a rename never hides the source.
-  const entityName = (hass, id) => {
+  const friendlyName = (hass, id) => {
     const s = str(id);
-    if (!s) return '';
-    const f = attr(hass, s, 'friendly_name');
-    return typeof f === 'string' && f.trim() ? f.trim() : s;
+    const f = s ? attr(hass, s, 'friendly_name') : '';
+    return typeof f === 'string' ? f.trim() : '';
   };
+  const entityName = (hass, id) => friendlyName(hass, id) || str(id);
   // The lights come on when the reading is at or below the threshold, so the words say "or below".
   const luxText = (f) => `${fmtLux(f.lux)}, on at ${fmtThreshold(f.lux_threshold)} or below`;
   const fmtHours = (v) => { const n = num(v); return n === null ? 'a long time' : `${clampInt(n, 0, 24 * 31)} h`; };
@@ -585,19 +586,22 @@
     const why = own(UNDECLARED.reasons, e.reason) || pretty(e.reason);
     return `${noun}${verb ? ' ' + verb : ''}${why ? ' · ' + why : ''}`;
   }
-  // What a failed run or action says. Devices are named by their friendly name, never "entity".
-  function problemSentence(e, hass) {
+  // What a failed run or action says, and whether it opens with a device's own name (so its case is kept). Devices are
+  // named by their friendly name, never by entity id: without one the sentence opens with `fallback` (a room or a
+  // subsystem noun) instead, and a guard simply leaves the device out.
+  function problemParts(e, hass, fallback) {
     const d = e.detail;
-    const who = entityName(hass, d.entity);
+    const friendly = friendlyName(hass, d.entity);
     if (e.kind === 'action_failed') {
-      if (d.failure === 'ack_timeout') return `${who || 'A device'} didn't respond`;
-      return `${who || 'A device'} couldn't be controlled${str(d.action) ? ` (${pretty(str(d.action).split('.').pop())})` : ''}`;
+      const lead = friendly || fallback;
+      const text = d.failure === 'ack_timeout' ? `${lead} didn't respond` : `${lead} couldn't be controlled${str(d.action) ? ` (${pretty(str(d.action).split('.').pop())})` : ''}`;
+      return { text, named: friendly !== '' };
     }
     switch (d.abort_kind) {
-      case 'unavailable_input': return `Couldn't run: ${who || 'an input'} unavailable`;
-      case 'guard': return `Held back${who ? ' · ' + who : ''}${e.reason ? ' · ' + pretty(e.reason) : ''}`;
-      case 'unhandled_error': return "Couldn't run: it failed unexpectedly";
-      default: return `Couldn't run: ${pretty(d.abort_kind) || 'unknown problem'}`;
+      case 'unavailable_input': return { text: `Couldn't run: ${friendly || 'an input'} unavailable`, named: false };
+      case 'guard': return { text: `Held back${friendly ? ' · ' + friendly : ''}${e.reason ? ' · ' + pretty(e.reason) : ''}`, named: false };
+      case 'unhandled_error': return { text: "Couldn't run: it failed unexpectedly", named: false };
+      default: return { text: `Couldn't run: ${pretty(d.abort_kind) || 'unknown problem'}`, named: false };
     }
   }
   // A guard abort is an automation's precondition not being met: routine, never a problem.
@@ -605,8 +609,8 @@
   // The one place an entry becomes words, plus how to show it: `ok` for something done, `muted` for a rule that
   // chose not to act, `warn` for a run that could not happen. A declared reason with no wording still renders
   // (never blank) and is reported by unexplainedReasons.
-  function sentenceFor(e, hass) {
-    if (e.kind !== 'decision') return { text: problemSentence(e, hass), tone: isGuard(e) ? 'muted' : 'warn' };
+  function sentenceFor(e, hass, fallback = subjectOf(e.location, e.subsystem)) {
+    if (e.kind !== 'decision') return { ...problemParts(e, hass, fallback), tone: isGuard(e) ? 'muted' : 'warn' };
     const tone = e.outcome === 'declined' ? 'muted' : 'ok';
     if (e.outcome === undefined) return { text: undeclaredSentence(e), tone };
     const fn = own(REASON_TEXT, `${e.subsystem}:${e.reason}`);
@@ -1337,11 +1341,11 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     for (const e of history.entries) {
       // Routine on the House feed, where it would only be noise; a room page still shows it, muted.
       if (withPlace && isGuard(e)) continue;
-      const sentence = sentenceFor(e, hass);
+      const sentence = sentenceFor(e, hass, withPlace ? subjectOf(e.location, e.subsystem) : subsystemOf(e.subsystem).noun);
       const text = withPlace ? placed(e.location, sentence.text, e.subsystem) : sentence.text;
       const last = rows[rows.length - 1];
       if (last && last.text === text && last.tone === sentence.tone && last.subsystem === e.subsystem) last.count += 1;
-      else rows.push({ ts: e.ts, text, sentence: sentence.text, subject: subjectOf(e.location, e.subsystem), tone: sentence.tone, subsystem: e.subsystem, declined: e.outcome === 'declined', count: 1 });
+      else rows.push({ ts: e.ts, text, sentence: sentence.text, named: sentence.named === true, subject: subjectOf(e.location, e.subsystem), tone: sentence.tone, subsystem: e.subsystem, declined: e.outcome === 'declined', count: 1 });
     }
     return { rows, note: history.note };
   }
@@ -2268,14 +2272,19 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   }
   // Subject then verb part, read as one phrase: "Parlour" + "Lights off" is "Parlour lights off". A verb part that
   // already opens with the subject's first word ("Cameras on", "House set to away") shares it instead of repeating it.
-  function timelineLead(subject, what) {
+  const startsWithWord = (text, word) => text.toLowerCase() === word.toLowerCase() || text.toLowerCase().startsWith(word.toLowerCase() + ' ');
+  // `named`: the verb part opens with a device's own name, whose case is kept. `noun`/`implied` describe the subsystem.
+  function timelineLead(subject, what, opts = {}) {
     const first = subject.split(' ')[0];
-    if (what.toLowerCase() === first.toLowerCase() || what.toLowerCase().startsWith(first.toLowerCase() + ' ')) return { lead: what.slice(0, first.length), rest: what.slice(first.length) };
-    return { lead: subject, rest: ' ' + (KEEP_CAPITAL.test(what) ? what : lowerFirst(what)) };
+    if (startsWithWord(what, first)) return { lead: what.slice(0, first.length), rest: what.slice(first.length) };
+    const noun = opts.noun ? opts.noun.split(' ')[0] : '';
+    if (opts.implied && noun && startsWithWord(what, noun)) what = what.slice(noun.length).trim();
+    return { lead: subject, rest: ' ' + (opts.named || KEEP_CAPITAL.test(what) ? what : lowerFirst(what)) };
   }
   function timelineText(r) {
     const { what, why } = splitSentence(r.sentence);
-    const { lead, rest } = timelineLead(r.subject, what);
+    const sub = subsystemOf(r.subsystem);
+    const { lead, rest } = timelineLead(r.subject, what, { named: r.named, noun: sub.noun, implied: sub.implied === true });
     const quiet = r.tone === 'warn' ? '' : ` style="color:${TOKENS.textSecondary}"`;
     const count = r.count > 1 ? ` <span class="tl-n">x${r.count}</span>` : '';
     return `<b class="tl-s">${esc(lead)}</b>${esc(rest)}${why ? `<span${quiet}>${esc(REASON_SEP + why)}</span>` : ''}${count}`;
