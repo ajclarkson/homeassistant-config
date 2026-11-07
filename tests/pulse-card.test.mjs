@@ -1696,7 +1696,8 @@ ok('Now v3 occupied card is two lines: icon + name + temperature, then badges (a
   assert.doesNotMatch(up, /–/);
   const css = readFileSync(root + 'www/pulse-card.js', 'utf8');
   assert.match(css, /\.oc\{[^\n]*grid-template-columns:20px 1fr auto/);
-  assert.match(css, /\.oc \.sub\{grid-column:2 \/ 4/);
+  // Pill row starts under the person icon (column 1), matching the .rt tiles' status line.
+  assert.match(css, /\.oc \.sub\{grid-column:1 \/ 4;/);
 });
 
 ok('Now v3 tiles: fixed height, name / temperature / status-line grid, identical structure with or without badges, nothing wraps', () => {
