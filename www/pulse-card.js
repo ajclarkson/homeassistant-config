@@ -51,6 +51,13 @@
   // no side margin: HA's view padding is the inset.
   const HM_SECTION_GAP = 36;
   const HM_HEADER_INSET = 4;
+  // One gutter for both two-column grids (the stat tiles and the scene buttons), so they read as one rhythm.
+  const HM_GRID_GAP = 10;
+  // A group's extra row (the Individual lights disclosure under the scenes) sits this far below the grid: close
+  // enough to read as part of the group, not a new section.
+  const HM_GROUP_GAP = 12;
+  // The card inset: the left and right padding of a list row. The timeline uses it too.
+  const HM_ROW_INSET = 14;
 
   // ── Themes (single definition of every colour) ───────────────────────────────────────────────
   // Tokens are named by role, not hue, so a theme can change a hue without a name lying. Every theme
@@ -62,7 +69,8 @@
   //     controlEdge their outline; separator row dividers.
   //   Text: text; textSoft body text on controls; textSecondary sub-lines; textTertiary non-essential
   //     hints only (it can fall below 4.5:1 on some themes).
-  //   Accent: tint is the selected / active fill, tintInk the text on it; link; on / off toggle tracks
+  //   Accent: tint is the selected / active fill, tintInk the text on it; tintFill the quiet selected state (tint at
+  //     low alpha over a surface: primary text and a tint icon sit on it); link; on / off toggle tracks
   //     with knob / knobOff; sliderTrack the unfilled part of a slider (the fill is tint); ok good status; heat boiler
   //     firing.
   //   Attention: attention text and dots; attentionBg, attentionBorder, attentionChip, attentionRow fills.
@@ -80,7 +88,7 @@
     classic: {
       bg: '#12151a', surface: '#1a1f26', control: '#232a33', controlEdge: '#2f3843', separator: '#232a33',
       text: '#e8ebef', textSoft: '#cfd5dd', textSecondary: '#a3adba', textTertiary: '#8f9aa8',
-      tint: '#f2c46b', tintInk: '#1d1708', link: '#7aa7ff',
+      tint: '#f2c46b', tintInk: '#1d1708', tintFill: 'rgba(242,196,107,.16)', link: '#7aa7ff',
       on: '#3a8f63', off: '#3a424d', knob: '#fff', knobOff: '#c4ccd6', sliderTrack: '#3a424d',
       ok: '#6fcf97', okBg: '#14281d', heat: '#f08a4b', heatBg: '#2a1a10',
       attention: '#f2b84b', attentionBg: '#221d10', attentionBorder: '#4a3d1c', attentionChip: '#2b2415', attentionRow: '#201c10',
@@ -104,7 +112,7 @@
     'rose-pine': {
       bg: '#191724', surface: '#1f1d2e', control: '#26233a', controlEdge: '#403d52', separator: 'rgba(110,106,134,.35)',
       text: '#e0def4', textSoft: '#e0def4', textSecondary: '#908caa', textTertiary: '#6e6a86',
-      tint: '#c4a7e7', tintInk: '#191724', link: '#7aa2f7',
+      tint: '#c4a7e7', tintInk: '#191724', tintFill: 'rgba(196,167,231,.16)', link: '#7aa2f7',
       on: '#31748f', off: '#403d52', knob: '#e0def4', knobOff: '#908caa', sliderTrack: '#403d52',
       ok: '#9ccfd8', okBg: '#1f2b35', heat: '#ebbcba', heatBg: '#2e2230',
       attention: '#eb6f92', attentionBg: '#2b1f33', attentionBorder: '#5c3550', attentionChip: '#3a2640', attentionRow: '#251c2e',
@@ -233,7 +241,13 @@
       heating: 'Heating', presence: 'Presence', lights: 'Lights', media: 'Media', theme: 'Theme',
       useCalendar: 'Use calendar', keepRoomOccupied: 'Keep room occupied', volume: 'Volume', brightness: 'Brightness',
       scenes: 'Scenes', automation: 'Automation', fan: 'Fan', last24h: 'Last 24 hours',
-      temperature: 'Temperature', lightLevel: 'Light level', luxUnit: 'lx', luxDark: 'Dark, lights come on', luxBright: 'Bright enough',
+      temperature: 'Temperature', lightLevel: 'Light level', luxUnit: 'lx',
+      // The Light level tile's sub-line, with the room's live dark threshold: "Bright enough · on below 15 lx".
+      luxDark: (limit) => `Dark · on below ${limit} lx`, luxBright: (limit) => `Bright enough · on below ${limit} lx`,
+      // The Presence row's sub-line when the room is occupied with nothing holding it, and when it is empty.
+      emptiesSoon: 'Empties a few minutes after the last movement', noHolds: 'No holds',
+      // The "Keep room occupied" description while it is off (the switch itself says on or off).
+      keepOccupiedOff: 'Until you switch it off',
       occupied: 'Occupied', empty: 'Empty', occupancyUnavailable: 'Occupancy unavailable',
       override: 'Override',
       // The short word a presence hold shows beside the Occupied row; a hold with no entry shows its own label.
@@ -411,7 +425,7 @@
     'lighting:external_suppress_active': (f, c) => `Stayed off: ${own(SUPPRESS_SOURCES, f.source) || `held off by ${c.name(f.source) || 'something else'}`}`,
     'lighting:guest_room_sleep_bypass': () => 'Not switched off at bedtime: room kept for a guest',
     'lighting:house_sleep_mode': () => 'Lights off · house set to asleep',
-    'lighting:lux_high': (f) => `Stayed off: bright enough (${luxText(f)})`,
+    'lighting:lux_high': (f) => `Stayed off: bright enough, ${fmtLux(f.lux)} (on at ${fmtThreshold(f.lux_threshold)} or below)`,
     'lighting:lux_low': (f) => (num(f.lux) === null ? `Scene set${sceneNote(f.scene)} · room occupied (no light reading)` : `Scene set${sceneNote(f.scene)} · room occupied and dark (${luxText(f)})`),
     'lighting:occupancy_off': () => 'Lights off · room empty',
     'lighting:occupancy_settle_off': () => 'Lights off · room stayed empty',
@@ -698,7 +712,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 .hm-h h2{margin:0;font-size:20px;line-height:25px;font-weight:700}
 .hm-tr{font-size:15px;line-height:20px;font-weight:400;color:${TOKENS.textSecondary}}
 .hm-list{background:${TOKENS.surface};border-radius:12px;overflow:hidden}
-.hm-row{position:relative;display:flex;align-items:center;gap:12px;min-height:60px;padding:0 14px;color:inherit;text-decoration:none}
+.hm-row{position:relative;display:flex;align-items:center;gap:12px;min-height:60px;padding:0 ${HM_ROW_INSET}px;color:inherit;text-decoration:none}
 .hm-row+.hm-row::before{content:'';position:absolute;top:0;left:56px;right:0;height:.5px;background:${TOKENS.separator}}
 .hm-tile{width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex:none}
 .hm-text{flex:1;min-width:0}
@@ -711,7 +725,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 .tl-day{display:flex;flex-direction:column;gap:8px}
 .tl-h{padding:0 ${HM_HEADER_INSET}px;font-size:15px;line-height:20px;font-weight:600;color:${TOKENS.textSecondary}}
 .hm-list.tl{padding:6px 0}
-.tl-row{display:grid;grid-template-columns:52px 20px minmax(0,1fr);column-gap:10px;padding:6px 14px 6px 12px}
+.tl-row{display:grid;grid-template-columns:40px 20px minmax(0,1fr);column-gap:10px;padding:6px ${HM_ROW_INSET}px}
 .tl-t{text-align:right;font-size:14px;line-height:20px;color:${TOKENS.textSecondary}}
 .tl-rail{position:relative;margin:-6px 0}
 .tl-rail::before{content:'';position:absolute;left:9px;width:2px;top:0;bottom:0;background:${TOKENS.rail}}
@@ -721,7 +735,9 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 .tl-dot{position:absolute;left:4px;top:10px;width:12px;height:12px;border-radius:50%;box-sizing:border-box;background:${TOKENS.surface};border:2px solid transparent}
 .tl-row.acted .tl-dot{border-width:0}
 .tl-row.problem .tl-dot{border-width:0;background:${TOKENS.attention}}
-.tl-b{font-size:15px;line-height:20px;min-width:0;overflow-wrap:anywhere}
+.tl-b{min-width:0;overflow-wrap:anywhere}
+.tl-l1{font-size:15px;line-height:20px}
+.tl-l2{font-size:13.5px;line-height:18px;margin-top:1px}
 .tl-s{font-weight:600}
 .tl-n{font-weight:600;color:${TOKENS.textSecondary}}
 .hm-row:focus-visible,.hm-card:focus-visible,.hm-line:focus-visible{outline:2px solid ${TOKENS.link};outline-offset:-2px}
@@ -752,16 +768,18 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 .hm-btn[aria-expanded="true"] .hm-chev{transform:rotate(90deg)}
 .hm-dp[hidden]{display:none}
 .hm-dp .hm-row::before{content:'';position:absolute;top:0;left:14px;right:0;height:.5px;background:${TOKENS.separator}}
-.hm-wgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.hm-wgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:${HM_GRID_GAP}px}
 .hm-w{background:${TOKENS.surface};border-radius:20px;padding:14px 16px;min-width:0}
 .hm-w:only-child{grid-column:1/-1}
 .hm-wl{font-size:13px;line-height:18px;font-weight:600}
 .hm-wv{font-family:ui-rounded,"SF Pro Rounded",-apple-system,system-ui,sans-serif;font-size:34px;line-height:41px;font-weight:700}
-.hm-wv small{font-size:17px;font-weight:600;margin-left:3px;color:${TOKENS.textSecondary}}
+.hm-wv small{font-size:17px;line-height:0;font-weight:600;margin-left:3px;color:${TOKENS.textSecondary}}
 .hm-ws{font-size:14px;line-height:19px;color:${TOKENS.textSecondary};min-height:19px}
-.hm-scenes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.hm-scenes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:${HM_GRID_GAP}px}
+.hm-group-row{margin-top:${HM_GROUP_GAP}px}
 .hm-scene{display:flex;flex-direction:column;align-items:flex-start;justify-content:space-between;min-height:76px;padding:12px 14px;border:0;border-radius:16px;font:inherit;font-size:15px;line-height:20px;font-weight:600;text-align:left;cursor:pointer;background:${TOKENS.surface};color:${TOKENS.text};-webkit-tap-highlight-color:transparent}
-.hm-scene.on{background:${TOKENS.tint};color:${TOKENS.tintInk}}
+.hm-scene.on{background:${TOKENS.tintFill};box-shadow:inset 0 0 0 1.5px ${TOKENS.tint}}
+.hm-scene.on svg{color:${TOKENS.tint}}
 .hm-scene:focus-visible{outline:2px solid ${TOKENS.link};outline-offset:2px}
 .hm-sw{position:relative;flex:none;width:51px;height:31px;border-radius:16px;background:${TOKENS.on}}
 .hm-sw::after{content:'';position:absolute;top:2px;right:2px;width:27px;height:27px;border-radius:50%;background:${TOKENS.knob}}
@@ -1489,8 +1507,8 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   // 13px footnotes under a list or grid.
   const hmFeet = (notes) => (notes && notes.length ? `<div class="hm-feet">${notes.map((t) => `<p class="hm-foot">${esc(t)}</p>`).join('')}</div>` : '');
   // A section: header, then the body in an inset grouped list (`plain`: its rows have no leading tile) or, with
-  // `bare`, as it is (a grid), then `notes`.
-  const hmSection = (title, rows, opts) => `<section class="hm-sec"><div class="hm-h"><h2${opts && opts.colour ? ` style="color:${opts.colour}"` : ''}>${esc(title)}</h2>${opts && opts.trailing ? `<span class="hm-tr">${esc(opts.trailing)}</span>` : ''}</div>${opts && opts.bare ? rows : hmList(rows, opts && opts.plain)}${hmFeet(opts && opts.notes)}</section>`;
+  // `bare`, as it is (a grid), then `after` (markup that belongs to the group, already built), then `notes`.
+  const hmSection = (title, rows, opts) => `<section class="hm-sec"><div class="hm-h"><h2${opts && opts.colour ? ` style="color:${opts.colour}"` : ''}>${esc(title)}</h2>${opts && opts.trailing ? `<span class="hm-tr">${esc(opts.trailing)}</span>` : ''}</div>${opts && opts.bare ? rows : hmList(rows, opts && opts.plain)}${(opts && opts.after) || ''}${hmFeet(opts && opts.notes)}</section>`;
 
   // Native-style controls: the one definition every control on the room and garden pages uses.
   // Switch: 51x31, knob 27. It is decoration inside a row button, which carries aria-pressed and the title.
@@ -2256,7 +2274,8 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   }
 
   // Activity: a timeline. Each day is its own inset container under a small day header; a row is a time, a dot on
-  // a rail, and one line of words: the subject in bold, the verb part, then the reason part in secondary text.
+  // a rail, and the words on two lines: line 1 the subject in bold and the verb part, line 2 the reason in
+  // smaller secondary text (no line 2 when there is no reason).
   // The dot says what kind of entry it is: filled in the subsystem colour for something done, a ring for a rule
   // that chose not to act, filled in the attention colour (with the text) for a run or action that failed.
   const DOT_MIN_CONTRAST = 3; // a subsystem colour that would vanish on the surface falls back to secondary text
@@ -2265,10 +2284,17 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return s.tile && contrast(colour(s.tile), colour('surface')) >= DOT_MIN_CONTRAST ? TOKENS[s.tile] : TOKENS.textSecondary;
   }
   const REASON_SEP = ' · ';
-  // The sentence in two parts at its first " · ": what happened, and why. No separator means all of it is the what.
-  function splitSentence(sentence) {
-    const i = sentence.indexOf(REASON_SEP);
-    return i < 0 ? { what: sentence, why: '' } : { what: sentence.slice(0, i), why: sentence.slice(i + REASON_SEP.length) };
+  // A rule that chose not to act is worded "<what>: <why>" in REASON_TEXT ("Stayed off: bright enough (...)", "Not set
+  // to asleep: bed empty"); a rule that acted is worded "<what> · <why>". Every declined sentence has the colon
+  // form, so the colon is the split for those, and only those: a failed run ("Couldn't run: ...") is one line.
+  const CLAUSE_SEP = ': ';
+  // The sentence in two parts at its first " · " (or, with `colon`, its first ": " if that comes earlier): what
+  // happened, and why. No separator means all of it is the what.
+  function splitSentence(sentence, colon = false) {
+    const dot = sentence.indexOf(REASON_SEP);
+    const clause = colon ? sentence.indexOf(CLAUSE_SEP) : -1;
+    if (clause >= 0 && (dot < 0 || clause < dot)) return { what: sentence.slice(0, clause), why: sentence.slice(clause + CLAUSE_SEP.length) };
+    return dot < 0 ? { what: sentence, why: '' } : { what: sentence.slice(0, dot), why: sentence.slice(dot + REASON_SEP.length) };
   }
   // Subject then verb part, read as one phrase: "Parlour" + "Lights off" is "Parlour lights off". A verb part that
   // already opens with the subject's first word ("Cameras on", "House set to away") shares it instead of repeating it.
@@ -2282,12 +2308,13 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return { lead: subject, rest: ' ' + (opts.named || KEEP_CAPITAL.test(what) ? what : lowerFirst(what)) };
   }
   function timelineText(r) {
-    const { what, why } = splitSentence(r.sentence);
+    const { what, why } = splitSentence(r.sentence, r.tone === 'muted');
     const sub = subsystemOf(r.subsystem);
     const { lead, rest } = timelineLead(r.subject, what, { named: r.named, noun: sub.noun, implied: sub.implied === true });
     const quiet = r.tone === 'warn' ? '' : ` style="color:${TOKENS.textSecondary}"`;
     const count = r.count > 1 ? ` <span class="tl-n">x${r.count}</span>` : '';
-    return `<b class="tl-s">${esc(lead)}</b>${esc(rest)}${why ? `<span${quiet}>${esc(REASON_SEP + why)}</span>` : ''}${count}`;
+    const line1 = `<div class="tl-l1"><b class="tl-s">${esc(lead)}</b>${esc(rest)}${count}</div>`;
+    return line1 + (why ? `<div class="tl-l2"${quiet}>${esc(capFirst(why))}</div>` : '');
   }
   function timelineRow(r, time) {
     const kind = r.tone === 'warn' ? 'problem' : r.tone === 'muted' || r.declined ? 'declined' : 'acted';
@@ -2338,8 +2365,11 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   // Room, garden and tab pages are normal views, so HA's header is not meant to show. Material You hides the app
   // bar by setting ha-menu-button to opacity 0 (--ha-menu-button-opacity) but also gives it pointer-events: all, so
   // on a narrow screen the invisible hamburger sits over the top-left of the page and takes the tap meant for
-  // our back link. The card measures any header control that would take a tap and a tap target of its own that
-  // it overlaps, and the heading cards put an empty row above their content that tall (ui.top). Nothing is
+  // our back link. A control that cannot be seen (opacity 0) has no business taking a tap, so the card switches
+  // its pointer events off while the page is shown and puts them back when it leaves (disarm / rearm): the back
+  // link then sits at the top of the page like any other content. Anything that would still take a tap (a header
+  // that is really showing, or one whose style the card could not change) is measured against the card's tap
+  // targets, and the heading cards put an empty row above their content that tall (ui.top). Nothing is
   // hard-coded: the size comes from the browser. It only ever grows, because a scrolled page moves the targets
   // up and would read as "no overlap".
   const TOP_GUARD_MAX = 200; // a header is 56px plus the top safe area; this only stops a bad measurement running away
@@ -2348,6 +2378,22 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   // A header control takes taps unless it, or an ancestor it inherits from, switched them off or removed it.
   function takesTaps(cs) {
     return isObj(cs) && cs.pointerEvents !== 'none' && cs.display !== 'none' && cs.visibility !== 'hidden' && cs.visibility !== 'collapse';
+  }
+  // A control the viewer cannot see: fully transparent.
+  const invisibleControl = (cs) => isObj(cs) && Number.parseFloat(cs.opacity) === 0;
+  // Switch an invisible control's taps off, remembering its own inline value in `saved` (a Map) for rearm. The
+  // important flag beats a theme rule that gives it pointer-events: all.
+  function disarm(el, saved) {
+    if (saved.has(el)) return;
+    saved.set(el, { value: el.style.getPropertyValue('pointer-events'), priority: el.style.getPropertyPriority('pointer-events') });
+    el.style.setProperty('pointer-events', 'none', 'important');
+  }
+  function rearm(saved) {
+    for (const [el, was] of saved) {
+      if (was.value) el.style.setProperty('pointer-events', was.value, was.priority);
+      else el.style.removeProperty('pointer-events');
+    }
+    saved.clear();
   }
   // Pixels to move the targets down so none sits under a blocker. `shift` is the guard already in place, so the
   // answer is about the content's natural position and does not flip-flop as the guard appears.
@@ -2471,7 +2517,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const lx = attr(hass, id, 'unit_of_measurement') === 'lx' ? num(s.state) : null;
     if (lx === null) return { text: '–', sub: '' };
     const limit = num(state(hass, `input_number.${key}_automation_lux_threshold_dark`));
-    return { text: `${clampInt(lx, 0, LUX_MAX)}`, unit: true, sub: limit === null ? '' : lx <= limit ? COPY.room.luxDark : COPY.room.luxBright };
+    return { text: `${clampInt(lx, 0, LUX_MAX)}`, unit: true, sub: limit === null ? '' : lx <= limit ? COPY.room.luxDark(clampInt(limit, 0, LUX_MAX)) : COPY.room.luxBright(clampInt(limit, 0, LUX_MAX)) };
   }
   function sectionReadings(hass, key) {
     const m = roomModel(hass, key);
@@ -2533,7 +2579,10 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   }
 
   // How the lights automation stands, as the footnote under the scenes: its mode, then why the lights are as they are.
+  // A decline has no footnote: the Light level tile carries the threshold and Activity has the decision, so the
+  // caption only repeated them.
   function lightsNote(story) {
+    if (story.state === 'declined') return '';
     const lead = { disabled: '', manual: COPY.room.manual, problem: COPY.room.problem, declined: '' }[story.state];
     const tag = lead !== undefined ? lead : story.holds ? COPY.room.hold : COPY.room.auto;
     return [tag, story.why].filter(Boolean).join(' · ');
@@ -2587,7 +2636,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     if (!usable(s)) return '';
     const on = s === 'on';
     const guest = key === 'home_office' && state(hass, 'input_select.house_active_mode_modifier') === 'guest';
-    const sub = on ? (guest ? 'Set by guest mode · lights and heating treat the room as in use' : 'Room held occupied · lights and heating treat it as in use') : 'Holds the room occupied until switched off';
+    const sub = on ? (guest ? 'Set by guest mode · lights and heating treat the room as in use' : 'Room held occupied · lights and heating treat it as in use') : COPY.room.keepOccupiedOff;
     return hmToggleRow({ title: COPY.room.keepRoomOccupied, sub, on, act: 'toggle', data: { entity: id } });
   }
   // The trailing value of the Occupied row appears only when something holds the room, so it never reads as a button
@@ -2599,20 +2648,24 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     }
     return override ? COPY.room.override : '';
   }
-  function sectionPresence(hass, key) {
+  // The Presence group's last row is the Automation disclosure (the switches decide what the room does on its own);
+  // a garden has no Presence group, so its Automation card stands alone (sectionAutomation).
+  function sectionPresence(hass, key, ui) {
     const m = roomModel(hass, key);
     const keep = keepOccupiedRow(hass, key);
-    if (!m.hasReport && !keep) return '';
+    const automation = automationRow(hass, key, ui);
+    // With nothing else to say about presence (no report, no override helper) the row has no group to join.
+    if (!m.hasReport && !keep) return automation ? hmDisclosureList(automation) : '';
     let row = '';
     if (m.hasReport) {
       const holds = m.pres_labels;
       const occ = m.occupancy_unavailable ? COPY.room.occupancyUnavailable : m.occupied ? COPY.room.occupied : COPY.room.empty;
-      const pres = holds.length ? `${holds.join(' · ')} · empty a few minutes after ${holds.length > 1 ? 'the last one clears' : 'it clears'}` : m.occupied ? 'No holds · empty a few minutes after the last movement' : 'No holds';
+      const pres = holds.length ? `${holds.join(' · ')} · empty a few minutes after ${holds.length > 1 ? 'the last one clears' : 'it clears'}` : m.occupied ? COPY.room.emptiesSoon : COPY.room.noHolds;
       const ovr = m.override_text ? ` · ${m.override_text}` : '';
       const noMotion = state(hass, `input_boolean.${key}_sensor_motion_enabled`) === 'off' ? ' · Motion sensor off, so movement is ignored' : '';
       row = hmRow({ title: occ, sub: `${pres}${ovr}${noMotion}`, value: presenceValue(holds, m.override) });
     }
-    return `<div class="hm">${hmSection(COPY.room.presence, row + keep, { plain: true })}</div>`;
+    return `<div class="hm">${hmSection(COPY.room.presence, row + keep + automation, { plain: true })}</div>`;
   }
 
   // Lights: the scene buttons (found in the HA registry, see sceneRegistry), then one row per light.
@@ -2632,20 +2685,24 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return dimmable && on ? row + hmSliderRow({ title: COPY.room.brightness, pct, act: 'brightness', data: { entity: id }, label: `${label} ${COPY.room.brightness.toLowerCase()}` }) : row;
   }
   // "Individual lights": a disclosure row, "2 of 5 on" or "All off" trailing, the light rows under it when open.
-  function individualLights(hass, key, m, ui, notes) {
+  function individualLights(hass, key, m, ui) {
     const on = m.cfg.lights.filter(([id]) => state(hass, id) === 'on').length;
     const id = `${key}:lights`;
     const body = m.cfg.lights.map(([lid, label]) => lightRows(hass, lid, label)).join('');
     const row = hmDisclosure({ id, title: COPY.room.individualLights, summary: COPY.room.lightsSummary(on, m.cfg.lights.length), open: disclosureOpen(ui, id), body });
-    return `<section class="hm-sec">${hmList(row, true)}${hmFeet(notes)}</section>`;
+    return hmList(row, true);
   }
+  // Scenes, with the Individual lights row as part of that group (HM_GROUP_GAP under the grid, inside the section).
+  // A room with no scenes gives the row a section of its own, since there is no group to join.
   function sectionLights(hass, key, now, ui) {
     const m = roomModel(hass, key);
     const active = activeScene(hass, key);
-    const notes = m.hasReport ? [lightsNote(lightsStory(hass, key, now))] : [];
-    const scenes = m.scenes.length ? hmSection(COPY.room.scenes, `<div class="hm-scenes">${m.scenes.map((id) => sceneButton(key, id, active)).join('')}</div>`, { bare: true, notes }) : '';
-    const lights = m.cfg.lights.length ? individualLights(hass, key, m, ui, scenes ? [] : notes) : '';
-    return scenes || lights ? `<div class="hm">${scenes}${lights}</div>` : '';
+    const note = m.hasReport ? lightsNote(lightsStory(hass, key, now)) : '';
+    const notes = note ? [note] : [];
+    const lights = m.cfg.lights.length ? individualLights(hass, key, m, ui) : '';
+    const grid = m.scenes.length ? `<div class="hm-scenes">${m.scenes.map((id) => sceneButton(key, id, active)).join('')}</div>` : '';
+    if (grid) return `<div class="hm">${hmSection(COPY.room.scenes, grid, { bare: true, after: lights ? `<div class="hm-group-row">${lights}</div>` : '', notes })}</div>`;
+    return lights ? `<div class="hm"><section class="hm-sec">${lights}${hmFeet(notes)}</section></div>` : '';
   }
 
   // A single switchable device with the reason homerun last gave for its state (the fan row on the
@@ -2713,19 +2770,22 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return v === null ? '' : hmStepperRow({ title: row.title, sub: row.sub, shown: `${row.step < 1 ? v.toFixed(1) : String(Math.round(v))}${row.unit}`, act: 'setting-number', data });
   }
   // Automation: every setting of the room's table (ROOM_TABLE settings, rooms and gardens alike) behind one
-  // disclosure row that doubles as the section header. Collapsed it says "All on" or what is off, in the
-  // attention colour; each row explains itself with a subtitle.
-  function sectionAutomation(hass, key, ui) {
+  // disclosure row. Collapsed it says "All on" or what is off, in the attention colour; each row explains itself
+  // with a subtitle. '' when the room has no readable setting.
+  function automationRow(hass, key, ui) {
     const shown = ROOM_SETTINGS[key].flatMap((g) => g.rows.map((r) => ({ r, html: settingRowHtml(hass, key, g.key, r) }))).filter((x) => x.html);
     if (shown.length === 0) return '';
     const off = shown.filter((x) => x.r.kind === 'toggle' && state(hass, x.r.id) !== 'on').map((x) => x.r.title);
     const hasToggle = shown.some((x) => x.r.kind === 'toggle');
     const id = `${key}:automation`;
-    const row = hmDisclosure({
+    return hmDisclosure({
       id, title: COPY.room.automation, summary: off.length ? COPY.room.automationOff(off) : hasToggle ? COPY.room.allOn : '',
       tone: off.length ? TOKENS.attention : '', open: disclosureOpen(ui, id), body: shown.map((x) => x.html).join(''),
     });
-    return hmDisclosureList(row);
+  }
+  function sectionAutomation(hass, key, ui) {
+    const row = automationRow(hass, key, ui);
+    return row ? hmDisclosureList(row) : '';
   }
 
   // The fan (the bathroom page): its switch, with the reason homerun last gave.
@@ -2740,6 +2800,10 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return `<div class="hm">${hmSection(COPY.room.fan, body, { plain: true })}</div>`;
   }
 
+  // A TV's toggle already says on or off, so its description is silent about that: only what is playing or paused
+  // is worth a line. Undefined leaves the line out (see hmRow).
+  const TV_QUIET = ['on', 'off', 'standby', 'idle'];
+  const tvSub = (state, text) => (TV_QUIET.includes(state) ? undefined : text);
   function sectionMedia(hass, key) {
     const m = roomModel(hass, key);
     if (m.cfg.media.length === 0) return '';
@@ -2751,7 +2815,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       const title = str(attr(hass, id, 'media_title'));
       const artist = str(attr(hass, id, 'media_artist'));
       const text = playing ? [title, artist].filter(Boolean).join(' · ') || 'Playing' : s.state === 'paused' ? 'Paused' : off ? 'Off' : s.state === 'idle' ? 'Idle' : s.state;
-      if (kind === 'tv') return hmToggleRow({ title: label, sub: text, on: !off, act: 'media-power', data: { entity: id } });
+      if (kind === 'tv') return hmToggleRow({ title: label, sub: tvSub(s.state, text), on: !off, act: 'media-power', data: { entity: id } });
       const vol = num(attr(hass, id, 'volume_level'));
       const play = `<button type="button" class="round${playing ? '' : ' quiet'}" data-act="media-play" data-entity="${esc(id)}" aria-label="${playing ? COPY.common.pause : COPY.common.play}">${svg(playing ? ICON.pause : ICON.play, 20)}</button>`;
       const volume = vol === null ? '' : hmSliderRow({ title: COPY.room.volume, pct: vol * 100, act: 'volume', data: { entity: id }, label: `${label} ${COPY.room.volume.toLowerCase()}` });
@@ -3348,7 +3412,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     lights: (h, c, n, ui) => sectionLights(h, c.room, n, ui),
     heating: (h, c) => sectionHeating(h, c.room),
     'chart-head': () => `<div class="hm"><section class="hm-sec"><div class="hm-h"><h2>${COPY.room.last24h}</h2></div></section></div>`,
-    presence: (h, c) => sectionPresence(h, c.room),
+    presence: (h, c, n, ui) => sectionPresence(h, c.room, ui),
     media: (h, c) => sectionMedia(h, c.room),
     device: (h, c) => sectionDevice(h, c),
     automation: (h, c, n, ui) => sectionAutomation(h, c.room, ui),
@@ -3639,7 +3703,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return disclosureStore[id] === true;
   }
 
-  const api = { parsedAttr, disclosureStore, toggleDisclosure, setOptimise, trackHass, depsUnchanged, makeRenderGate, RENDER_MAX_AGE_MS, deriveScenes, sceneRegistry, ROOM_TABLE, lightsStory, lightsState, verdictFor, houseActivity, parseHistory, readHistory, sentenceFor, roomActivity, splitSentence, timelineLead, unexplainedReasons, REASON_TEXT, UNDECLARED, SUPPRESS_SOURCES, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, SETTINGS_PATH, takesTaps, coverNeed, topGuard, HEAD_MODES, TOP_GUARD_MAX, CAMERAS_PATH, PENDING_MS, cameraParts, cameraToggle, cameraPending, perform, pendingStart, pendingFor, pendingKey, markPending, ERROR_MS, parseClips, frigateClipsId, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, GARDEN_ORDER, ALL_ROOM_KEYS, THEME_LABELS, THEME_ICON, ICON, SUBSYSTEMS, subsystemOf, placed, gardenModel, gardenSub, themeSource, shortDate, ALLOWED, writeAllowed, HOUSE_NUMBERS, HOUSE_MODIFIER, HOUSE_VACATION_HOURS, CAMERAS, PTZ_DIRS, DEVICE_REASONS, ROOM_SETTINGS, MO_TOGGLES, settingFor, render, priceColour, PRICE_AT, PRICE_EXTREME_P, THEMES, COLOUR_KEYS, DEFAULT_THEME, TOKENS, COPY, checkThemes, themeOf, useTheme, colour, resolveVars, styleFor, roomModel, attentionItems, handleAction, callService, num, parseList };
+  const api = { parsedAttr, disclosureStore, toggleDisclosure, setOptimise, trackHass, depsUnchanged, makeRenderGate, RENDER_MAX_AGE_MS, deriveScenes, sceneRegistry, ROOM_TABLE, lightsStory, lightsState, verdictFor, houseActivity, parseHistory, readHistory, sentenceFor, roomActivity, splitSentence, timelineLead, unexplainedReasons, REASON_TEXT, UNDECLARED, SUPPRESS_SOURCES, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, SETTINGS_PATH, takesTaps, invisibleControl, disarm, rearm, coverNeed, topGuard, HEAD_MODES, TOP_GUARD_MAX, CAMERAS_PATH, PENDING_MS, cameraParts, cameraToggle, cameraPending, perform, pendingStart, pendingFor, pendingKey, markPending, ERROR_MS, parseClips, frigateClipsId, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, GARDEN_ORDER, ALL_ROOM_KEYS, THEME_LABELS, THEME_ICON, ICON, SUBSYSTEMS, subsystemOf, placed, gardenModel, gardenSub, themeSource, shortDate, ALLOWED, writeAllowed, HOUSE_NUMBERS, HOUSE_MODIFIER, HOUSE_VACATION_HOURS, CAMERAS, PTZ_DIRS, DEVICE_REASONS, ROOM_SETTINGS, MO_TOGGLES, settingFor, render, priceColour, PRICE_AT, PRICE_EXTREME_P, THEMES, COLOUR_KEYS, DEFAULT_THEME, TOKENS, COPY, checkThemes, themeOf, useTheme, colour, resolveVars, styleFor, roomModel, attentionItems, handleAction, callService, num, parseList };
   root.PulseLib = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 
@@ -3650,6 +3714,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         super();
         this._root = this.attachShadow({ mode: 'open' });
         this._html = null;
+        this._disarmed = new Map(); // invisible header controls whose taps are off while this card shows (see disarm)
         this._gate = makeRenderGate();
         this._busy = false;
         this._ui = { open: disclosureStore, top: 0, tb: 'inflow', day: 'today', fuel: 'electricity', cam: { rec: {} }, pending: {}, error: null, hist: { electricity: { status: 'loading', days: [] }, gas: { status: 'loading', days: [] } } };
@@ -3703,6 +3768,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         for (const t of this._tbTimers || []) clearTimeout(t);
         for (const t of this._topTimers || []) clearTimeout(t);
         this._topTimers = null;
+        rearm(this._disarmed);
         if (this._onResize && typeof window !== 'undefined' && window.removeEventListener) window.removeEventListener('resize', this._onResize);
         this._tbTimers = null;
       }
@@ -3909,7 +3975,10 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
           if (node.nodeType === 11 && node.querySelectorAll) {
             for (const el of node.querySelectorAll('ha-menu-button, ha-icon-button-arrow-prev, .action-items')) {
               const r = el.getBoundingClientRect();
-              if (rectOk(r) && takesTaps(getComputedStyle(el))) out.push({ left: r.left, top: r.top, right: r.right, bottom: r.bottom });
+              const cs = getComputedStyle(el);
+              if (!rectOk(r) || !takesTaps(cs)) continue;
+              if (invisibleControl(cs)) disarm(el, this._disarmed);
+              else out.push({ left: r.left, top: r.top, right: r.right, bottom: r.bottom });
             }
           }
           node = node.assignedSlot || node.parentNode || node.host || null;
