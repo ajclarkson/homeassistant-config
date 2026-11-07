@@ -243,12 +243,20 @@
     room: {
       heating: 'Heating', presence: 'Presence', lights: 'Lights', media: 'Media', theme: 'Theme',
       useCalendar: 'Use calendar', keepRoomOccupied: 'Keep room occupied', volume: 'Volume', brightness: 'Brightness',
-      scenes: 'Scenes', automation: 'Automation', fan: 'Fan',
-      temperature: 'Temperature', lightLevel: 'Light level', luxUnit: 'lx',
-      // The Light level tile's sub-line, with the room's live dark threshold: "Bright enough · on below 15 lx".
-      luxDark: (limit) => `Dark · on below ${limit} lx`, luxBright: (limit) => `Bright enough · on below ${limit} lx`,
+      automation: 'Automation', fan: 'Fan',
+      // The lighting footnote's lead, from the same dark / bright decision the lights automation makes: "Dark (6 lx)".
+      luxState: (dark, lx) => `${dark ? 'Dark' : 'Bright'} (${lx} lx)`,
+      // The lighting footnote once the lights are on: "Lamps on since 15:51" (`what` is the scene's name, or "Lights"),
+      // then what keeps them on: "stay on while the sofa is occupied", else "off when the room empties".
+      litSince: (what, time) => `${what} on since ${time}`,
+      litHeld: (reasons) => `stay on while ${reasons}`,
+      holdReason: (subject, plural, state) => `${subject} ${plural ? 'are' : 'is'} ${state}`,
+      litEmpties: 'off when the room empties',
       // The Presence row's sub-line when the room is occupied with nothing holding it, and when it is empty.
       emptiesSoon: 'Empties a few minutes after the last movement', noHolds: 'No holds',
+      // The Occupied row's subtitle while something holds the room: the rule only, since the row's value names the
+      // source. `subject` is "the sofa" or "it"; several holds clear together when the last one does.
+      clearsAfter: (subject) => `Empty a few minutes after ${subject} clears`, clearsAfterLast: 'Empty a few minutes after the last one clears',
       // The "Keep room occupied" description while it is off (the switch itself says on or off).
       keepOccupiedOff: 'Until you switch it off',
       occupied: 'Occupied', empty: 'Empty', occupancyUnavailable: 'Occupancy unavailable',
@@ -266,7 +274,7 @@
       // temp may be '' (no reading); until may be '' (the plan does not say when the choice ends).
       heatingModeManual: (mode, temp, until) => `${mode}${temp ? ` ${temp}` : ''} ${until ? `until ${until}, then back to the schedule` : 'until the schedule next changes'}`,
       // The day plan with the mode control under its chart: the strip, its card and the notes that stand in for it.
-      planNow: 'now', heatedToday: 'Heated today', radiatorHeating: 'radiator heating', radiatorIdle: 'radiator idle',
+      planNow: 'now', radiatorOnToday: (dur) => `radiator on ${dur} today`, humidityLine: (pct) => `${pct}% humidity`, radiatorHeating: 'radiator heating', radiatorIdle: 'radiator idle',
       planMode: (mode, temp) => `${mode} · ${temp}°`,
       planUntil: (time) => `until ${time}`, planByHand: (time) => `by hand until ${time}`, planHeld: 'held for now',
       planFrom: (time) => `From ${time}`, planNext: (mode) => `Next: ${mode}`, planThen: (mode) => `Then: ${mode}`, planResumes: (time) => `From ${time} · schedule resumes`,
@@ -286,12 +294,11 @@
       },
       humidity: 'Humidity', normalTarget: 'Normal target', status: 'Status',
       manual: 'Manual', manualChange: 'Manual change', problem: 'Problem',
-      hold: 'Hold', auto: 'Auto', suspended: 'Suspended', pending: 'Pending', heatingAutomationOff: 'Heating automation is off', pendingNote: 'Heating drops to minimum if it stays open',
-      // The room's subtitle under its name: "Occupied · Lamps on", "Empty · lights off". `scene` is the active
-      // scene's label ('' when none), only said while the lights are on.
-      headLine: (occupancy, lightsOn, scene) => `${occupancy} · ${lightsOn ? (scene ? `${scene} on` : 'lights on') : 'lights off'}`,
+      auto: 'Auto', suspended: 'Suspended', pending: 'Pending', heatingAutomationOff: 'Heating automation is off', pendingNote: 'Heating drops to minimum if it stays open',
+      // The room's subtitle under its name: "Occupied · Lamps on · 20.2°", "Empty · lights off". `scene` is the active
+      // scene's label ('' when none), only said while the lights are on; `temp` is formatted, '' without a reading.
+      headLine: (occupancy, lightsOn, scene, temp) => [occupancy, lightsOn ? (scene ? `${scene} on` : 'lights on') : 'lights off', temp].filter(Boolean).join(' · '),
       gardenLine: (reporting, on) => (!reporting ? 'Lights unknown' : on ? 'Lights on' : 'Lights off'),
-      heatingTo: (t) => `Heating to ${t}`, heatingNow: 'Heating', targetIs: (t) => `Target ${t}`, notHeating: 'Not heating',
       individualLights: 'Individual lights',
       // Trailing summary of the "Individual lights" row: "2 of 5 on", or "All off".
       lightsSummary: (on, total) => (on === 0 ? 'All off' : `${on} of ${total} on`),
@@ -772,7 +779,9 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 .hm-card .segs{background:${TOKENS.control};margin:12px 0 16px}
 .hm-card .seg.on{background:${TOKENS.controlEdge};color:${TOKENS.text};box-shadow:0 1px 3px ${TOKENS.bg}}
 .plan-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.plan-temp{display:flex;flex-direction:column;align-items:flex-start}
 .plan-big{font-size:44px;line-height:48px;font-weight:300;letter-spacing:-1px}
+.plan-hum{font-size:14px;color:${TOKENS.textSecondary}}
 .plan-mode{display:flex;flex-direction:column;align-items:flex-end;text-align:right}
 .plan-mode-t{font-size:17px;font-weight:600}
 .plan-mode-s{font-size:14px;color:${TOKENS.textSecondary}}
@@ -947,6 +956,8 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       name: 'Bathroom', short: 'Bathroom', report: true,
       climate: 'climate.bathroom_trv', temp: 'sensor.bathroom_sensor_climate_temperature', hum: 'sensor.bathroom_sensor_climate_humidity', lux: 'sensor.bathroom_sensor_motion_illuminance',
       heatMode: 'input_select.bathroom_heating_manual_mode',
+      // Humidity drives the extractor fan here, so the Fan section shows it and the Heating card does not.
+      humidityInFan: true,
       lights: [['light.bathroom_light_ceiling', 'Ceiling']],
       media: [],
       settings: [
@@ -2543,7 +2554,9 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     if (!m.hasReport) return COPY.home.noReport;
     const occupancy = m.occupancy_unavailable ? COPY.room.occupancyUnavailable : m.occupied ? COPY.room.occupied : COPY.room.empty;
     const lights = lightsState(m, activeScene(hass, key));
-    return COPY.room.headLine(occupancy, lights.on, lights.on && lights.badge !== 'On' ? lights.badge : '');
+    // The room's temperature rides in the subtitle; a room without the sensor, or without a reading, leaves it out.
+    const temp = m.cfg.temp && m.temp !== null ? `${fmt1(m.temp)}°` : '';
+    return COPY.room.headLine(occupancy, lights.on, lights.on && lights.badge !== 'On' ? lights.badge : '', temp);
   }
 
   // This room's attention items as an inset list right under the header: the short label in the attention colour,
@@ -2565,34 +2578,17 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return `<div class="hm hm-first"><div class="hm-head">${back}${title}</div>${roomAttention(hass, key)}</div>`;
   }
 
-  // Readings: Temperature and Light level widgets. A room without the sensor has no widget, and a lone widget
-  // takes the full row.
-  // Sub-line of the Temperature widget, from the valve and the target.
-  function temperatureSub(m) {
-    const target = m.target === null ? '' : `${fmt1(m.target)}°`;
-    if (m.hvac_action === 'heating') return target ? COPY.room.heatingTo(target) : COPY.room.heatingNow;
-    if (m.hvac_action === 'off' || (!target && m.hvac_action === 'idle')) return COPY.room.notHeating;
-    return target ? COPY.room.targetIs(target) : '';
-  }
-  // The room's live illuminance sensor against its dark threshold (the entities the lights automation reads). A
-  // sensor that is absent from HA has no widget; one that is unavailable, non-numeric or not in lx shows a muted
-  // dash rather than a guessed figure. Lux is clamped; "dark" is at or below the threshold, as the automation counts it.
-  function luxReading(hass, key) {
+  // The room's live illuminance against its dark threshold (the entities the lights automation reads), as the
+  // lighting footnote's lead: "Dark (6 lx)" or "Bright (87 lx)". "Dark" is at or below the threshold, as the
+  // automation counts it. '' when there is no sensor, no numeric lx reading or no threshold to decide against:
+  // a guessed verdict would be worse than none. Lux is clamped.
+  function luxLead(hass, key) {
     const id = ROOMS[key].lux;
-    const s = id ? stateObj(hass, id) : null;
-    if (!s) return null;
-    const lx = attr(hass, id, 'unit_of_measurement') === 'lx' ? num(s.state) : null;
-    if (lx === null) return { text: '–', sub: '' };
+    if (!id || attr(hass, id, 'unit_of_measurement') !== 'lx') return '';
+    const lx = num(state(hass, id));
     const limit = num(state(hass, `input_number.${key}_automation_lux_threshold_dark`));
-    return { text: `${clampInt(lx, 0, LUX_MAX)}`, unit: true, sub: limit === null ? '' : lx <= limit ? COPY.room.luxDark(clampInt(limit, 0, LUX_MAX)) : COPY.room.luxBright(clampInt(limit, 0, LUX_MAX)) };
-  }
-  function sectionReadings(hass, key) {
-    const m = roomModel(hass, key);
-    const cards = [];
-    if (m.cfg.temp && m.temp !== null) cards.push(hmWidget(COPY.room.temperature, TOKENS.heat, `${fmt1(m.temp)}°`, temperatureSub(m)));
-    const lux = luxReading(hass, key);
-    if (lux) cards.push(hmWidget(COPY.room.lightLevel, TOKENS.subLighting, lux.unit ? `${lux.text}<small>${COPY.room.luxUnit}</small>` : lux.text, lux.sub));
-    return cards.length ? `<div class="hm"><div class="hm-wgrid">${cards.join('')}</div></div>` : '';
+    if (lx === null || limit === null) return '';
+    return COPY.room.luxState(lx <= limit, clampInt(lx, 0, LUX_MAX));
   }
 
   // The lights row of the Lights card: why the lights are as they are, including why they are NOT on. One
@@ -2608,7 +2604,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const m = roomModel(hass, key);
     const holds = m.pres_labels.join(' · ');
     const at = (ts) => (ts ? ' at ' + hhmm(ts) : '');
-    const out = (state, why, tone) => ({ state, why, tone, holds });
+    const out = (state, why, tone, lit = null) => ({ state, why, tone, holds, holdList: m.pres_labels, lit });
     if (!m.lights_enabled) return out('disabled', 'Lights automation is off · they change only by hand', 'muted');
     const h = readHistory(hass, `sensor.${key}_history`);
     const lighting = h.entries.filter((e) => e.subsystem === 'lighting');
@@ -2641,17 +2637,39 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       if (tone === 'warn') return out('problem', `${text}${at(newest.ts)}${tail}`, tone);
       return out('declined', `${COPY.room.declinedLine(text, newest.ts ? hhmm(newest.ts) : '')}${tail}`, tone);
     }
-    if (lastActed) return out('acted', `${sentenceFor(lastActed, hass).text}${at(lastActed.ts)}${tail}`, 'ok');
+    if (lastActed) return out('acted', `${sentenceFor(lastActed, hass).text}${at(lastActed.ts)}${tail}`, 'ok', litSince(hass, key, m, lastActed));
     return out('none', `${h.note ? `Lighting ${h.note.toLowerCase()}` : 'No lighting decision recorded yet'}${tail}`, h.note ? 'warn' : 'muted');
   }
 
-  // How the lights automation stands, as the footnote under the scenes: its mode, then why the lights are as they are.
-  // A decline has no footnote: the Light level tile carries the threshold and Activity has the decision, so the
-  // caption only repeated them.
+  // The room page words a lit room plainly ("Lamps on since 15:51") from what it can see itself: the scene that is
+  // active now and the time of the automation's last scene-setting. The shared reason wording (REASON_TEXT, the
+  // Activity feed's) is not touched; any other last action keeps that wording in the footnote. Null when the lights
+  // are off or the last action did not set a scene.
+  function litSince(hass, key, m, acted) {
+    const setScene = acted.decision === 'activate_scene' || str(acted.facts.scene).trim() !== '';
+    const time = hhmm(acted.ts);
+    if (!(m.lights_on > 0) || !setScene || !time) return null;
+    const lights = lightsState(m, activeScene(hass, key));
+    return { what: lights.badge === 'On' ? COPY.room.lights : lights.badge, since: time };
+  }
+  // "Sofa occupied" -> {subject: 'the sofa', state: 'occupied'}; "Monitor on" -> the monitor, on; "Sonos playing" keeps its
+  // capital. A label that is not "<thing> <state>" has no subject and is said as it is.
+  function holdParts(label) {
+    const m = /^(.+) (occupied|on|playing|open|closed)$/i.exec(str(label).trim());
+    if (!m) return { subject: '', state: lowerFirst(str(label).trim()), plural: false };
+    const brand = /^Sonos\b/.test(m[1]);
+    return { subject: brand ? m[1] : `the ${lowerFirst(m[1])}`, state: m[2].toLowerCase(), plural: !brand && /[^s]s$/.test(m[1]) };
+  }
+  const holdReason = (label) => { const h = holdParts(label); return h.subject ? COPY.room.holdReason(h.subject, h.plural, h.state) : h.state; };
+
+  // How the lights automation stands, as the footnote under the lights: its mode, then why the lights are as they are.
+  // A decline has no footnote: Activity has the decision, so the caption only repeated it. A lit room reads
+  // "Lamps on since 15:51 · stay on while the sofa is occupied" (see litSince).
   function lightsNote(story) {
     if (story.state === 'declined') return '';
+    if (story.lit) return [COPY.room.litSince(story.lit.what, story.lit.since), story.holdList.length ? COPY.room.litHeld(story.holdList.map(holdReason).join(' and ')) : COPY.room.litEmpties].join(' · ');
     const lead = { disabled: '', manual: COPY.room.manual, problem: COPY.room.problem, declined: '' }[story.state];
-    const tag = lead !== undefined ? lead : story.holds ? COPY.room.hold : COPY.room.auto;
+    const tag = lead !== undefined ? lead : story.holds ? '' : COPY.room.auto;
     return [tag, story.why].filter(Boolean).join(' · ');
   }
 
@@ -2723,14 +2741,12 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     if (lock) throw new Error(`pulse-card: heating mode for "${key}" is locked: ${lock}`);
     return callService(hass, 'input_select', 'select_option', { entity_id: cfg.heatMode, option });
   }
-  // The rows the control does not repeat: why the target differs from the mode, the safety hold, humidity, and the
+  // The rows the control does not repeat: why the target differs from the mode, the safety hold, and the
   // automation's pending / suspended state.
-  function heatingRows(m, heated) {
+  function heatingRows(m) {
     const rows = [];
     if (m.target_reason || m.heating_source === 'safety' || m.heat_labels.length) rows.push(hmRow({ title: heatingReason(m), value: m.target === null ? '–' : `${fmt1(m.target)}°` }));
     if (m.target_reason && m.mode_name && m.mode_target !== null) rows.push(hmRow({ title: COPY.room.normalTarget, sub: upperFirst(m.mode_name), value: `${fmt1(m.mode_target)}°` }));
-    if (heated) rows.push(heated);
-    if (m.humidity !== null) rows.push(hmRow({ title: COPY.room.humidity, value: `${Math.round(m.humidity)}%` }));
     const stateText = heatingStateText(m);
     // "Heating automation is off" is already the control's footnote.
     if (stateText && stateText !== COPY.room.heatingAutomationOff) rows.push(hmRow({ title: COPY.room.status, sub: stateText === COPY.room.pending ? COPY.room.pendingNote : undefined, value: stateText }));
@@ -3058,7 +3074,9 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const when = !until ? (view.eff ? COPY.room.planHeld : '') : view.eff && view.eff.byHand ? COPY.room.planByHand(until) : COPY.room.planUntil(until);
     const sub = [when, radiator].filter(Boolean).join(' · ');
     const big = m.temp !== null ? `${fmt1(m.temp)}°` : '–';
-    const head = `<div class="plan-head"><span class="num plan-big">${esc(big)}</span><span class="plan-mode"><span class="plan-mode-t num"${view.eff ? ` style="color:${TOKENS.tint}"` : ''}>${esc(COPY.room.planMode(label, temp))}</span>${sub ? `<span class="plan-mode-s">${esc(sub)}</span>` : ''}</span></div>`;
+    // Humidity is a small line under the big figure, unless the room's fan section shows it (the bathroom).
+    const hum = m.humidity !== null && !m.cfg.humidityInFan ? `<span class="plan-hum">${esc(COPY.room.humidityLine(clampInt(m.humidity, 0, 100)))}</span>` : '';
+    const head = `<div class="plan-head"><span class="plan-temp"><span class="num plan-big">${esc(big)}</span>${hum}</span><span class="plan-mode"><span class="plan-mode-t num"${view.eff ? ` style="color:${TOKENS.tint}"` : ''}>${esc(COPY.room.planMode(label, temp))}</span>${sub ? `<span class="plan-mode-s">${esc(sub)}</span>` : ''}</span></div>`;
     const rows = planNext(view).map((n, i) => hmRow({ title: (i === 0 ? COPY.room.planNext : COPY.room.planThen)(COPY.room.heatingModes[n.mode]), sub: n.resumes ? COPY.room.planResumes(clockText(n.at)) : COPY.room.planFrom(clockText(n.at)), value: `${fmt1(view.temps[n.mode])}°` })).join('');
     return `<div class="hm-card plan-card">${head}${planSvg(view, data, m.temp)}${control}${rows ? hmList(rows, true) : ''}</div>`;
   }
@@ -3071,8 +3089,11 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const view = dayPlan(hass, key, now);
     const data = view.ok ? planHistory(ui, view) : null;
     const ctl = heatingControl(hass, m, key, view.ok ? view : null);
-    const rows = heatingRows(m, data && data.spans ? hmRow({ title: COPY.room.heatedToday, value: durationText(heatedMinutes(data.spans)) }) : '');
-    const notes = view.ok ? [ctl.note] : [ctl.note, planNote(view.why)];
+    const rows = heatingRows(m);
+    // How long the radiator has been on today follows the control's footnote, whichever of its variants that is.
+    const heated = data && data.spans ? ` · ${COPY.room.radiatorOnToday(durationText(heatedMinutes(data.spans)))}` : '';
+    const note = `${ctl.note}${heated}`;
+    const notes = view.ok ? [note] : [note, planNote(view.why)];
     // Without a plan the control stands in a card of its own, where the day plan card would have held it.
     const body = (view.ok ? planCard(view, m, data, ctl.html) : `<div class="hm-card">${ctl.html}</div>`) + hmFeet(notes);
     return `<div class="hm">${hmSection(COPY.room.heating, body, { bare: true, after: rows ? `<div class="hm-group-row">${hmList(rows, true)}</div>` : '' })}</div>`;
@@ -3091,31 +3112,36 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   }
   // The trailing value of the Occupied row appears only when something holds the room, so it never reads as a button
   // (an empty value is a quiet row; the subtitle already says there are no holds). Several holds: the first, then "+N".
+  // A hold as one word for the row's value: "Sofa occupied" -> "Sofa"; a label with its own entry uses it.
+  const holdShort = (label) => own(COPY.room.holdShort, label) || label.replace(/ occupied$/i, '');
+  // When the room empties once a hold clears, without repeating what holds it (the value names that).
+  function clearRule(holds) {
+    if (holds.length > 1) return COPY.room.clearsAfterLast;
+    const h = holdParts(holds[0]);
+    return COPY.room.clearsAfter(h.state === 'occupied' ? h.subject : 'it');
+  }
   function presenceValue(holds, override) {
     if (holds.length) {
-      const first = own(COPY.room.holdShort, holds[0]) || holds[0];
+      const first = holdShort(holds[0]);
       return first + (holds.length > 1 ? COPY.room.holdMore(holds.length - 1) : '');
     }
     return override ? COPY.room.override : '';
   }
-  // The Presence group's last row is the Automation disclosure (the switches decide what the room does on its own);
-  // a garden has no Presence group, so its Automation card stands alone (sectionAutomation).
-  function sectionPresence(hass, key, ui) {
+  // The Automation list is its own section (sectionAutomation), after Media.
+  function sectionPresence(hass, key) {
     const m = roomModel(hass, key);
     const keep = keepOccupiedRow(hass, key);
-    const automation = automationRow(hass, key, ui);
-    // With nothing else to say about presence (no report, no override helper) the row has no group to join.
-    if (!m.hasReport && !keep) return automation ? hmDisclosureList(automation) : '';
+    if (!m.hasReport && !keep) return '';
     let row = '';
     if (m.hasReport) {
       const holds = m.pres_labels;
       const occ = m.occupancy_unavailable ? COPY.room.occupancyUnavailable : m.occupied ? COPY.room.occupied : COPY.room.empty;
-      const pres = holds.length ? `${holds.join(' · ')} · empty a few minutes after ${holds.length > 1 ? 'the last one clears' : 'it clears'}` : m.occupied ? COPY.room.emptiesSoon : COPY.room.noHolds;
+      const pres = holds.length ? clearRule(holds) : m.occupied ? COPY.room.emptiesSoon : COPY.room.noHolds;
       const ovr = m.override_text ? ` · ${m.override_text}` : '';
       const noMotion = state(hass, `input_boolean.${key}_sensor_motion_enabled`) === 'off' ? ' · Motion sensor off, so movement is ignored' : '';
       row = hmRow({ title: occ, sub: `${pres}${ovr}${noMotion}`, value: presenceValue(holds, m.override) });
     }
-    return `<div class="hm">${hmSection(COPY.room.presence, row + keep + automation, { plain: true })}</div>`;
+    return `<div class="hm">${hmSection(COPY.room.presence, row + keep, { plain: true })}</div>`;
   }
 
   // Lights: the scene buttons (found in the HA registry, see sceneRegistry), then one row per light.
@@ -3142,16 +3168,17 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const row = hmDisclosure({ id, title: COPY.room.individualLights, summary: COPY.room.lightsSummary(on, m.cfg.lights.length), open: disclosureOpen(ui, id), body });
     return hmList(row, true);
   }
-  // Scenes, with the Individual lights row as part of that group (HM_GROUP_GAP under the grid, inside the section).
+  // Lights: the scene grid, with the Individual lights row as part of that group (HM_GROUP_GAP under the grid, inside the section).
   // A room with no scenes gives the row a section of its own, since there is no group to join.
   function sectionLights(hass, key, now, ui) {
     const m = roomModel(hass, key);
     const active = activeScene(hass, key);
-    const note = m.hasReport ? lightsNote(lightsStory(hass, key, now)) : '';
+    // One footnote: how dark it is, then why the lights are as they are.
+    const note = [luxLead(hass, key), m.hasReport ? lightsNote(lightsStory(hass, key, now)) : ''].filter(Boolean).join(' · ');
     const notes = note ? [note] : [];
     const lights = m.cfg.lights.length ? individualLights(hass, key, m, ui) : '';
     const grid = m.scenes.length ? `<div class="hm-scenes">${m.scenes.map((id) => sceneButton(key, id, active)).join('')}</div>` : '';
-    if (grid) return `<div class="hm">${hmSection(COPY.room.scenes, grid, { bare: true, after: lights ? `<div class="hm-group-row">${lights}</div>` : '', notes })}</div>`;
+    if (grid) return `<div class="hm">${hmSection(COPY.room.lights, grid, { bare: true, after: lights ? `<div class="hm-group-row">${lights}</div>` : '', notes })}</div>`;
     return lights ? `<div class="hm"><section class="hm-sec">${lights}${hmFeet(notes)}</section></div>` : '';
   }
 
@@ -3244,9 +3271,13 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const id = config.entity;
     const label = str(config.label) || COPY.room.fan;
     const s = stateObj(hass, id);
-    const body = !s || !usable(s.state)
+    // The bathroom's humidity is what the fan runs on, so it reads here and not in the Heating card.
+    const roomCfg = own(ROOMS, config.room);
+    const hum = roomCfg && roomCfg.humidityInFan ? roomModel(hass, config.room).humidity : null;
+    const humRow = hum === null ? '' : hmRow({ title: COPY.room.humidity, value: `${Math.round(clampInt(hum, 0, 100))}%` });
+    const body = (!s || !usable(s.state)
       ? hmRow({ title: label, sub: s ? COPY.common.unavailable : COPY.common.notFound })
-      : hmToggleRow({ title: label, sub: [s.state === 'on' ? COPY.common.on : COPY.common.off, deviceReason(attr(hass, config.decision, 'reason'), s.state === 'on')].filter(Boolean).join(' · '), on: s.state === 'on', act: 'toggle', data: { entity: id } });
+      : hmToggleRow({ title: label, sub: [s.state === 'on' ? COPY.common.on : COPY.common.off, deviceReason(attr(hass, config.decision, 'reason'), s.state === 'on')].filter(Boolean).join(' · '), on: s.state === 'on', act: 'toggle', data: { entity: id } })) + humRow;
     return `<div class="hm">${hmSection(COPY.room.fan, body, { plain: true })}</div>`;
   }
 
@@ -3900,10 +3931,9 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     feed: (h, c, n) => sectionFeed(h, n),
     tabbar: (h, c, n, ui) => sectionTabbar(c, ui),
     'room-head': (h, c, n) => sectionRoomHead(h, c.room, n),
-    readings: (h, c) => sectionReadings(h, c.room),
     lights: (h, c, n, ui) => sectionLights(h, c.room, n, ui),
     heating: (h, c, n, ui) => sectionHeating(h, c.room, n, ui),
-    presence: (h, c, n, ui) => sectionPresence(h, c.room, ui),
+    presence: (h, c) => sectionPresence(h, c.room),
     media: (h, c) => sectionMedia(h, c.room),
     device: (h, c) => sectionDevice(h, c),
     automation: (h, c, n, ui) => sectionAutomation(h, c.room, ui),
@@ -3918,11 +3948,11 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     'cameras-head': (h, c, n) => sectionCamerasHead(h, n),
     camera: (h, c, n, ui) => sectionCamera(h, c.camera, n, ui),
   };
-  const ROOM_MODES = ['room-head', 'readings', 'lights', 'heating', 'presence', 'media', 'automation', 'room-feed', 'garden-lights', 'garden-theme'];
+  const ROOM_MODES = ['room-head', 'lights', 'heating', 'presence', 'media', 'automation', 'room-feed', 'garden-lights', 'garden-theme'];
   // Indoor rooms have scenes, a report and media; gardens have a lights row and a theme. The shared modes
   // (room-head, room-feed) work for both.
   const GARDEN_MODES = ['garden-lights', 'garden-theme'];
-  const INDOOR_MODES = ['readings', 'lights', 'heating', 'presence', 'media'];
+  const INDOOR_MODES = ['lights', 'heating', 'presence', 'media'];
 
   function validate(config) {
     if (!isObj(config) || !MODES[config.mode]) throw new Error(`pulse-card: unknown mode "${config && config.mode}"`);
@@ -3935,6 +3965,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       const domain = config.entity.split('.')[0];
       if (!writeAllowed(domain, 'turn_on', config.entity) || !writeAllowed(domain, 'turn_off', config.entity)) throw new Error(`pulse-card: mode "device" cannot switch "${config.entity}"`);
     }
+    if (config.mode === 'device' && config.room !== undefined && config.room !== '' && !own(ROOMS, config.room)) throw new Error(`pulse-card: mode "device" needs a known room, got "${config.room}"`);
     if (ROOM_MODES.includes(config.mode) && !(typeof config.room === 'string' && Object.prototype.hasOwnProperty.call(ROOMS, config.room))) throw new Error(`pulse-card: mode "${config.mode}" needs a known room, got "${config.room}"`);
     if (GARDEN_MODES.includes(config.mode) && !isGarden(config.room)) throw new Error(`pulse-card: mode "${config.mode}" is for gardens, got "${config.room}"`);
     if (INDOOR_MODES.includes(config.mode) && isGarden(config.room)) throw new Error(`pulse-card: mode "${config.mode}" is for indoor rooms, got "${config.room}"`);

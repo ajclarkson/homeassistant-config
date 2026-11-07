@@ -1,15 +1,15 @@
 # Shared room page for the Pulse dashboard. One template, parameterised by room; every room view
-# (views/info-room-*.yaml) is a single call to it. Sections that do not apply to a room (readings, heating, media,
-# fan, scenes, individual lights) hide themselves, so there is no per-room card list to copy.
-# The page reads top to bottom: header (back link, name, occupancy and lights, attention items), readings
-# (temperature, light level), Scenes (with the Individual lights row), Heating (the day plan drawn by pulse-card, the mode grid, then the inset list),
-# Presence (ending in the Automation row: the room's switches and tuning, inline), Media, the fan where a room has
-# one, and Activity. Each section is a titled inset list built by pulse-card from the House page's parts.
+# (views/info-room-*.yaml) is a single call to it. Sections that do not apply to a room (heating, media,
+# fan, lights, individual lights) hide themselves, so there is no per-room card list to copy.
+# The page reads top to bottom: header (back link, name, occupancy, lights and temperature, attention items),
+# Lights (scenes, the Individual lights row, a footnote with the light level), Heating (the day plan drawn by
+# pulse-card, the mode grid, then the inset list), Media, the fan where a room has one, Presence, Automation (the
+# room's switches and tuning) and Activity. Each section is a titled inset list built by pulse-card from the House page's parts.
 #
 # Variables:
 #   room     key used by custom:pulse-card (see ROOMS in www/pulse-card.js) and by helper ids
 #   climate, temp  no longer read: pulse-card takes the room's climate and temperature entities from ROOMS
-#   fan, fan_decision, fan_label  optional fan row under the scenes: its switch, the decision sensor
+#   fan, fan_decision, fan_label  optional fan row under Media: its switch, the decision sensor
 #            whose reason explains it, and its title. Leave blank and the row hides itself.
 # streamline-card takes defaults only from `default` (a list of single-key maps); a template-level
 # `variables:` map is ignored, which left `[[fan]]` as literal text in rooms without a fan.
@@ -27,10 +27,7 @@ pulse_room:
       - type: custom:pulse-card
         mode: room-head
         room: '[[room]]'
-      - type: custom:pulse-card
-        mode: readings
-        room: '[[room]]'
-      # Lights (scenes, then one row per light) is the control used most, so it sits straight under the readings.
+      # Lights (scenes, then one row per light) is the control used most, so it sits straight under the header.
       - type: custom:pulse-card
         mode: lights
         room: '[[room]]'
@@ -38,16 +35,21 @@ pulse_room:
         mode: heating
         room: '[[room]]'
       - type: custom:pulse-card
-        mode: presence
-        room: '[[room]]'
-      - type: custom:pulse-card
         mode: media
         room: '[[room]]'
+      # The fan sits under Media; the bathroom's humidity, which drives it, is shown here.
       - type: custom:pulse-card
         mode: device
+        room: '[[room]]'
         entity: '[[fan]]'
         decision: '[[fan_decision]]'
         label: '[[fan_label]]'
+      - type: custom:pulse-card
+        mode: presence
+        room: '[[room]]'
+      - type: custom:pulse-card
+        mode: automation
+        room: '[[room]]'
       - type: custom:pulse-card
         mode: room-feed
         room: '[[room]]'
