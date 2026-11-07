@@ -154,7 +154,7 @@ ok('every mode renders for all 10 rooms with full report data (attention state)'
   assert.match(out.status, /<h2[^>]*>Needs attention<\/h2>/);
   assert.equal(rowTitle(rowOf(out.status, '/pulse-dashboard/room-bedroom')), 'Bedroom');
   assert.match(out['room-head:bedroom'], /Window open, heating on[\s\S]*Open window while heating/, 'the attention item sits under the header');
-  assert.match(out['heating:bedroom'], /class="hm-rt">Target<[\s\S]*Window open/);
+  assert.match(out['heating:bedroom'], /class="hm-rt">Window open<\/div><\/div><span class="hm-val num">[\d.]+°/);
   assert.match(out.rooms, /room-bedroom/, 'the room is still listed under Rooms');
   assert.match(out['presence:bedroom'], /Bed occupied/);
   assert.doesNotMatch(out['presence:bedroom'], /Bed occupied · Window open/);
@@ -167,7 +167,7 @@ ok('calm state: no attention, All good', () => {
   assert.doesNotMatch(out.status, /Needs attention|All good|Nothing needs attention/);
   assert.doesNotMatch(out['room-head:parlour'], /All good|hm-tight/, 'a calm room has no banner and no attention list');
   assert.match(out['room-head:parlour'], /<span class="hm-line">Occupied · lights off<\/span>/);
-  assert.match(out['heating:parlour'], /class="hm-rt">Target</);
+  assert.match(out['heating:parlour'], /class="hm-rt">[A-Z][^<]*, from [^<]*<\/div><\/div><span class="hm-val num">[\d.]+°/);
   assert.doesNotMatch(out['room-head:parlour'], />Target</, 'the header carries no numbers');
 });
 
@@ -281,7 +281,7 @@ ok('lightsStory rule 3: lights off in an empty room says since when, notes a dis
 
 ok('lightsStory rule 4: a newer decline, abort or failure is explained in words; an older one is not', () => {
   const declined = story({}, histSensor('kitchen', [luxHigh(1), histEntry(30)]));
-  assert.deepEqual([declined.state, declined.tone, declined.why], ['declined', 'muted', 'Stayed off: bright enough (85 lx, on at 40 or below) at 18:41']);
+  assert.deepEqual([declined.state, declined.tone, declined.why], ['declined', 'muted', 'Stayed off at 18:41: bright enough (85 lx, on at 40 or below)']);
   assert.match(story({}, histSensor('kitchen', [luxHigh(1, null)])).why, /bright enough \(no light reading, on at 40 or below\)/);
   const abort = histEntry(2, { kind: 'abort', decision: '', reason: '', outcome: undefined, detail: { abort_kind: 'unavailable_input', entity: 'sensor.kitchen_lux' } });
   const a = story({}, { ...histSensor('kitchen', [abort, histEntry(30)]), ...kitchenEntity('sensor.kitchen_lux', 'Lux sensor') });
@@ -292,7 +292,7 @@ ok('lightsStory rule 4: a newer decline, abort or failure is explained in words;
   const old = story({}, histSensor('kitchen', [histEntry(1), luxHigh(30)]));
   assert.equal(old.state, 'acted', 'the decline is older than the last act, so the act explains the lights');
   const heldOn = story({ lights_on: 2, pres_labels: ['Monitor on'] }, histSensor('kitchen', [luxHigh(1)]));
-  assert.match(heldOn.why, /\(85 lx, on at 40 or below\) at 18:41 · stays on while Monitor on$/);
+  assert.match(heldOn.why, /^Stayed off at 18:41: bright enough \(85 lx, on at 40 or below\) · stays on while Monitor on$/);
   const other = story({}, histSensor('kitchen', [histEntry(1, { subsystem: 'occupied', decision: 'set_occupied', reason: 'motion_detected' })]));
   assert.equal(other.state, 'none', 'occupancy entries are not lighting explanations');
 });
@@ -354,21 +354,45 @@ ok('scene tiles use the spike scene map and highlight the active scene', () => {
   for (const g of GARDENS) assert.equal(P.ROOMS[g].scenes, undefined, `${g} offers no scenes of its own`);
 });
 
-ok('individual lights: an inset list "Lights", a switch row per light, a slider under a dimmable light that is on, missing honestly', () => {
-  const html = P.render('lights', { room: 'parlour' }, mk(), NOW);
-  assert.match(html, /<h2>Scenes<\/h2>[\s\S]*<h2>Lights<\/h2>/);
-  assert.doesNotMatch(html, /lights-toggle|aria-expanded|Individual lights/, 'the expansion is a plain list now');
+ok('individual lights: a disclosure row with an "N of M on" summary; open, a switch row per light, a slider under a dimmable light that is on, missing honestly', () => {
+  const OPEN = { open: { 'parlour:lights': true } };
+  const closed = P.render('lights', { room: 'parlour' }, mk(), NOW);
+  const html = P.render('lights', { room: 'parlour' }, mk(), NOW, OPEN);
+  assert.match(html, /<h2>Scenes<\/h2>/);
+  assert.doesNotMatch(html, /<h2>Lights<\/h2>/, 'the row is the label; no section header');
+  assert.match(closed, /<button type="button" class="hm-row hm-btn tap" data-act="disclose" data-id="parlour:lights" aria-expanded="false" aria-controls="dp-parlour-lights"><div class="hm-text"><div class="hm-rt">Individual lights<\/div><\/div><span class="hm-val hm-ds">\d+ of \d+ on<\/span>/);
+  assert.match(closed, /<div class="hm-dp" id="dp-parlour-lights" hidden>/, 'closed: the panel is in the markup, hidden, so aria-controls names an element');
+  assert.match(html, /aria-expanded="true" aria-controls="dp-parlour-lights"/);
+  assert.match(html, /<div class="hm-dp" id="dp-parlour-lights">/);
   assert.match(html, /data-act="toggle" data-entity="light.parlour_light_floor_lamp" aria-pressed="true"><div class="hm-text"><div class="hm-rt">Floor lamp<\/div><div class="hm-rs">40%<\/div>/);
   assert.match(html, /type="range"[^>]*data-act="brightness" data-entity="light.parlour_light_floor_lamp"/);
   assert.match(html, /style="--p:40%"/);
   assert.match(html, /data-act="toggle" data-entity="switch.parlour_plug_table_lamp" aria-pressed="true"[\s\S]*?<div class="hm-rs">On<\/div>/);
   assert.match(html, /<div class="hm-rs">Not found<\/div>/);
-  const off = P.render('lights', { room: 'parlour' }, mk({ 'light.parlour_light_floor_lamp': { state: 'off', attributes: { supported_color_modes: ['brightness'] } } }), NOW);
+  const off = P.render('lights', { room: 'parlour' }, mk({ 'light.parlour_light_floor_lamp': { state: 'off', attributes: { supported_color_modes: ['brightness'] } } }), NOW, OPEN);
   assert.doesNotMatch(off, /type="range"/, 'no slider for a light that is off');
   assert.match(off, /data-entity="light.parlour_light_floor_lamp" aria-pressed="false"/);
-  for (const k of INDOOR_KEYS) assert.equal(P.render('lights', { room: k }, mk(), NOW).includes('<h2>Lights</h2>'), P.ROOMS[k].lights.length > 0, k);
+  for (const k of INDOOR_KEYS) assert.equal(P.render('lights', { room: k }, mk(), NOW).includes('data-id="' + k + ':lights"'), P.ROOMS[k].lights.length > 0, k);
   noNoise({ html }, 'lights');
   assert.throws(() => P.render('lights-title', { room: 'parlour' }, mk(), NOW), /unknown mode/);
+});
+
+ok('individual lights summary: "All off" at none, else "N of M on" over the configured lights', () => {
+  const lights = P.ROOMS.parlour.lights.map(([id]) => id);
+  const sum = (over) => P.render('lights', { room: 'parlour' }, mk(over), NOW).match(/class="hm-val hm-ds">([^<]*)</)[1];
+  assert.equal(sum(Object.fromEntries(lights.map((id) => [id, { state: 'off', attributes: {} }]))), 'All off');
+  assert.equal(sum(Object.fromEntries(lights.map((id, i) => [id, { state: i === 0 ? 'on' : 'off', attributes: {} }]))), `1 of ${lights.length} on`);
+  assert.equal(sum(Object.fromEntries(lights.map((id) => [id, { state: 'on', attributes: {} }]))), `${lights.length} of ${lights.length} on`);
+});
+
+ok('disclosure: state is per page, default closed, toggled and persisted; a bad id throws; the render gate sees it', () => {
+  const key = 'zz_room:lights';
+  assert.equal(P.disclosureStore[key], undefined);
+  assert.equal(P.toggleDisclosure(key), true);
+  assert.equal(P.disclosureStore[key], true);
+  assert.equal(P.toggleDisclosure(key), false);
+  assert.equal(key in P.disclosureStore, false);
+  for (const bad of ['', 'x', 'a:b:c', '__proto__', undefined, 5, 'A:b']) assert.throws(() => P.toggleDisclosure(bad), /bad disclosure id/);
 });
 
 ok('expander-card is gone; Now no longer uses apexcharts', () => {
@@ -2046,7 +2070,7 @@ ok('every fixed height or clipping rule is accounted for (a new one needs its ar
   const fixed = cssRules().filter((r) => px(decl(r.body, 'height'))).map((r) => r.sel).sort();
   // Fixed SHAPES that hold no text: dots, icons, avatars, tiles, bars, switch track and knob, slider track and
   // thumb, the 1px visually-hidden helper. No content box has a fixed height.
-  const shapes = ['.clip img', '.dot', '.sw', '.sw::after', '.sr', '.hm-sw', '.hm-sw::after', '.hm-step', '.hm-step-div', '.hm-slider', '.hm-slider::-webkit-slider-runnable-track', '.hm-slider::-webkit-slider-thumb', '.hm-slider::-moz-range-track', '.hm-slider::-moz-range-progress', '.hm-slider::-moz-range-thumb', '.hm-av', '.hm-pd', '.hm-tile', '.hm-bars', '.hm-row+.hm-row::before', '.ptz button'];
+  const shapes = ['.clip img', '.dot', '.sw', '.sw::after', '.sr', '.hm-sw', '.hm-sw::after', '.hm-step', '.hm-step-div', '.hm-slider', '.hm-slider::-webkit-slider-runnable-track', '.hm-slider::-webkit-slider-thumb', '.hm-slider::-moz-range-track', '.hm-slider::-moz-range-progress', '.hm-slider::-moz-range-thumb', '.hm-av', '.hm-pd', '.hm-tile', '.hm-bars', '.hm-row+.hm-row::before', '.hm-dp .hm-row::before', '.ptz button'];
   assert.deepEqual(fixed.filter((f) => f !== '.ptz button'), shapes.filter((f) => f !== '.ptz button').sort());
   const sw = px(decl(rule('.sw').body, 'height'));
   const knob = P.STYLE.match(/\.sw::after\{[^\n]*top:(\d+)px[^\n]*height:(\d+)px/);
@@ -2099,16 +2123,12 @@ ok('tab bar fixed height has its arithmetic: 83px with a home indicator, bar con
 ok('room heating tile says whether the room is heating right now; unknown action says nothing', () => {
   const head = (over) => P.render('heating', { room: 'parlour' }, withRooms([quietRoom('parlour', { target: 20, mode_target: 20, mode_name: 'comfort', heating_active: 'comfort', heating_source: 'schedule', ...over })], []), NOW);
   const on = head({ hvac_action: 'heating' });
-  assert.match(on, /Heating now/);
-  assert.match(on, /class="hm-rt">Target</);
-  assert.match(on, /Comfort 20\.0° from schedule/);
-  assert.match(head({ hvac_action: 'idle' }), /Not heating/);
-  assert.match(head({ hvac_action: 'off' }), /Heating off/);
-  assert.doesNotMatch(head({ hvac_action: null }), /Heating now|Not heating|Heating off/);
-  const why = (a) => whyAll({ room: 'parlour' }, withRooms([quietRoom('parlour', { target: 20, hvac_action: a })], []), NOW);
-  assert.match(why('heating'), /Right now<\/div><\/div><span class="hm-val num">Heating now</);
-  assert.match(why('idle'), /Right now<\/div><\/div><span class="hm-val num">Not heating</);
-  assert.doesNotMatch(why('idle'), /On target/);
+  // One row: the mode and its source in words, the target trailing. Heating-now is the widget's sub line only.
+  assert.match(on, /class="hm-rt">Comfort, from schedule<\/div><\/div><span class="hm-val num">20\.0°<\/span>/);
+  assert.doesNotMatch(on, /Comfort 20\.0°|Right now|Heating now|class="hm-rt">Target</);
+  for (const a of ['heating', 'idle', 'off', null]) assert.doesNotMatch(head({ hvac_action: a }), /Right now|Heating now|Not heating|Heating off/);
+  const widget = (a) => P.render('readings', { room: 'parlour' }, withRooms([quietRoom('parlour', { temp: 19, target: 20, hvac_action: a })], []), NOW);
+  assert.match(widget('heating'), /Heating to 20\.0°/);
 });
 
 ok('room chart overlays heat demand from hvac_action on a hidden 0..1 axis, with a legend', () => {
@@ -2172,16 +2192,16 @@ ok('recent_auto_off is worded as a return after switch-off, not as the lights be
   assert.doesNotMatch(text, /just switched off/);
 });
 
-ok('room page copy: subtitle lines have no trailing full stops; no Why card; Individual lights label sits above its card', () => {
+ok('room page copy: subtitle lines have no trailing full stops; no Why card; Individual lights is a disclosure row', () => {
   const m = quietRoom('kitchen', { occupied: true, pres_labels: ['Monitor on'], labels: ['Monitor on'], heat_labels: ['Window open'], hvac_action: 'idle', target: 18, mode_target: 18, mode_name: 'baseline day', heating_active: 'baseline_day', heating_source: 'schedule' });
   const hass = withRooms([m], []);
   const why = whyAll({ room: 'kitchen' }, hass, NOW);
   assert.doesNotMatch(why, /Why it('|&#39;)?s like this|Why it is like this/, 'the separate Why card is gone: each subsystem explains itself');
-  assert.match(why, /<h2>Scenes<\/h2>[\s\S]*<h2>Lights<\/h2>[\s\S]*<h2>Heating<\/h2>[\s\S]*<h2>Presence<\/h2>/, 'one titled list per subsystem');
+  assert.match(why, /<h2>Scenes<\/h2>[\s\S]*Individual lights[\s\S]*<h2>Heating<\/h2>[\s\S]*<h2>Presence<\/h2>/, 'one titled list per subsystem');
   assert.equal((why.match(/<div class="hm-rs">[^<]*\.<\/div>/g) || []).length, 0, 'no subtitle ends in a full stop');
-  assert.match(why, /Window open · Baseline day 18\.0° from schedule/);
+  assert.match(why, /Window open · Baseline day, from schedule/);
   const lights = P.render('lights', { room: 'kitchen' }, hass, NOW);
-  assert.doesNotMatch(lights, /Individual lights/);
+  assert.match(lights, /Individual lights/);
   assert.doesNotMatch(lights, /\.<\/p>/, 'footnotes end without a full stop');
   const energy = P.render('energy-day', {}, mk(), NOW, { day: 'today' });
   assert.doesNotMatch(energy, /\.<\/div>/, 'energy notes end without a full stop');
@@ -3210,7 +3230,7 @@ ok('lights wording: every lights phrase comes from lightsState', () => {
   assert.equal((src.match(/function lightsState/g) || []).length, 1, 'one definition');
 });
 
-ok('room page order: header, readings, Scenes, Lights, Heating, Presence, Media, Automation, Activity', () => {
+ok('room page order: header, readings, Scenes, Individual lights, Heating, Presence, Media, Automation, Activity', () => {
   const cards = loadYaml('info_templates.yaml').pulse_room.card.cards.filter((c) => c.mode !== 'device').map((c) => (c.type === 'conditional' ? 'chart' : c.mode));
   assert.deepEqual(cards, ['room-head', 'readings', 'lights', 'heating', 'chart', 'presence', 'media', 'automation', 'room-feed']);
   // Rendered in template order for a room that has every section, the headings come out in that order.
@@ -3218,8 +3238,9 @@ ok('room page order: header, readings, Scenes, Lights, Heating, Presence, Media,
     'input_boolean.parlour_automation_lights_enabled': { state: 'on', attributes: {} },
   });
   const html = cards.map((m) => (m === 'chart' ? P.render('chart-head', {}, hass, NOW) : P.render(m, { room: 'parlour' }, hass, NOW))).join('');
-  const heads = [...html.matchAll(/<h2>([^<]+)<\/h2>/g)].map((m) => m[1]);
-  assert.deepEqual(heads, ['Scenes', 'Lights', 'Heating', 'Last 24 hours', 'Presence', 'Media', 'Automation', 'Activity']);
+  // Lights and Automation are disclosure rows, which stand in for their section headers.
+  const heads = [...html.matchAll(/<h2>([^<]+)<\/h2>|data-act="disclose" data-id="parlour:(\w+)"/g)].map((m) => m[1] || `row:${m[2]}`);
+  assert.deepEqual(heads, ['Scenes', 'row:lights', 'Heating', 'Last 24 hours', 'Presence', 'Media', 'row:automation', 'Activity']);
   assert.match(html.slice(0, html.indexOf('<h2>Scenes')), /^<div class="p"><div class="hm hm-first"><div class="hm-head"><a [^>]*Back to House[\s\S]*<h1 class="hm-big">Parlour<\/h1><span class="hm-line">Occupied · Lamps on<\/span>/, 'the back link, the title and the subtitle come first');
   assert.doesNotMatch(html, /Why it/, 'no separate explanation card');
   // The bathroom puts the fan row beside Media, so the order of the named sections is unchanged.
@@ -3261,35 +3282,62 @@ const sheetHass = (over = {}) => {
   for (const { row } of settingRows()) states[row.id] = b(row.kind === 'toggle' ? 'on' : String(row.min));
   return mk({ ...states, ...over });
 };
-const sheet = (room, hass = sheetHass()) => P.render('automation', { room }, hass, NOW);
+// Open, so the rows are visible; `closedSheet` is the default-closed render.
+const sheet = (room, hass = sheetHass()) => P.render('automation', { room }, hass, NOW, { open: { [`${room}:automation`]: true } });
+const closedSheet = (room, hass = sheetHass()) => P.render('automation', { room }, hass, NOW);
 // The settings groups (ROOM_TABLE) a rendered Automation list draws from, in order.
 const groupsOf = (html) => [...new Set([...html.matchAll(/data-act="setting-(?:toggle|number)" data-room="\w+" data-group="(\w+)"/g)].map((m) => m[1]))];
 
-ok('Automation: one titled inset list on every room and garden page, the room settings sheet is gone', () => {
+ok('Automation: one disclosure row on every room and garden page, rows explain themselves with a subtitle, no footnotes', () => {
   for (const k of P.ALL_ROOM_KEYS) {
     const html = sheet(k);
-    assert.match(html, /<h2>Automation<\/h2>/, k);
+    assert.doesNotMatch(html, /<h2>/, `${k}: the row is the header`);
+    assert.match(html, new RegExp(`data-act="disclose" data-id="${k}:automation" aria-expanded="true" aria-controls="dp-${k}-automation"><div class="hm-text"><div class="hm-rt">Automation</div></div><span class="hm-val hm-ds">All on</span>`), k);
     assert.equal((html.match(/<section class="hm-sec">/g) || []).length, 1, `${k}: a single list`);
-    assert.doesNotMatch(html, /role="dialog"|class="sheet"|settings-open|settings-close/, k);
+    assert.doesNotMatch(html, /hm-foot|role="dialog"|class="sheet"|settings-open|settings-close/, k);
     assert.doesNotMatch(html, NOISE, k);
     assert.doesNotMatch(P.render('room-head', { room: k }, sheetHass(), NOW, { settings: true }), /settings|dialog|class="ovl"/, `${k}: no gear and no sheet`);
+    assert.match(closedSheet(k), /aria-expanded="false"[^>]*>[\s\S]*<div class="hm-dp" id="dp-[\w-]+" hidden>/, `${k}: closed by default`);
   }
   const src = readFileSync(root + 'www/pulse-card.js', 'utf8');
   assert.doesNotMatch(src, /settingsSheet|splitSheet|portalShow|settings-open|settings-close|pulse-card:settings/, 'no sheet code left');
-  // Each row has a 13px footnote under the list: "Title: explanation".
+  // Each row carries its explanation as a subtitle under its label (14px textSecondary, the .hm-rs line).
   const bath = sheet('bathroom');
-  assert.match(bath, /<p class="hm-foot">Fan automation: Runs the extractor fan after a shower until the steam clears<\/p>/);
-  assert.match(bath, /<p class="hm-foot">Minimum run: After the last shower ends<\/p>/);
-  assert.equal(count(bath, /class="hm-foot"/g), count(bath, /data-act="setting-toggle"/g) + count(bath, /data-act="setting-number"/g) / 2, 'one footnote per row (a stepper has two buttons)');
+  assert.match(bath, /<div class="hm-rt">Fan automation<\/div><div class="hm-rs">Runs the extractor fan after a shower until the steam clears<\/div>/);
+  assert.match(bath, /<div class="hm-rt">Minimum run<span class="hm-tv num">[^<]*<\/span><\/div><div class="hm-rs">After the last shower ends<\/div>/);
+  assert.equal(count(bath, /class="hm-rs"/g), count(bath, /data-act="setting-toggle"/g) + count(bath, /data-act="setting-number"/g) / 2, 'one subtitle per row (a stepper has two buttons)');
+  assert.match(rule('.hm-rs').body, /font-size:14px[^}]*color:#a3adba/);
   assert.match(P.render('room-head', { room: 'bedroom' }, sheetHass(), NOW), /<h1 class="hm-big">Bedroom<\/h1>/);
-  assert.match(rule('.hm-foot').body, /font-size:13px/);
-  assert.match(rule('.hm-foot').body, /color:#a3adba/, 'footnotes are textSecondary');
+});
+
+ok('Automation summary: "All on", or what is off in the attention colour (one by name, several by count)', () => {
+  const sum = (room, over) => closedSheet(room, sheetHass(over)).match(/<span class="hm-val hm-ds"([^>]*)>([^<]*)</).slice(1);
+  assert.deepEqual(sum('bathroom', {}), ['', 'All on']);
+  assert.deepEqual(sum('bathroom', { 'input_boolean.bathroom_automation_fan_enabled': b('off') }), [' style="color:#f2b84b"', 'Fan automation off']);
+  assert.deepEqual(sum('kitchen', { 'input_boolean.kitchen_automation_lights_enabled': b('off') }), [' style="color:#f2b84b"', 'Lights automation off']);
+  assert.deepEqual(sum('kitchen', { 'input_boolean.kitchen_automation_lights_enabled': b('off'), 'input_boolean.kitchen_automation_heating_enabled': b('off') }), [' style="color:#f2b84b"', '2 off']);
+  assert.deepEqual(sum('kitchen', { 'input_boolean.kitchen_automation_lights_enabled': b('off'), 'input_boolean.kitchen_automation_heating_enabled': b('off'), 'input_boolean.kitchen_sensor_motion_enabled': b('off') }), [' style="color:#f2b84b"', '3 off']);
+  assert.equal(sum('front_garden', { 'input_boolean.front_garden_automation_lights_enabled': b('off') })[1], 'Lights automation off');
+});
+
+ok('disclosure row: a real button, aria-expanded and aria-controls, a chevron that turns 90 degrees, one definition', () => {
+  const src = readFileSync(root + 'www/pulse-card.js', 'utf8');
+  assert.equal((src.match(/function hmDisclosure\(/g) || []).length, 1, 'defined once');
+  assert.equal((src.match(/data-act="disclose"/g) || []).length, 1, 'only the one definition draws the row');
+  const html = closedSheet('bathroom');
+  assert.match(html, /<button type="button" class="hm-row hm-btn tap" data-act="disclose" data-id="bathroom:automation" aria-expanded="false" aria-controls="dp-bathroom-automation">/);
+  assert.match(html, /<span class="hm-chev" aria-hidden="true"><svg[^>]*><path d="M9 5l7 7-7 7"\/><\/svg><\/span><\/button><div class="hm-dp" id="dp-bathroom-automation" hidden>/);
+  assert.match(rule('.hm-row').body, /min-height:60px/, 'at least 44px');
+  assert.match(P.STYLE, /\.hm-btn\[aria-expanded="true"\] \.hm-chev\{transform:rotate\(90deg\)\}/);
+  assert.doesNotMatch(P.STYLE, /transition|animation/, 'nothing animates, so a repaint cannot replay anything');
+  assert.match(rule('.hm-ds').body, /min-width:0/);
+  assert.match(rule('.hm-val').body, /color:#a3adba/, 'the summary is textSecondary');
 });
 
 ok('native controls: a switch row is a button with aria-pressed; a stepper has two labelled buttons, its value in the row title', () => {
   const html = sheet('bathroom');
-  assert.match(html, /<button type="button" class="hm-row hm-btn tap" data-act="setting-toggle" data-room="bathroom" data-group="fan" data-key="automation" aria-pressed="true"><div class="hm-text"><div class="hm-rt">Fan automation<\/div><\/div><span class="hm-sw" aria-hidden="true"><\/span><\/button>/);
-  assert.match(sheet('bathroom', sheetHass({ 'input_boolean.bathroom_automation_fan_enabled': b('off') })), /data-key="automation" aria-pressed="false"><div class="hm-text"><div class="hm-rt">Fan automation<\/div><\/div><span class="hm-sw off"/);
+  assert.match(html, /<button type="button" class="hm-row hm-btn tap" data-act="setting-toggle" data-room="bathroom" data-group="fan" data-key="automation" aria-pressed="true"><div class="hm-text"><div class="hm-rt">Fan automation<\/div><div class="hm-rs">[^<]+<\/div><\/div><span class="hm-sw" aria-hidden="true"><\/span><\/button>/);
+  assert.match(sheet('bathroom', sheetHass({ 'input_boolean.bathroom_automation_fan_enabled': b('off') })), /data-key="automation" aria-pressed="false"><div class="hm-text"><div class="hm-rt">Fan automation<\/div><div class="hm-rs">[^<]+<\/div><\/div><span class="hm-sw off"/);
   const stepper = sheet('bathroom', sheetHass({ 'input_number.bathroom_automation_fan_min_run': b('15') }));
   assert.match(stepper, /<div class="hm-rt">Minimum run<span class="hm-tv num">15 min<\/span><\/div>/);
   assert.match(stepper, /<span class="hm-step"><button type="button" data-act="setting-number" data-room="bathroom" data-group="fan" data-key="min_run" data-delta="-1" aria-label="Minimum run lower">[\s\S]*?<\/button><i class="hm-step-div" aria-hidden="true"><\/i><button type="button" data-act="setting-number" data-room="bathroom" data-group="fan" data-key="min_run" data-delta="1" aria-label="Minimum run higher">/);
@@ -3609,6 +3657,67 @@ await okAsync('card element: a repaint puts keyboard focus back on the control t
   }
 });
 
+await okAsync('card element: tapping a disclosure row opens it, remembers it in localStorage, and a hass update keeps it open', async () => {
+  const saved = { HTMLElement: globalThis.HTMLElement, customElements: globalThis.customElements, window: globalThis.window };
+  let Card;
+  const listeners = {};
+  const stored = {};
+  const shadow = { addEventListener(t, f) { listeners[t] = f; }, querySelector() { return null; }, querySelectorAll() { return []; }, activeElement: null, innerHTML: '' };
+  globalThis.HTMLElement = class { constructor() { this.style = {}; } attachShadow() { return shadow; } };
+  globalThis.customElements = { get() { return undefined; }, define(n, c) { if (n === 'pulse-card') Card = c; } };
+  globalThis.window = { customCards: [], addEventListener() {}, removeEventListener() {}, localStorage: { getItem: (k) => stored[k] ?? null, setItem: (k, v) => { stored[k] = v; } } };
+  try {
+    const modPath = new URL('../www/pulse-card.js', import.meta.url).pathname;
+    delete require.cache[require.resolve(modPath)];
+    require(modPath);
+    const c = new Card();
+    c.setConfig({ mode: 'automation', room: 'bathroom' });
+    c.hass = sheetHass();
+    assert.match(shadow.innerHTML, /aria-expanded="false"/);
+    assert.match(shadow.innerHTML, /id="dp-bathroom-automation" hidden>/);
+    const tap = { closest: () => ({ dataset: { act: 'disclose', id: 'bathroom:automation' } }) };
+    listeners.click({ target: tap });
+    assert.match(shadow.innerHTML, /aria-expanded="true"/);
+    assert.doesNotMatch(shadow.innerHTML, /id="dp-bathroom-automation" hidden/);
+    assert.equal(stored['pulse-card:open'], '{"bathroom:automation":true}');
+    c.hass = sheetHass({ 'input_number.bathroom_automation_fan_min_run': b('12') });
+    assert.match(shadow.innerHTML, /aria-expanded="true"/, 'a repaint from hass keeps it open');
+    listeners.click({ target: tap });
+    assert.match(shadow.innerHTML, /aria-expanded="false"/);
+    assert.equal(stored['pulse-card:open'], '{}');
+    // A reload reads it back; storage that throws or holds rubbish leaves everything closed.
+    stored['pulse-card:open'] = '{"bathroom:automation":true,"bad id":true,"x:y":1}';
+    delete require.cache[require.resolve(modPath)];
+    require(modPath);
+    assert.deepEqual({ ...globalThis.window.PulseLib.disclosureStore }, { 'bathroom:automation': true });
+    globalThis.window.localStorage.getItem = () => { throw new Error('blocked'); };
+    delete require.cache[require.resolve(modPath)];
+    require(modPath);
+    assert.deepEqual({ ...globalThis.window.PulseLib.disclosureStore }, {});
+  } finally {
+    Object.assign(globalThis, saved);
+    if (saved.window === undefined) delete globalThis.window;
+    if (saved.HTMLElement === undefined) delete globalThis.HTMLElement;
+    if (saved.customElements === undefined) delete globalThis.customElements;
+    delete require.cache[require.resolve(new URL('../www/pulse-card.js', import.meta.url).pathname)];
+    require(new URL('../www/pulse-card.js', import.meta.url).pathname);
+  }
+});
+
+ok('lights note: a declined decision reads time first, no "Didn\'t act" prefix', () => {
+  const hass = withRooms([{ ...FULL('kitchen'), manual: null, pres_labels: [], labels: [], occupied: true, lights_on: 0 }], [], histSensor('kitchen', [luxHigh(1), histEntry(30)]));
+  const html = P.render('lights', { room: 'kitchen' }, hass, NOW);
+  assert.match(html, /<p class="hm-foot">Stayed off at 18:41: bright enough \(85 lx, on at 40 or below\)<\/p>/);
+  assert.doesNotMatch(html, /Didn.t act|Didn&#39;t act/);
+  assert.equal(P.REASON_TEXT['lighting:lux_high']({ lux: 85, lux_threshold: 40 }, {}), 'Stayed off: bright enough (85 lx, on at 40 or below)', 'REASON_TEXT is untouched');
+});
+
+ok('presence: the Clear value is unchanged (it is a status, not an action)', () => {
+  const html = P.render('presence', { room: 'parlour' }, withRooms([quietRoom('parlour', { occupied: false, pres_labels: [] })], []), NOW);
+  assert.match(html, /<span class="hm-val num">Clear<\/span>/);
+  assert.doesNotMatch(html, /data-act="clear/);
+});
+
 // ── Render cost: memoised parses, per-pass room models, skipped renders ──────────────────────────
 // HA hands the card a new hass object on every update, with a new state object only for entities that changed.
 const update = (hass, over = {}, extra = {}) => {
@@ -3668,6 +3777,20 @@ ok('render cost: output is byte-identical with and without the optimisations, fo
   // And after a run of skipped updates the held output is still the output a fresh render gives.
   const later = update(hass, { 'sensor.unrelated_0': { state: '1', attributes: {} } });
   cards.forEach(([label, m, c, ui], i) => assert.equal(gates[i].run(m, c, later, NOW + 1000, ui, false).html, P.render(m, c, later, NOW + 1000, ui), `after update ${label}`));
+});
+
+ok('disclosure: the render gate skips an unchanged repaint, redraws on a toggle and keeps the state across a hass update', () => {
+  const gate = P.makeRenderGate();
+  const cfg = { room: 'bedroom' };
+  const hass = richHass();
+  const ui = { open: {} };
+  const first = gate.run('lights', cfg, hass, NOW, ui, false);
+  assert.equal(gate.run('lights', cfg, hass, NOW, ui, false).skipped, true, 'unchanged: the repaint is skipped, so nothing re-animates');
+  ui.open['bedroom:lights'] = true;
+  const opened = gate.run('lights', cfg, hass, NOW, ui, false);
+  assert.equal(opened.skipped, false);
+  assert.notEqual(opened.html, first.html);
+  assert.equal(gate.run('lights', cfg, update(hass, { 'sensor.unrelated_0': { state: '1', attributes: {} } }), NOW, ui, false).html, opened.html, 'a hass update keeps the row open');
 });
 
 ok('render cost: an unrelated entity change skips, a read entity, the registry, config or ui re-render', () => {
@@ -4394,6 +4517,8 @@ ok('every control on the room and garden pages is a button or link with a name, 
         for (const m of tag.matchAll(/\bdata-([a-z][a-z0-9-]*)="([^"]*)"/g)) ds[m[1].replace(/-([a-z0-9])/g, (x, c) => c.toUpperCase())] = m[2].replace(/&quot;/g, '"').replace(/&amp;/g, '&');
         assert.match(tag, /^<(button|a|input)\b/, `${k}/${mode}`);
         if (ds.act === 'nav') continue;
+        // A disclosure row writes nothing: it only flips the viewer's own open/closed state.
+        if (ds.act === 'disclose') { assert.match(ds.id, /^[a-z0-9_]+:[a-z0-9_]+$/, `${k}/${mode}`); assert.match(tag, /aria-expanded="(true|false)" aria-controls="dp-[\w-]+"/); continue; }
         seen.add(ds.act);
         const calls = [];
         const h = { ...hass, callService: (...a) => calls.push(a) };

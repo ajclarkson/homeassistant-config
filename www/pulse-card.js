@@ -229,23 +229,34 @@
       collected: (days) => (days <= 0 ? 'Collected today' : days === 1 ? 'Collected tomorrow' : `Collected in ${Math.round(days)} days`),
     },
     room: {
-      targetLabel: 'Target', heating: 'Heating', presence: 'Presence', lights: 'Lights', media: 'Media', theme: 'Theme',
+      heating: 'Heating', presence: 'Presence', lights: 'Lights', media: 'Media', theme: 'Theme',
       useCalendar: 'Use calendar', keepRoomOccupied: 'Keep room occupied', volume: 'Volume', brightness: 'Brightness',
       scenes: 'Scenes', automation: 'Automation', fan: 'Fan', last24h: 'Last 24 hours',
       temperature: 'Temperature', lightLevel: 'Light level', luxUnit: 'lx', luxDark: 'Dark, lights come on', luxBright: 'Bright enough',
       occupied: 'Occupied', empty: 'Empty', occupancyUnavailable: 'Occupancy unavailable',
       held: 'Held', override: 'Override', clear: 'Clear',
-      rightNow: 'Right now', heatingNowStatus: 'Heating now', notHeatingStatus: 'Not heating', heatingOffStatus: 'Heating off',
       humidity: 'Humidity', normalTarget: 'Normal target', status: 'Status',
-      manual: 'Manual', manualChange: 'Manual change', problem: 'Problem', didntAct: "Didn't act",
+      manual: 'Manual', manualChange: 'Manual change', problem: 'Problem',
       hold: 'Hold', auto: 'Auto', suspended: 'Suspended', pending: 'Pending', heatingAutomationOff: 'Heating automation is off', pendingNote: 'Heating drops to minimum if it stays open',
       // The room's subtitle under its name: "Occupied · Lamps on", "Empty · lights off". `scene` is the active
       // scene's label ('' when none), only said while the lights are on.
       headLine: (occupancy, lightsOn, scene) => `${occupancy} · ${lightsOn ? (scene ? `${scene} on` : 'lights on') : 'lights off'}`,
       gardenLine: (reporting, on) => (!reporting ? 'Lights unknown' : on ? 'Lights on' : 'Lights off'),
       heatingTo: (t) => `Heating to ${t}`, heatingNow: 'Heating', targetIs: (t) => `Target ${t}`, notHeating: 'Not heating',
-      // A setting's explanation, as a footnote under the Automation list.
-      settingNote: (title, sub) => `${title}: ${sub}`,
+      individualLights: 'Individual lights',
+      // Trailing summary of the "Individual lights" row: "2 of 5 on", or "All off".
+      lightsSummary: (on, total) => (on === 0 ? 'All off' : `${on} of ${total} on`),
+      allOn: 'All on',
+      // Trailing summary of the "Automation" row when something is switched off: the one switch by name
+      // ("Lights automation off"), else how many ("2 off").
+      automationOff: (titles) => (titles.length === 1 ? `${titles[0]} off` : `${titles.length} off`),
+      // The lights "why" line for a declined decision, time first: "Stayed off at 11:25: bright enough (...)".
+      // The sentence is REASON_TEXT's, untouched; the time goes after its lead clause, else at the end.
+      declinedLine: (sentence, time) => {
+        if (!time) return sentence;
+        const i = sentence.indexOf(': ');
+        return i < 0 ? `${sentence} at ${time}` : `${sentence.slice(0, i)} at ${time}${sentence.slice(i)}`;
+      },
     },
     energy: {
       now: 'Now', next: 'Next', usage: 'Usage', perKwh: ' p/kWh', cheapestHeading: 'Cheapest 2 hours', nextCheapest: 'Next cheapest 2 hours',
@@ -712,6 +723,10 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 .hm-btn:disabled{opacity:.4;cursor:default}
 .hm-tv{margin-left:8px;color:${TOKENS.textSecondary}}
 .hm-feet{display:flex;flex-direction:column;gap:6px}
+.hm-ds{flex:0 1 auto;min-width:0;text-align:right}
+.hm-btn[aria-expanded="true"] .hm-chev{transform:rotate(90deg)}
+.hm-dp[hidden]{display:none}
+.hm-dp .hm-row::before{content:'';position:absolute;top:0;left:14px;right:0;height:.5px;background:${TOKENS.separator}}
 .hm-wgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
 .hm-w{background:${TOKENS.surface};border-radius:20px;padding:14px 16px;min-width:0}
 .hm-w:only-child{grid-column:1/-1}
@@ -1465,14 +1480,34 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const btn = (delta, name, glyph) => `<button type="button" data-act="${act}" ${dataAttrs(data)} data-delta="${delta}" aria-label="${esc(label)} ${name}">${svg(glyph, 16)}</button>`;
     return `<span class="hm-step">${btn(-1, COPY.common.lower, 'M5 12h14')}<i class="hm-step-div" aria-hidden="true"></i>${btn(1, COPY.common.higher, 'M12 5v14M5 12h14')}</span>`;
   }
-  function hmStepperRow({ title, shown, act, data }) {
-    return hmRow({ title, titleValue: shown, trailing: hmStepper(act, data, title) });
+  function hmStepperRow({ title, sub, shown, act, data }) {
+    return hmRow({ title, sub, titleValue: shown, trailing: hmStepper(act, data, title) });
   }
   // Slider row: the label and value above a full-width range (track sliderTrack, fill tint via --p).
   function hmSliderRow({ title, pct, act, data, label }) {
     const p = Math.max(0, Math.min(100, Math.round(pct)));
     return `<div class="hm-row hm-slr"><div class="hm-l1"><span class="hm-rt">${esc(title)}</span><span class="hm-val num">${p}%</span></div><input type="range" class="hm-slider" min="0" max="100" value="${p}" style="--p:${p}%" data-act="${act}" ${dataAttrs(data)} aria-label="${esc(label)}"></div>`;
   }
+  // Disclosure row: the one definition of "a row that opens a list under it", inside the same inset list.
+  // A real button (>= 60px tall) with aria-expanded and aria-controls; the trailing summary is textSecondary
+  // unless `tone` is a token colour; the chevron turns 90 degrees when open (CSS, off aria-expanded). The panel
+  // is always in the markup, `hidden` while closed, so aria-controls always names an element. State is `open`
+  // (see disclosureOpen), never read from the DOM, so a repaint draws the same state with no animation.
+  const DISCLOSURE_ID = /^[a-z0-9_]+:[a-z0-9_]+$/;
+  function hmDisclosure({ id, title, summary, tone, open, body }) {
+    if (!DISCLOSURE_ID.test(id)) throw new Error(`pulse-card: bad disclosure id "${id}"`);
+    const panel = `dp-${id.replace(':', '-')}`;
+    const sum = summary ? `<span class="hm-val hm-ds"${tone ? ` style="color:${tone}"` : ''}>${esc(summary)}</span>` : '';
+    const ctl = `data-act="disclose" data-id="${id}" aria-expanded="${open}" aria-controls="${panel}"`;
+    const row = hmRow({ title, ctl, trailing: `${sum}<span class="hm-chev" aria-hidden="true">${svg(ICON.next, 14)}</span>` });
+    return `${row}<div class="hm-dp" id="${panel}"${open ? '' : ' hidden'}>${body}</div>`;
+  }
+  // Open/closed is per-viewer UI state, default closed. The card keeps it in `ui.open` (one object shared by
+  // every card on the page, see disclosureStore); a render with no ui draws everything closed.
+  const disclosureOpen = (ui, id) => isObj(ui) && isObj(ui.open) && ui.open[id] === true;
+  // An inset list holding just a disclosure (no section header: the row is the label).
+  const hmDisclosureList = (html) => `<div class="hm"><section class="hm-sec">${hmList(html, true)}</section></div>`;
+
   // A two-up grid of widget cards; a lone widget spans the row.
   const hmWidget = (label, colour, valueHtml, sub) => `<div class="hm-w"><div class="hm-wl" style="color:${colour}">${esc(label)}</div><div class="hm-wv num">${valueHtml}</div><div class="hm-ws">${esc(sub)}</div></div>`;
 
@@ -2297,14 +2332,6 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   // ── Room page sections ───────────────────────────────────────────────────────────────────────
   // Every room and garden page is built from the House page's parts (hmRow, hmSection, the native controls above):
   // header, readings, then one titled inset list per subsystem. Whole-page spacing is HM_SECTION_GAP, from `.hm`.
-  // Whether the valve is calling for heat right now, from the climate entity's hvac_action. Unknown
-  // actions say nothing rather than guess "not heating".
-  function heatingStatus(m) {
-    if (m.hvac_action === 'heating') return { on: true, text: COPY.room.heatingNowStatus };
-    if (m.hvac_action === 'idle') return { on: false, text: COPY.room.notHeatingStatus };
-    if (m.hvac_action === 'off') return { on: false, text: COPY.room.heatingOffStatus };
-    return null;
-  }
 
   // Why the controller forced the minimum (heating source "safety"): a window or door held open past its
   // grace period, else house heating switched off. Named for the reader; "safety" is the controller's word.
@@ -2418,7 +2445,8 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const newer = newest && (!lastActed || parseTs(newest.ts) > parseTs(lastActed.ts));
     if (newer && !isActed(newest)) {
       const { text, tone } = sentenceFor(newest, hass);
-      return out(tone === 'warn' ? 'problem' : 'declined', `${text}${at(newest.ts)}${tail}`, tone);
+      if (tone === 'warn') return out('problem', `${text}${at(newest.ts)}${tail}`, tone);
+      return out('declined', `${COPY.room.declinedLine(text, newest.ts ? hhmm(newest.ts) : '')}${tail}`, tone);
     }
     if (lastActed) return out('acted', `${sentenceFor(lastActed, hass).text}${at(lastActed.ts)}${tail}`, 'ok');
     return out('none', `${h.note ? `Lighting ${h.note.toLowerCase()}` : 'No lighting decision recorded yet'}${tail}`, h.note ? 'warn' : 'muted');
@@ -2426,7 +2454,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 
   // How the lights automation stands, as the footnote under the scenes: its mode, then why the lights are as they are.
   function lightsNote(story) {
-    const lead = { disabled: '', manual: COPY.room.manual, problem: COPY.room.problem, declined: COPY.room.didntAct }[story.state];
+    const lead = { disabled: '', manual: COPY.room.manual, problem: COPY.room.problem, declined: '' }[story.state];
     const tag = lead !== undefined ? lead : story.holds ? COPY.room.hold : COPY.room.auto;
     return [tag, story.why].filter(Boolean).join(' · ');
   }
@@ -2438,8 +2466,8 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   // its grace period (safety), a hold still waiting out the grace (held), a deviation from the mode, the mode.
   function heatingReason(m) {
     const differs = !!m.target_reason;
-    const modeText = m.mode_name && m.mode_target !== null ? `${upperFirst(m.mode_name)} ${fmt1(m.mode_target)}°` : '';
-    const plain = [modeText, m.heating_source ? m.heating_source.replace(/_/g, ' ') : ''].filter(Boolean).join(' from ') || 'No mode reported';
+    // The target itself is the row's trailing figure, so the words carry the mode and where it came from only.
+    const plain = [m.mode_name ? upperFirst(m.mode_name) : '', m.heating_source ? `from ${m.heating_source.replace(/_/g, ' ')}` : ''].filter(Boolean).join(', ') || 'No mode reported';
     const safety = !differs && m.heating_source === 'safety';
     const held = !differs && m.heat_labels.length > 0;
     if (differs) return upperFirst(m.target_reason);
@@ -2461,10 +2489,10 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   function sectionHeating(hass, key) {
     const m = roomModel(hass, key);
     if (!m.hasReport || !m.cfg.climate) return '';
-    const rows = [hmRow({ title: COPY.room.targetLabel, sub: heatingReason(m), value: m.target === null ? '–' : `${fmt1(m.target)}°` })];
+    // One row: why the target is what it is, the target trailing. Whether the room is heating now is in the
+    // Temperature widget's sub line, not repeated here.
+    const rows = [hmRow({ title: heatingReason(m), value: m.target === null ? '–' : `${fmt1(m.target)}°` })];
     if (m.target_reason && m.mode_name && m.mode_target !== null) rows.push(hmRow({ title: COPY.room.normalTarget, sub: upperFirst(m.mode_name), value: `${fmt1(m.mode_target)}°` }));
-    const hs = heatingStatus(m);
-    if (hs) rows.push(hmRow({ title: COPY.room.rightNow, value: hs.text }));
     if (m.humidity !== null) rows.push(hmRow({ title: COPY.room.humidity, value: `${Math.round(m.humidity)}%` }));
     const stateText = heatingStateText(m);
     if (stateText) rows.push(hmRow({ title: COPY.room.status, sub: stateText === COPY.room.pending ? COPY.room.pendingNote : undefined, value: stateText }));
@@ -2514,12 +2542,20 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const row = hmToggleRow({ title: label, sub: on ? (dimmable ? `${pct}%` : COPY.common.on) : COPY.common.off, on, act: 'toggle', data: { entity: id } });
     return dimmable && on ? row + hmSliderRow({ title: COPY.room.brightness, pct, act: 'brightness', data: { entity: id }, label: `${label} ${COPY.room.brightness.toLowerCase()}` }) : row;
   }
-  function sectionLights(hass, key, now) {
+  // "Individual lights": a disclosure row, "2 of 5 on" or "All off" trailing, the light rows under it when open.
+  function individualLights(hass, key, m, ui, notes) {
+    const on = m.cfg.lights.filter(([id]) => state(hass, id) === 'on').length;
+    const id = `${key}:lights`;
+    const body = m.cfg.lights.map(([lid, label]) => lightRows(hass, lid, label)).join('');
+    const row = hmDisclosure({ id, title: COPY.room.individualLights, summary: COPY.room.lightsSummary(on, m.cfg.lights.length), open: disclosureOpen(ui, id), body });
+    return `<section class="hm-sec">${hmList(row, true)}${hmFeet(notes)}</section>`;
+  }
+  function sectionLights(hass, key, now, ui) {
     const m = roomModel(hass, key);
     const active = activeScene(hass, key);
     const notes = m.hasReport ? [lightsNote(lightsStory(hass, key, now))] : [];
     const scenes = m.scenes.length ? hmSection(COPY.room.scenes, `<div class="hm-scenes">${m.scenes.map((id) => sceneButton(key, id, active)).join('')}</div>`, { bare: true, notes }) : '';
-    const lights = m.cfg.lights.length ? hmSection(COPY.room.lights, m.cfg.lights.map(([id, label]) => lightRows(hass, id, label)).join(''), { plain: true, notes: scenes ? [] : notes }) : '';
+    const lights = m.cfg.lights.length ? individualLights(hass, key, m, ui, scenes ? [] : notes) : '';
     return scenes || lights ? `<div class="hm">${scenes}${lights}</div>` : '';
   }
 
@@ -2582,17 +2618,25 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const data = { room, group, key: row.key };
     if (row.kind === 'toggle') {
       const s = state(hass, row.id);
-      return usable(s) ? hmToggleRow({ title: row.title, on: s === 'on', act: 'setting-toggle', data }) : '';
+      return usable(s) ? hmToggleRow({ title: row.title, sub: row.sub, on: s === 'on', act: 'setting-toggle', data }) : '';
     }
     const v = num(state(hass, row.id));
-    return v === null ? '' : hmStepperRow({ title: row.title, shown: `${row.step < 1 ? v.toFixed(1) : String(Math.round(v))}${row.unit}`, act: 'setting-number', data });
+    return v === null ? '' : hmStepperRow({ title: row.title, sub: row.sub, shown: `${row.step < 1 ? v.toFixed(1) : String(Math.round(v))}${row.unit}`, act: 'setting-number', data });
   }
-  // Automation: every setting of the room's table (ROOM_TABLE settings, rooms and gardens alike) in one inset list,
-  // each explained by a footnote under it.
-  function sectionAutomation(hass, key) {
+  // Automation: every setting of the room's table (ROOM_TABLE settings, rooms and gardens alike) behind one
+  // disclosure row that doubles as the section header. Collapsed it says "All on" or what is off, in the
+  // attention colour; each row explains itself with a subtitle.
+  function sectionAutomation(hass, key, ui) {
     const shown = ROOM_SETTINGS[key].flatMap((g) => g.rows.map((r) => ({ r, html: settingRowHtml(hass, key, g.key, r) }))).filter((x) => x.html);
     if (shown.length === 0) return '';
-    return `<div class="hm">${hmSection(COPY.room.automation, shown.map((x) => x.html).join(''), { plain: true, notes: shown.map((x) => COPY.room.settingNote(x.r.title, x.r.sub)) })}</div>`;
+    const off = shown.filter((x) => x.r.kind === 'toggle' && state(hass, x.r.id) !== 'on').map((x) => x.r.title);
+    const hasToggle = shown.some((x) => x.r.kind === 'toggle');
+    const id = `${key}:automation`;
+    const row = hmDisclosure({
+      id, title: COPY.room.automation, summary: off.length ? COPY.room.automationOff(off) : hasToggle ? COPY.room.allOn : '',
+      tone: off.length ? TOKENS.attention : '', open: disclosureOpen(ui, id), body: shown.map((x) => x.html).join(''),
+    });
+    return hmDisclosureList(row);
   }
 
   // The fan (the bathroom page): its switch, with the reason homerun last gave.
@@ -3213,13 +3257,13 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     tabbar: (h, c, n, ui) => sectionTabbar(c, ui),
     'room-head': (h, c, n) => sectionRoomHead(h, c.room, n),
     readings: (h, c) => sectionReadings(h, c.room),
-    lights: (h, c, n) => sectionLights(h, c.room, n),
+    lights: (h, c, n, ui) => sectionLights(h, c.room, n, ui),
     heating: (h, c) => sectionHeating(h, c.room),
     'chart-head': () => `<div class="hm"><section class="hm-sec"><div class="hm-h"><h2>${COPY.room.last24h}</h2></div></section></div>`,
     presence: (h, c) => sectionPresence(h, c.room),
     media: (h, c) => sectionMedia(h, c.room),
     device: (h, c) => sectionDevice(h, c),
-    automation: (h, c) => sectionAutomation(h, c.room),
+    automation: (h, c, n, ui) => sectionAutomation(h, c.room, ui),
     'room-feed': (h, c) => sectionRoomFeed(h, c.room),
     'garden-lights': (h, c, n) => sectionGardenLights(h, c.room, n),
     'garden-theme': (h, c, n) => sectionGardenTheme(h, c.room, n),
@@ -3485,7 +3529,29 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     }
   }
 
-  const api = { parsedAttr, setOptimise, trackHass, depsUnchanged, makeRenderGate, RENDER_MAX_AGE_MS, deriveScenes, sceneRegistry, ROOM_TABLE, lightsStory, lightsState, verdictFor, houseActivity, parseHistory, readHistory, sentenceFor, roomActivity, unexplainedReasons, REASON_TEXT, UNDECLARED, SUPPRESS_SOURCES, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, SETTINGS_PATH, takesTaps, coverNeed, topGuard, HEAD_MODES, TOP_GUARD_MAX, CAMERAS_PATH, PENDING_MS, cameraParts, cameraToggle, cameraPending, perform, pendingStart, pendingFor, pendingKey, markPending, ERROR_MS, parseClips, frigateClipsId, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, GARDEN_ORDER, ALL_ROOM_KEYS, THEME_LABELS, THEME_ICON, ICON, SUBSYSTEMS, subsystemOf, placed, gardenModel, gardenSub, themeSource, shortDate, ALLOWED, writeAllowed, HOUSE_NUMBERS, HOUSE_MODIFIER, HOUSE_VACATION_HOURS, CAMERAS, PTZ_DIRS, DEVICE_REASONS, ROOM_SETTINGS, MO_TOGGLES, settingFor, render, priceColour, PRICE_AT, PRICE_EXTREME_P, THEMES, COLOUR_KEYS, DEFAULT_THEME, TOKENS, COPY, checkThemes, themeOf, useTheme, colour, resolveVars, styleFor, roomModel, attentionItems, handleAction, callService, num, parseList };
+  // ── Disclosure state ─────────────────────────────────────────────────────────────────────────
+  // Which disclosure rows are open: {"<room>:<section>": true}, absent = closed. One object for the whole page
+  // (every card is its own element, but a person's open rows belong to the viewer, not to a card), shared into
+  // each card's ui so the render gate sees a change. Kept in memory; mirrored to localStorage so a reload keeps
+  // it, where storage is unavailable (private mode, blocked) it stays in memory only.
+  const DISCLOSURE_STORE = 'pulse-card:open';
+  function loadDisclosure() {
+    const open = {};
+    try {
+      const saved = JSON.parse(root.localStorage.getItem(DISCLOSURE_STORE));
+      if (isObj(saved)) for (const [id, v] of Object.entries(saved)) if (v === true && DISCLOSURE_ID.test(id)) open[id] = true;
+    } catch (err) { /* no storage, or unreadable: start closed */ }
+    return open;
+  }
+  const disclosureStore = loadDisclosure();
+  function toggleDisclosure(id) {
+    if (typeof id !== 'string' || !DISCLOSURE_ID.test(id)) throw new Error(`pulse-card: bad disclosure id "${id}"`);
+    if (disclosureStore[id]) delete disclosureStore[id]; else disclosureStore[id] = true;
+    try { root.localStorage.setItem(DISCLOSURE_STORE, JSON.stringify(disclosureStore)); } catch (err) { /* memory only */ }
+    return disclosureStore[id] === true;
+  }
+
+  const api = { parsedAttr, disclosureStore, toggleDisclosure, setOptimise, trackHass, depsUnchanged, makeRenderGate, RENDER_MAX_AGE_MS, deriveScenes, sceneRegistry, ROOM_TABLE, lightsStory, lightsState, verdictFor, houseActivity, parseHistory, readHistory, sentenceFor, roomActivity, unexplainedReasons, REASON_TEXT, UNDECLARED, SUPPRESS_SOURCES, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, SETTINGS_PATH, takesTaps, coverNeed, topGuard, HEAD_MODES, TOP_GUARD_MAX, CAMERAS_PATH, PENDING_MS, cameraParts, cameraToggle, cameraPending, perform, pendingStart, pendingFor, pendingKey, markPending, ERROR_MS, parseClips, frigateClipsId, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, GARDEN_ORDER, ALL_ROOM_KEYS, THEME_LABELS, THEME_ICON, ICON, SUBSYSTEMS, subsystemOf, placed, gardenModel, gardenSub, themeSource, shortDate, ALLOWED, writeAllowed, HOUSE_NUMBERS, HOUSE_MODIFIER, HOUSE_VACATION_HOURS, CAMERAS, PTZ_DIRS, DEVICE_REASONS, ROOM_SETTINGS, MO_TOGGLES, settingFor, render, priceColour, PRICE_AT, PRICE_EXTREME_P, THEMES, COLOUR_KEYS, DEFAULT_THEME, TOKENS, COPY, checkThemes, themeOf, useTheme, colour, resolveVars, styleFor, roomModel, attentionItems, handleAction, callService, num, parseList };
   root.PulseLib = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 
@@ -3498,7 +3564,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         this._html = null;
         this._gate = makeRenderGate();
         this._busy = false;
-        this._ui = { top: 0, tb: 'inflow', day: 'today', fuel: 'electricity', cam: { rec: {} }, pending: {}, error: null, hist: { electricity: { status: 'loading', days: [] }, gas: { status: 'loading', days: [] } } };
+        this._ui = { open: disclosureStore, top: 0, tb: 'inflow', day: 'today', fuel: 'electricity', cam: { rec: {} }, pending: {}, error: null, hist: { electricity: { status: 'loading', days: [] }, gas: { status: 'loading', days: [] } } };
         this._histBusy = false;
         this._histSeq = 0;
         this._histAt = 0;
@@ -3930,6 +3996,11 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
             window.history.pushState(null, '', path);
             window.dispatchEvent(new CustomEvent('location-changed', { detail: { replace: false } }));
           }
+          return;
+        }
+        if (el.dataset.act === 'disclose') {
+          toggleDisclosure(el.dataset.id);
+          this._paint();
           return;
         }
         if (el.dataset.act === 'cost-fuel') {
