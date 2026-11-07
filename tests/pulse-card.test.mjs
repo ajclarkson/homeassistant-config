@@ -608,7 +608,7 @@ ok('cheapest 2h: dated window from the binary sensor (Today / Tomorrow), past hi
   assert.deepEqual(P.cheapestWindow(mk(), NOW).text, 'Tomorrow 20:00 → 22:00');
   assert.ok(Math.abs(P.cheapestWindow(mk(), NOW).avg - 25.9) < 1e-9);
   const energy = P.render('energy-day', {}, mk(), NOW, {});
-  assert.match(energy, /Next cheapest 2 hours<\/div><div class="m">Tomorrow 20:00 → 22:00 · avg 25\.9p/);
+  assert.match(energy, /Next cheapest 2 hours<\/div><div class="hm-rs">Tomorrow 20:00 → 22:00<\/div><\/div><span class="hm-val num">avg 25\.9p</);
   assert.match(P.render('status', {}, mk(), NOW), /Cheapest 2 hours<\/span><span class="num">Tomorrow 20:00 – 22:00</);
   assert.doesNotMatch(energy + P.render('status', {}, mk(), NOW), /02:00 → 04:00|avg 9\.8p/, 'the template sensors are no longer read');
   // later today
@@ -623,12 +623,12 @@ ok('cheapest 2h: dated window from the binary sensor (Today / Tomorrow), past hi
   const late = Date.parse('2026-10-25T22:07:00Z');
   assert.equal(P.cheapestWindow(past, late).status, 'none');
   assert.doesNotMatch(P.render('status', {}, past, late), /Cheapest 2 hours/);
-  assert.match(P.render('energy-day', {}, past, late, {}), /Next cheapest 2 hours<\/div><div class="m">none upcoming/);
+  assert.match(P.render('energy-day', {}, past, late, {}), /Next cheapest 2 hours<\/div><div class="hm-rs">None upcoming/);
   // running now: from current_end, or current_start + duration; state on without an end still says running
   const run = mk(cw({ current_start: '2026-10-25T18:00:00+00:00', current_end: '2026-10-25T20:00:00+00:00' }, 'on'));
   assert.equal(P.cheapestWindow(run, NOW).endText, '20:00');
   assert.match(P.render('status', {}, run, NOW), /Cheapest 2 hours<\/span><span class="num">Now, until 20:00</);
-  assert.match(P.render('energy-day', {}, run, NOW, {}), /Running now/);
+  assert.match(P.render('energy-day', {}, run, NOW, {}), /Next cheapest 2 hours<\/div><div class="hm-rs">Now, until 20:00</, 'running now is said in the sub-line, with no pill');
   assert.equal(P.cheapestWindow(mk(cw({ current_start: '2026-10-25T18:00:00+00:00', current_duration_in_hours: 2 }, 'on')), NOW).endText, '20:00');
   assert.match(P.render('status', {}, mk(cw({}, 'on')), NOW), /Cheapest 2 hours<\/span><span class="num">Now</);
   // unknown / garbage / missing -> hidden, never throws
@@ -1187,17 +1187,17 @@ ok('windows card renders them for the selected day with graded colour; none / em
   const hass = energyHass();
   const t = P.render('energy-day', {}, hass, NOW, {});
   assert.equal(count(t, />Free power</g), 1, 'one negative run, not a scrambled list');
-  assert.match(t, /Free power<\/div><div class="m">23:00 → 14:30<\/div>[\s\S]*?avg −\d/); // TZ=UTC here; London shows 00:00 → 14:30 (child-process test)
-  assert.match(t, /Cheap<\/div><div class="m">/);
+  assert.match(t, /Free power<\/div><div class="hm-rs">23:00 → 14:30<\/div><\/div><span class="hm-val num">avg −\d/); // TZ=UTC here; London shows 00:00 → 14:30 (child-process test)
+  assert.match(t, /Cheap<\/div><div class="hm-rs">/);
   assert.equal(count(t, /→ 01:00/g), 0);
   const m = P.render('energy-day', {}, hass, NOW, { day: 'tomorrow' });
-  assert.ok(/Free power<\/div><div class="m">none/.test(m) || /Free power<\/div><div class="m">\d\d:\d\d → \d\d:\d\d/.test(m));
+  assert.ok(/Free power<\/div><div class="hm-rs">None/.test(m) || /Free power<\/div><div class="hm-rs">\d\d:\d\d → \d\d:\d\d/.test(m));
   const e = P.render('energy-day', {}, energyHass({}, real, []), NOW, { day: 'tomorrow' });
   assert.doesNotMatch(e, />Free power<|>Cheap</);
   const quiet = day('2026-03-02T00:00:00Z', 48);
   const q = P.render('energy-day', {}, energyHass({}, quiet, quiet), Date.parse('2026-03-02T12:00:00Z'), {});
-  assert.match(q, /Free power<\/div><div class="m">none/);
-  assert.match(q, /Cheap<\/div><div class="m">none/);
+  assert.match(q, /Free power<\/div><div class="hm-rs">None/);
+  assert.match(q, /Cheap<\/div><div class="hm-rs">None/);
 });
 
 ok('window labels in Europe/London on the real clock-change day (child process, TZ set before Date is used)', () => {
@@ -1224,12 +1224,19 @@ ok('windowRange: a window spanning the repeated hour is never printed zero-lengt
   assert.notEqual(out.split(' → ')[0], out.split(' → ')[1]);
 });
 
-ok('energy page: head has the title (no back link), Now/Next/Usage', () => {
+ok('energy page: head has the title (no back link), the live usage as its subtitle, and Now/Next as two tiles', () => {
   const html = P.render('energy-head', {}, energyHass({ 'sensor.glow_electricity_power': { state: '0.44', attributes: { unit_of_measurement: 'kW' }, last_updated: '2026-10-25T18:41:50+00:00' } }), NOW);
   assert.doesNotMatch(html, /Back to House/);
-  assert.match(html, />Energy</);
+  assert.match(html, /^<div class="p"><div class="hm hm-first"><div class="hm-head"><div class="hm-hd"><h1 class="hm-big">Energy<\/h1><span class="hm-line">Using 440 W<\/span><\/div><\/div><div class="hm-wgrid hm-tight">/);
   assert.ok(html.includes(`color:${P.priceColour(34.8, { text: true })}`));
-  assert.match(html, />Usage<\/div><div[^>]*>440 W/);
+  assert.equal(count(html, /class="hm-w"/g), 2, 'Now and Next');
+  assert.match(html, />Now<\/div><div class="hm-wv num"><span[^>]*>34\.8<\/span><small>p\/kWh<\/small><\/div><div class="hm-ws">Until 19:00/, 'Now says which half hour it covers');
+  assert.match(html, /From 19:00/);
+  assert.match(html, />Next<\/div>/);
+  assert.doesNotMatch(html, /class="lbl"|text-transform/, 'no uppercase label');
+  // A meter reading that has not moved for 10 minutes is no live fact: the subtitle is left out, not shown as a dash.
+  const stale = P.render('energy-head', {}, energyHass({ 'sensor.glow_electricity_power': { state: '0.44', attributes: { unit_of_measurement: 'kW' }, last_updated: '2026-10-25T17:00:00+00:00' } }), NOW);
+  assert.doesNotMatch(stale, /hm-line|Using/);
 });
 
 ok('energy page day toggle: Today (50 slots) <-> Tomorrow (46 slots), pressed state, no now marker tomorrow', () => {
@@ -1254,9 +1261,10 @@ ok('energy page day toggle: Today (50 slots) <-> Tomorrow (46 slots), pressed st
 ok('energy page stats tiles follow the selected day', () => {
   const hass = energyHass();
   const t = P.render('energy-day', {}, hass, NOW, {});
-  assert.match(t, /Cheapest<\/div><div class="v" style="color:#[0-9a-f]{6}">−7\.5p<\/div><div class="s">at \d\d:\d\d/);
-  assert.match(t, /Dearest<\/div><div class="v"[^>]*>33\.4p<\/div><div class="s">at 17:00/);
-  assert.match(t, /Average<\/div><div class="v"[^>]*>[−\d.]+p<\/div><div class="s">per kWh/);
+  assert.match(t, /Cheapest<\/div><div class="hm-wv num"><span style="color:#[0-9a-f]{6}">−7\.5p<\/span><\/div><div class="hm-ws">at \d\d:\d\d/);
+  assert.match(t, /Dearest<\/div><div class="hm-wv num"><span[^>]*>33\.4p<\/span><\/div><div class="hm-ws">at 17:00/);
+  assert.match(t, /Average<\/div><div class="hm-wv num"><span[^>]*>[−\d.]+p<\/span><\/div><div class="hm-ws">per kWh/);
+  assert.match(t, /<div class="hm-wgrid hm-group-row">/, 'the stat tiles share the two-column grid; the odd one out spans the row');
   const m = P.render('energy-day', {}, hass, NOW, { day: 'tomorrow' });
   const st = P.energyStats(P.rateBands(tomorrow, NOW));
   assert.ok(m.includes(`>${P.penceText(st.dearest.v)}<`));
@@ -1266,9 +1274,10 @@ ok('energy page stats tiles follow the selected day', () => {
 ok('energy page: tomorrow missing / empty / unavailable shows the honest empty state', () => {
   for (const rates of [[], undefined, 'unavailable', [null], 'x']) {
     const html = P.render('energy-day', {}, energyHass(rates === undefined ? { 'event.octopus_energy_electricity_24e8140196_1012483035417_next_day_rates': null } : {}, real, rates), NOW, { day: 'tomorrow' });
-    assert.match(html, /Tomorrow's rates are not in yet/);
+    assert.match(html, /Tomorrow&#39;s rates are not in yet/);
     assert.match(html, /published late afternoon/);
     assert.doesNotMatch(html, /<rect|data-chart|Cheapest<\/div>/);
+    assert.match(html, /<h2>Prices<\/h2>/, 'the section keeps its header and the day control');
     assert.match(html, /class="seg on" data-act="energy-day" data-day="tomorrow"/);
     noNoise({ html }, 'tomorrow empty');
   }
@@ -1311,21 +1320,21 @@ ok('covered day on a 25-hour clock-change day: 50 charges from 2026-10-25T00:00:
   assert.equal(P.coveredDay({ charges: c }), 'Sun 25 Oct');
   assert.equal(P.coveredDay({ charges: c.slice(0, 40) }), null, 'a partial list is still refused');
   const r = P.render('energy-cost', {}, mk({ [`${EID}_cost`]: { state: '3.58', attributes: { unit_of_measurement: 'GBP', charges: c, total_without_standing_charge: 3.11, standing_charge: 0.46 } } }), NOW);
-  assert.match(r, /£3\.58<\/div><div[^>]*>Sun 25 Oct · – · incl\. standing charge</);
+  assert.match(r, /£3\.58<\/div><div class="hm-ws">Sun 25 Oct<\/div><div class="hm-ws">–<\/div><div class="hm-ws">incl\. standing charge</);
 });
 
 ok('cost card: published values labelled with their day, unavailable dashes, missing date says latest complete day', () => {
   const e = { unit_of_measurement: 'GBP', charges: charges('2026-10-22T23:00:00Z').map((c, i) => (i === 0 ? { ...c, start: '2026-10-23T00:00:00+01:00' } : c)), total_without_standing_charge: 2.9, standing_charge: 0.52 };
   const hass = mk({ [`${EID}_cost`]: { state: '3.42', attributes: e }, [`${EID}_consumption`]: { state: '9.4', attributes: { unit_of_measurement: 'kWh' } }, [`${GID}_cost`]: { state: '1.2', attributes: { unit_of_measurement: 'GBP' } }, [`${GID}_consumption_kwh`]: { state: '10.04', attributes: { unit_of_measurement: 'kWh' } } });
   const html = P.render('energy-cost', {}, hass, NOW);
-  assert.match(html, /Electricity<\/div><div class="v">£3\.42<\/div><div[^>]*>Fri 23 Oct · 9\.4 kWh · incl\. standing charge</);
-  assert.match(html, /Gas<\/div><div class="v">£1\.20<\/div><div[^>]*>latest complete day · 10\.0 kWh</);
+  assert.match(html, /Electricity<\/div><div class="hm-wv num">£3\.42<\/div><div class="hm-ws">Fri 23 Oct<\/div><div class="hm-ws">9\.4 kWh<\/div><div class="hm-ws">incl\. standing charge</);
+  assert.match(html, /Gas<\/div><div class="hm-wv num">£1\.20<\/div><div class="hm-ws">Latest complete day<\/div><div class="hm-ws">10\.0 kWh</);
   assert.doesNotMatch(html, /Gas[\s\S]*standing/);
   assert.match(html, /Octopus publishes about 1-2 days late/);
   const dash = P.render('energy-cost', {}, mk({ [`${EID}_cost`]: { state: 'unavailable', attributes: {} } }), NOW);
-  assert.equal(count(dash, /class="v">–</g), 2);
-  assert.match(dash, /latest complete day · –/);
-  assert.match(P.render('energy-cost', {}, mk({ [`${EID}_cost`]: { state: '3.42', attributes: { unit_of_measurement: 'USD' } } }), NOW), /class="v">–</);
+  assert.equal(count(dash, /class="hm-wv num">–</g), 2);
+  assert.match(dash, /Latest complete day<\/div><div class="hm-ws">–/);
+  assert.match(P.render('energy-cost', {}, mk({ [`${EID}_cost`]: { state: '3.42', attributes: { unit_of_measurement: 'USD' } } }), NOW), /class="hm-wv num">–</);
   noNoise({ html, dash }, 'cost');
   assert.equal(P.money(-1.5, 'GBP'), '−£1.50');
 });
@@ -1333,13 +1342,14 @@ ok('cost card: published values labelled with their day, unavailable dashes, mis
 ok('usage card: unit-aware kWh, dashes for unavailable / unknown units, labelled as live meter', () => {
   const g = (v, u) => ({ state: v, attributes: u ? { unit_of_measurement: u } : {} });
   const html = P.render('energy-usage', {}, mk({ 'sensor.glow_electricity_today': g('17.9', 'kWh'), 'sensor.glow_electricity_month': g('142.33', 'kWh'), 'sensor.glow_gas_today': g('3100', 'Wh'), 'sensor.glow_gas_month': g('unavailable', 'kWh') }), NOW);
-  assert.match(html, /Electricity today<\/div><div class="v">17\.9 <span>kWh<\/span>/);
-  assert.match(html, /Electricity this month<\/div><div class="v">142 <span>kWh<\/span>/);
-  assert.match(html, /Gas today<\/div><div class="v">3\.1 <span>kWh<\/span>/);
-  assert.match(html, /Gas this month<\/div><div class="v">–</);
+  assert.match(html, /Electricity<\/div><div class="hm-wv num">17\.9<small>kWh<\/small><\/div><div class="hm-ws">Today</);
+  assert.match(html, /Electricity<\/div><div class="hm-wv num">142<small>kWh<\/small><\/div><div class="hm-ws">This month</);
+  assert.match(html, /Gas<\/div><div class="hm-wv num">3\.1<small>kWh<\/small><\/div><div class="hm-ws">Today</);
+  assert.match(html, /Gas<\/div><div class="hm-wv num">–<\/div><div class="hm-ws">This month</);
+  assert.equal(count(html, /class="hm-w"/g), 4, 'two fuels by two periods, in the two-column grid');
   assert.match(html, /smart meter, live/);
   const nounit = P.render('energy-usage', {}, mk({ 'sensor.glow_electricity_today': g('17.9') }), NOW);
-  assert.match(nounit, /Electricity today<\/div><div class="v">–</);
+  assert.match(nounit, /Electricity<\/div><div class="hm-wv num">–<\/div><div class="hm-ws">Today</);
   assert.equal(P.energyText('1', 'MWh'), '1000 kWh');
   assert.equal(P.energyText(null, 'kWh'), '–');
   noNoise({ html, nounit }, 'usage');
@@ -1883,7 +1893,7 @@ ok('tab pages render a title and no back link; the heading is the only title (HA
   for (const [mode, name] of [['energy-head', 'Energy'], ['house-head', 'Settings'], ['cameras-head', 'Cameras']]) {
     const html = P.render(mode, {}, mk(), NOW, {});
     assert.doesNotMatch(html, /Back to House|data-act="nav"/, mode);
-    assert.equal(html.split(`>${name}</div>`).length - 1, 1, `${mode}: exactly one visible title`);
+    assert.equal(html.split(`>${name}</div>`).length - 1 + html.split(`<h1 class="hm-big">${name}</h1>`).length - 1, 1, `${mode}: exactly one visible title`);
   }
 });
 
@@ -2087,7 +2097,7 @@ ok('every fixed height or clipping rule is accounted for (a new one needs its ar
   const fixed = cssRules().filter((r) => px(decl(r.body, 'height'))).map((r) => r.sel).sort();
   // Fixed SHAPES that hold no text: dots, icons, avatars, tiles, bars, switch track and knob, slider track and
   // thumb, the 1px visually-hidden helper. No content box has a fixed height.
-  const shapes = ['.clip img', '.dot', '.sw', '.sw::after', '.sr', '.hm-sw', '.hm-sw::after', '.hm-step', '.hm-step-div', '.hm-slider', '.hm-slider::-webkit-slider-runnable-track', '.hm-slider::-webkit-slider-thumb', '.hm-slider::-moz-range-track', '.hm-slider::-moz-range-progress', '.hm-slider::-moz-range-thumb', '.hm-av', '.hm-pd', '.hm-tile', '.hm-bars', '.hm-row+.hm-row::before', '.hm-dp .hm-row::before', '.ptz button', '.tl-dot', '.tl-row:last-child .tl-rail::before'];
+  const shapes = ['.hm-thumb', '.dot', '.sw', '.sw::after', '.sr', '.hm-sw', '.hm-sw::after', '.hm-step', '.hm-step-div', '.hm-slider', '.hm-slider::-webkit-slider-runnable-track', '.hm-slider::-webkit-slider-thumb', '.hm-slider::-moz-range-track', '.hm-slider::-moz-range-progress', '.hm-slider::-moz-range-thumb', '.hm-av', '.hm-pd', '.hm-tile', '.hm-bars', '.hm-row+.hm-row::before', '.hm-dp .hm-row::before', '.ptz button', '.tl-dot', '.tl-row:last-child .tl-rail::before'];
   assert.deepEqual(fixed.filter((f) => f !== '.ptz button'), shapes.filter((f) => f !== '.ptz button').sort());
   const sw = px(decl(rule('.sw').body, 'height'));
   const knob = P.STYLE.match(/\.sw::after\{[^\n]*top:(\d+)px[^\n]*height:(\d+)px/);
@@ -2106,12 +2116,64 @@ ok('every fixed height or clipping rule is accounted for (a new one needs its ar
   const clip = cssRules().filter((r) => /overflow:hidden/.test(r.body)).map((r) => r.sel).sort();
   assert.deepEqual(clip, ['.card', '.hm-list', '.hm-rs', '.hm-rt', '.sr'].sort()); // .hm-rt/.hm-rs: single lines that ellipsise; .hm-list clips the row corners to its 12px radius
   for (const r of cssRules().filter((x) => /overflow:hidden/.test(x.body) && x.sel !== '.sr')) assert.equal(px(decl(r.body, 'height')), null, r.sel);
-  for (const sel of ['.hm-row', '.tog', '.link', '.seg', '.wrow', '.row']) assert.ok(px(decl(rule(sel).body, 'min-height')) > 0 && px(decl(rule(sel).body, 'height')) === null, sel);
+  for (const sel of ['.hm-row', '.tog', '.link', '.seg', '.row']) assert.ok(px(decl(rule(sel).body, 'min-height')) > 0 && px(decl(rule(sel).body, 'height')) === null, sel);
   // The bar chart: the tallest bar fits its 44px box and a zero or negative price keeps a 4px stub.
   assert.equal(px(decl(rule('.hm-bars').body, 'height')), 44);
   const barHeights = [...P.render('status', {}, mk({ 'event.octopus_energy_electricity_24e8140196_1012483035417_current_day_rates': { state: 'x', attributes: { rates: mkSlots(9, '2026-10-25T18:00:00Z', (i) => i * 5 - 5) } } }), Date.parse('2026-10-25T18:00:00Z')).matchAll(/class="hm-bar[^"]*" style="height:(\d+)px/g)].map((m) => +m[1]);
   assert.equal(Math.min(...barHeights), 4);
   assert.equal(Math.max(...barHeights), 44);
+});
+
+// The native rhythm of the Energy page: the same header, group and tile parts as Home and the rooms.
+const energyPages = () => {
+  const hass = energyHass();
+  const ui = { hist: { electricity: { status: 'ok', days: [{ date: '2026-10-22', cost: 3.1 }, { date: '2026-10-23', cost: 3.4 }, { date: '2026-10-24', cost: 2.9 }] } } };
+  return { head: P.render('energy-head', {}, hass, NOW, {}), day: P.render('energy-day', {}, hass, NOW, {}), cost: P.render('energy-cost', {}, hass, NOW), history: P.render('energy-history', {}, hass, NOW, ui), usage: P.render('energy-usage', {}, hass, NOW) };
+};
+ok('energy page: sentence-case section headers, no uppercase labels, pills or middle-dot strings, one root block per card', () => {
+  const pages = energyPages();
+  for (const [k, html] of Object.entries(pages)) {
+    assert.doesNotMatch(html, /class="lbl"|text-transform|class="tag|class="card|class="wrow|class="stat/, `${k}: only the shared parts`);
+    assert.doesNotMatch(html, / · /, `${k}: a second line instead of a middle dot`);
+    assert.match(html, k === 'head' ? /^<div class="p"><div class="hm hm-first">/ : /^<div class="p"><div class="hm">/, `${k}: one block, spaced by the shared section gap`);
+    for (const h of html.matchAll(/<h2>([^<]+)<\/h2>/g)) assert.equal(h[1], h[1].charAt(0) + h[1].slice(1).toLowerCase().replace(/\b(octopus)\b/, '$1'), `${k}: "${h[1]}" is sentence case`);
+  }
+  assert.deepEqual([...(pages.day + pages.cost + pages.history + pages.usage).matchAll(/<h2>([^<]+)<\/h2>/g)].map((m) => m[1]), ['Prices', 'Windows', 'Cost (latest published day)', 'Daily cost', 'Usage (smart meter, live)']);
+  assert.equal(count(pages.head, /<h1 /g), 1);
+});
+
+ok('energy page: charts sit in a card of the room chart\'s radius and padding, with the legend in the room chart\'s style', () => {
+  const pages = energyPages();
+  assert.equal(count(pages.day, /<div class="hm-card"><div class="chart"/g), 1, 'price chart in a card');
+  assert.equal(count(pages.history, /<div class="hm-card"><div class="chart"/g), 1, 'cost chart in a card');
+  const card = rule('.hm-card').body;
+  assert.equal(px(decl(card, 'border-radius')), 20, 'the room chart card radius');
+  assert.equal(px(decl(card, 'padding')), 16);
+  // The legend: 11px, secondary text, left aligned under the plot (apex: fontSize 11px, textSecondary, horizontalAlign left).
+  assert.match(pages.day, /margin-top:8px;font-size:11px;color:#a3adba" aria-hidden="true"><span style="display:inline-flex/);
+  assert.doesNotMatch(pages.day + pages.history, /color:#8f9aa8/, 'axis and legend text is readable, not tertiary');
+  // The scrub tooltip sits 36px above the plot: the chart's top margin plus the card padding keeps it inside the card.
+  assert.ok(20 + px(decl(card, 'padding')) >= 36);
+  assert.match(pages.day, /data-chart data-day="today"[^>]*style="position:relative;margin-top:20px;/);
+});
+
+ok('energy page: headline numbers are tiles in the shared two-column grid, an odd last tile spans the row', () => {
+  const pages = energyPages();
+  assert.equal(count(pages.head, /class="hm-w"/g), 2);
+  assert.equal(count(pages.day, /class="hm-w"/g), 3);
+  assert.equal(count(pages.cost, /class="hm-w"/g), 2);
+  assert.equal(count(pages.usage, /class="hm-w"/g), 4);
+  assert.match(P.STYLE, /\.hm-wgrid\{display:grid;grid-template-columns:repeat\(2,minmax\(0,1fr\)\);gap:10px\}/);
+  assert.equal(decl(rule('.hm-wgrid .hm-w:last-child:nth-child(odd)').body, 'grid-column'), '1/-1');
+  assert.equal(decl(rule('.hm-scenes').body, 'gap'), decl(rule('.hm-wgrid').body, 'gap'), 'one gutter token for every two-column grid');
+});
+
+ok('energy page: the top gap fix applies: the title card has no top margin, every other card is spaced by the section gap', () => {
+  const pages = energyPages();
+  assert.match(P.STYLE, /\.hm\.hm-first\{margin-top:0\}/);
+  assert.equal(count(pages.head, /class="hm hm-first"/g), 1);
+  for (const k of ['day', 'cost', 'history', 'usage']) assert.equal(count(pages[k], /hm-first/g), 0, k);
+  assert.match(P.STYLE, /\.hm\{[^}]*margin-top:max\(0px,calc\(36px - var\(--row-gap,8px\)\)\)/);
 });
 
 ok('tab bar fixed height has its arithmetic: 83px with a home indicator, bar content area (49px) holds the 44px tab, its 26px icon and 10px label; spacer matches', () => {
@@ -2333,9 +2395,10 @@ ok('house page: mode banner, modifier picker and holiday threshold write only to
   const at = Date.parse('2026-10-29T14:00:00+00:00');
   const head = P.render('house-head', {}, hass, at);
   assert.match(head, />Settings</);
-  assert.match(head, /Away/);
-  assert.match(head, /holiday heating in 44 h/);
-  assert.match(head, /Sitter modifier/);
+  assert.match(head, /<span class="hm-line">Away · Sitter<\/span>/, 'the mode and modifier are the subtitle');
+  assert.match(head, /Heating at night baseline<\/div><\/div><span class="hm-val num">Since 10:00<\/span>/, 'one fact per row, the start time trailing the first');
+  assert.match(head, /Holiday heating in 44 h/);
+  assert.doesNotMatch(head, / · (cameras|holiday)/, 'a second row, not a middle dot');
   const mode = P.render('house-mode', {}, hass, at);
   assert.match(mode, /data-option="sitter"/);
   assert.match(mode, /seg on" data-act="house-modifier" data-option="sitter"/);
@@ -2361,6 +2424,79 @@ ok('house page: mode banner, modifier picker and holiday threshold write only to
   assert.equal(calls[0][2].value, 168);
 });
 
+// The native rhythm of the Settings page.
+const setHass = (over = {}) => {
+  const c = (st, extra = {}) => ({ state: st, attributes: {}, ...extra });
+  return mk({
+    'sensor.house_active_mode': c('normal', { last_changed: '2026-10-29T07:30:00+00:00' }), 'input_select.house_active_mode_modifier': c('guest'),
+    'input_number.house_automation_vacation_threshold_hours': c('48'), 'input_boolean.wfh_adam': c('on'), 'input_boolean.wfh_sarah': c('off'),
+    'person.adam': c('home'), 'person.sarah': c('not_home'), 'input_boolean.house_heating_enabled': c('on'), 'binary_sensor.house_heating_boiler_firing': c('on'),
+    'input_number.global_temperature_baseline_day': c('19.5'), 'input_number.global_temperature_baseline_night': c('17'), 'input_number.global_temperature_comfort': c('21'), 'input_number.global_temperature_minimum': c('12'),
+    'input_number.global_heating_window_open_grace_minutes': c('5'), 'input_boolean.mo_notifications_spotted_enabled': c('on'), 'input_boolean.mo_notifications_eating_enabled': c('off'), ...over,
+  });
+};
+const setPages = () => { const h = setHass(); const at = Date.parse('2026-10-29T14:00:00+00:00'); return { head: P.render('house-head', {}, h, at), mode: P.render('house-mode', {}, h, at), people: P.render('house-people', {}, h, at), heating: P.render('house-heating', {}, h, at), mo: P.render('house-mo', {}, h, at) }; };
+ok('settings page: head is the large title with the house mode as its subtitle (as on Home), then the mode as a list', () => {
+  const { head } = setPages();
+  assert.match(head, /^<div class="p"><div class="hm hm-first"><div class="hm-head"><div class="hm-hd"><h1 class="hm-big">Settings<\/h1><span class="hm-line">At home · Guest<\/span><\/div><\/div><section class="hm-sec hm-tight"><div class="hm-list plain">/);
+  assert.match(head, /Rooms follow their schedules and presence<\/div><\/div><span class="hm-val num">Since 07:30<\/span>/);
+  assert.doesNotMatch(head, /Back to House|data-act="nav"|class="card|class="dot|class="lbl/);
+  assert.doesNotMatch(P.render('house-head', {}, mk(), NOW), /Since/, 'no mode, no start time');
+  assert.match(P.render('house-head', {}, { states: {} }, NOW), /<span class="hm-line">Mode unknown<\/span>/);
+});
+
+ok('settings page: House mode is a segmented control with its description underneath and the holiday threshold a stepper row', () => {
+  const { mode } = setPages();
+  assert.match(mode, /^<div class="p"><div class="hm"><section class="hm-sec"><div class="hm-h"><h2>House mode<\/h2><\/div><div class="segs" role="group" aria-label="Mode modifier">/);
+  assert.equal(count(mode, /class="seg( on)?" data-act="house-modifier"|class="seg on" data-act="house-modifier"/g), 3, 'None, Guest and Sitter are all still there');
+  assert.match(mode, /seg on" data-act="house-modifier" data-option="guest"/);
+  assert.match(mode, /<div class="hm-feet"><p class="hm-foot">Home office held occupied/);
+  assert.match(mode, /Holiday threshold<span class="hm-tv num">48 h<\/span><\/div><div class="hm-rs">How long away lasts before holiday heating<\/div>/);
+  assert.match(mode, /<span class="hm-step"><button type="button" data-act="house-threshold"\s+data-delta="-1" aria-label="Holiday threshold shorter">/);
+  assert.match(mode, /data-delta="1" aria-label="Holiday threshold longer"/);
+  assert.match(mode, /class="hm-group-row"/);
+  const away = P.render('house-mode', {}, setHass({ 'sensor.house_active_mode': { state: 'away', attributes: {} } }), NOW);
+  assert.match(away, /Away now, counting from when the house went away/);
+  assert.equal(P.render('house-mode', {}, { states: {} }, NOW), '', 'nothing to show, nothing drawn');
+});
+
+ok('settings page: people are avatar rows with a native switch; heating settings are list rows with steppers; no pills or round buttons', () => {
+  const { people, heating } = setPages();
+  assert.match(people, /<h2>People<\/h2>/);
+  assert.match(people, /data-entity="input_boolean\.wfh_adam" aria-pressed="true"><span class="hm-av" role="img" aria-label="Adam, home">A<span class="hm-pd"[^>]*><\/span><\/span><div class="hm-text"><div class="hm-rt">Adam working from home<\/div><div class="hm-rs">Home\. Set automatically from the weekly pattern, tap to override<\/div><\/div><span class="hm-sw" aria-hidden="true"><\/span>/);
+  assert.match(people, /aria-label="Sarah, away"/);
+  assert.match(people, /<div class="hm-rs">Away\. Set automatically/);
+  assert.match(people, /<span class="hm-sw off" aria-hidden="true">/);
+  assert.deepEqual([...heating.matchAll(/<h2>([^<]+)<\/h2>/g)].map((m) => m[1]), ['Heating', 'Temperature modes', 'Safety']);
+  assert.match(heating, /Central heating<\/div><div class="hm-rs">Boiler firing<\/div>/);
+  assert.equal(count(heating, /class="hm-step"/g), 5, 'four temperatures and the window grace');
+  assert.match(heating, /Day baseline<span class="hm-tv num">19\.5°<\/span>/);
+  assert.match(heating, /Window open grace<span class="hm-tv num">5 min<\/span>/);
+  assert.match(heating, /data-act="house-number" data-key="comfort" data-delta="1" aria-label="Comfort higher"/);
+  assert.match(heating, /<p class="hm-foot">Applies to every room that uses the global setpoints<\/p>/, 'the note is a footnote under its list');
+  for (const [k, html] of Object.entries({ people, heating })) assert.doesNotMatch(html, /class="(tog|round|sw|lbl|tag)|text-transform|class="card/, k);
+  const idle = P.render('house-heating', {}, setHass({ 'binary_sensor.house_heating_boiler_firing': { state: 'off', attributes: {} } }), NOW);
+  assert.match(idle, /Boiler idle/);
+});
+
+ok('settings page: the Mo switches keep their own look; only the gap above them follows the shared section gap', () => {
+  const { mo } = setPages();
+  assert.match(mo, /^<div class="p"><div class="lbl" style="margin:max\(0px,calc\(36px - var\(--row-gap,8px\)\)\) 4px -10px">Mo<\/div><div class="card">/);
+  assert.equal(count(mo, /<button class="tog tap" data-act="mo-toggle"/g), 2);
+  assert.match(mo, /<span class="sw" role="img" aria-label="On">/);
+  assert.match(mo, /Spotted notifications<\/div><div class="s">A phone alert when Mo is seen on a camera/);
+  assert.match(P.STYLE, /\.lbl\{font-size:11px;font-weight:600;letter-spacing:\.8px;text-transform:uppercase/, 'its label style is untouched');
+});
+
+ok('settings page: sentence-case headers and one block per card; only the title card is flush at the top', () => {
+  const pages = setPages();
+  for (const k of ['head', 'mode', 'people', 'heating']) {
+    assert.match(pages[k], k === 'head' ? /^<div class="p"><div class="hm hm-first">/ : /^<div class="p"><div class="hm">/, k);
+    for (const h of pages[k].matchAll(/<h2>([^<]+)<\/h2>/g)) assert.equal(h[1], h[1].charAt(0) + h[1].slice(1).toLowerCase(), `${k}: "${h[1]}"`);
+  }
+  assert.equal(count(pages.head + pages.mode + pages.people + pages.heating, /hm-first/g), 1);
+});
+
 ok('settings page is reachable from the House header pill and the Heating card, and registered in the dashboard', () => {
   const hdr = P.render('now-header', {}, mk(), NOW);
   assert.match(hdr, new RegExp(`data-act="nav" data-path="${P.SETTINGS_PATH}"`));
@@ -2383,7 +2519,8 @@ ok('house heating section: central heating toggle, temperature steppers and wind
   });
   const out = P.render('house-heating', {}, hass, NOW);
   assert.match(out, /data-entity="input_boolean\.house_heating_enabled"[^>]*aria-pressed="false"/);
-  assert.match(out, /Off · every room drops to its minimum/);
+  assert.match(out, /Every room drops to its minimum/);
+  assert.doesNotMatch(out, /Off · /);
   assert.match(out, /Day baseline[\s\S]*19\.5°/);
   assert.match(out, /Window open grace[\s\S]*5 min/);
   assert.match(out, /Applies to every room that uses the global setpoints/);
@@ -2413,31 +2550,32 @@ ok('cameras: per-camera status from the privacy switch, master state ignores the
   assert.match(head, />Cameras</);
   assert.match(head, /All cameras off/, 'a lying group state does not make cameras look on');
   assert.match(head, /House is at home · cameras off/);
-  assert.doesNotMatch(head, /set by hand/);
+  assert.doesNotMatch(head, /Set by hand/);
   assert.match(head, /data-act="cameras-all"[^>]*aria-pressed="false"/);
   assert.match(P.render('camera', { camera: 'kitchen' }, allOff, NOW), /Privacy on/);
 
   const sleep = mk({ ...base, 'switch.kitchen_privacy': b('off'), 'binary_sensor.kitchen_person_occupancy': b('on'), 'sensor.house_active_mode': b('sleep') });
   assert.match(P.render('cameras-head', {}, sleep, NOW), /Kitchen on/);
   assert.match(P.render('cameras-head', {}, sleep, NOW), /only the kitchen camera is on, for Mo/);
-  assert.doesNotMatch(P.render('cameras-head', {}, sleep, NOW), /set by hand/);
+  assert.doesNotMatch(P.render('cameras-head', {}, sleep, NOW), /Set by hand/);
   const kitchen = P.render('camera', { camera: 'kitchen' }, sleep, NOW);
-  assert.match(kitchen, /Live · person/);
+  assert.match(kitchen, /Person in view<\/div><\/div><span class="hm-val num">Live</);
   assert.match(kitchen, /data-act="camera-toggle" data-camera="kitchen" aria-pressed="true"/);
   assert.match(kitchen, /data-stream="kitchen"/, 'a live camera has a stream slot');
   assert.doesNotMatch(P.render('camera', { camera: 'parlour' }, sleep, NOW), /data-stream/, 'no stream slot while privacy is on');
 
   const hand = mk({ ...base, 'switch.parlour_privacy': b('off'), 'sensor.house_active_mode': b('normal') });
-  assert.match(P.render('cameras-head', {}, hand, NOW), /set by hand/);
+  const handHead = P.render('cameras-head', {}, hand, NOW);
+  assert.match(handHead, /Set by hand<\/div><div class="hm-rs">Usually off while someone&#39;s home</, 'what the house mode would normally do is the second line');
 
   const guestAway = mk({ ...base, 'sensor.house_active_mode': b('away'), 'input_select.house_active_mode_modifier': b('guest') });
   assert.match(P.render('cameras-head', {}, guestAway, NOW), /guest is staying/);
-  assert.doesNotMatch(P.render('cameras-head', {}, guestAway, NOW), /set by hand/);
+  assert.doesNotMatch(P.render('cameras-head', {}, guestAway, NOW), /Set by hand/);
 
   const offline = mk({ ...base, 'switch.home_office_privacy': b('unavailable', { last_changed: '2026-10-26T12:00:00+00:00' }), 'sensor.house_active_mode': b('normal') });
   const oh = P.render('cameras-head', {}, offline, NOW);
   assert.match(oh, /Home office offline/);
-  assert.match(oh, /card pad warn/);
+  assert.match(oh, /class="hm-rt" style="color:#f2b84b;font-weight:600">Home office offline</, 'offline is said in the attention colour, not a banner');
   const oc = P.render('camera', { camera: 'home_office' }, offline, NOW);
   assert.match(oc, /Offline/);
   assert.doesNotMatch(oc, /data-act="camera-toggle"/, 'no switch for an offline camera');
@@ -2491,12 +2629,76 @@ ok('camera toggle is a request: pending until the state arrives, repeat taps ign
   // never arrives: after PENDING_MS it says so and a tap tries again
   const late = P.render('camera', { camera: 'kitchen' }, mkh('off'), T0 + P.PENDING_MS + 1, ui);
   assert.match(late, /No response/);
-  assert.match(late, /It did not change · tap to try again/);
+  assert.match(late, /It did not change, tap to try again/);
   P.cameraToggle(mkh('off'), ui, 'kitchen', T0 + P.PENDING_MS + 1);
   assert.equal(calls.length, 2);
   // an offline camera cannot be toggled; unknown cameras throw
   assert.equal(P.cameraToggle({ states: { 'switch.kitchen_privacy': b('unavailable') }, callService: () => assert.fail('called') }, { pending: {}, cam: { rec: {} } }, 'kitchen', T0), undefined);
   assert.throws(() => P.cameraToggle(mkh('off'), ui, 'garage', T0), /unknown camera/);
+});
+
+// The native rhythm of the Cameras page.
+const camHass = (over = {}) => {
+  const c = (st) => ({ state: st, attributes: {} });
+  return mk({ 'switch.parlour_privacy': c('on'), 'switch.kitchen_privacy': c('off'), 'switch.home_office_privacy': c('unavailable'), 'binary_sensor.kitchen_person_occupancy': c('off'), 'sensor.house_active_mode': c('normal'), 'button.kitchen_move_up': c('unknown'), 'button.kitchen_move_down': c('unknown'), ...over });
+};
+ok('cameras page: head is the large title with the camera state as its subtitle, then one grouped list; no banner, pill or uppercase label', () => {
+  const head = P.render('cameras-head', {}, camHass(), NOW);
+  assert.match(head, /^<div class="p"><div class="hm hm-first"><div class="hm-head"><div class="hm-hd"><h1 class="hm-big">Cameras<\/h1><span class="hm-line">Kitchen on<\/span><\/div><\/div><section class="hm-sec hm-tight"><div class="hm-list plain">/);
+  assert.doesNotMatch(head, /Back to House|data-act="nav"|class="card|class="tag|class="lbl|class="dot|text-transform/);
+  assert.match(head, /Cameras<\/div><div class="hm-rs">House is at home · cameras off/, 'the master switch says which rule of the house mode applies');
+  assert.match(head, /<span class="hm-sw" aria-hidden="true"><\/span>/, 'a native switch');
+  assert.doesNotMatch(head, /Tap to turn/, 'the switch needs no instructions');
+  assert.match(head, /Home office offline<\/div><\/div><\/div>/, 'offline is a row, in the attention colour');
+  // Every camera offline: no master switch to flip, but the title and the offline row stay.
+  const gone = { state: 'unavailable', attributes: {} };
+  const none = P.render('cameras-head', {}, mk({ 'switch.parlour_privacy': gone, 'switch.kitchen_privacy': gone, 'switch.home_office_privacy': gone }), NOW);
+  assert.doesNotMatch(none, /cameras-all/);
+  assert.match(none, /Parlour, Kitchen, Home office offline/);
+});
+
+ok('cameras page: each camera is one card, the picture first at its natural size, then name, state, switch, pan/tilt and recordings in list style', () => {
+  const live = P.render('camera', { camera: 'kitchen' }, camHass(), NOW);
+  assert.match(live, /^<div class="p"><div class="hm"><div class="hm-list"><div class="stream" data-stream="kitchen"><\/div><div class="hm-row">/, 'the stream is the first thing in the list; the list clips it to the card corners');
+  assert.match(live, /<div class="hm-rt">Kitchen<\/div><div class="hm-rs">No one in view<\/div><\/div><span class="hm-val num">Live<\/span>/);
+  assert.match(live, /<button type="button" class="hm-row hm-btn tap" data-act="camera-toggle" data-camera="kitchen" aria-pressed="true"><div class="hm-text"><div class="hm-rt">Camera on<\/div><\/div><span class="hm-sw" aria-hidden="true"><\/span><\/button>/, 'a native toggle with no instructions');
+  assert.match(live, /class="ptz"/);
+  assert.match(live, /data-act="camera-rec" data-camera="kitchen" aria-expanded="false"[^>]*><div class="hm-text"><div class="hm-rt">Recordings<\/div><div class="hm-rs">Clips of people and movement<\/div><\/div><span class="hm-chev"/);
+  const priv = P.render('camera', { camera: 'parlour' }, camHass(), NOW);
+  assert.doesNotMatch(priv, /data-stream|class="ptz"/);
+  assert.match(priv, /Camera is off<\/div><\/div><span class="hm-val num">Privacy on<\/span>/);
+  assert.match(priv, /<span class="hm-sw off" aria-hidden="true">/);
+  const off = P.render('camera', { camera: 'home_office' }, camHass(), NOW);
+  assert.match(off, /<span class="hm-val num">Offline<\/span>/);
+  assert.doesNotMatch(off, /camera-toggle/);
+  for (const html of [live, priv, off]) assert.doesNotMatch(html, /class="tag|class="card|class="tog|class="clip|class="lbl| · /);
+  // Layout, asserted from the CSS (there is no browser here): the stream clips to the list's radius, keeps a 16:9
+  // box until the picture is there and then grows to the picture's own shape, and the hidden slot really hides.
+  assert.equal(px(decl(rule('.hm-list').body, 'border-radius')), 12);
+  assert.match(decl(rule('.hm-list').body, 'overflow'), /hidden/);
+  assert.equal(decl(rule('.stream ha-camera-stream').body, 'width'), '100%');
+  assert.equal(decl(rule('.stream').body, 'aspect-ratio'), '16/9');
+  assert.equal(decl(rule('.stream[hidden]').body, 'display'), 'none');
+  assert.match(readFileSync(root + 'www/pulse-card.js', 'utf8'), /<div class="p"><div class="hm"><div class="hm-list"><div class="stream" id="cam-stream" hidden><\/div><div id="cam-rest"><\/div><\/div><\/div><\/div>/, 'the element shell matches the static markup');
+});
+
+ok('cameras page: recordings open in the same list, each clip a row with a thumbnail, a time, what was seen and a play arrow', () => {
+  const hass = camHass();
+  const clip = { id: 'a1', mediaId: 'x', start: NOW - 600000, label: 'person', zones: ['patio'] };
+  const open = P.render('camera', { camera: 'kitchen' }, hass, NOW, { cam: { pending: {}, rec: { kitchen: { open: true, status: 'ok', items: [clip] } } } });
+  assert.match(open, /aria-expanded="true"/);
+  assert.match(open, /<div class="hm-dp"><button type="button" class="hm-row hm-btn tap" data-act="camera-clip" data-camera="kitchen" data-clip="a1"><img class="hm-thumb"[^>]*><div class="hm-text"><div class="hm-rt">10 min ago<\/div><div class="hm-rs">Person, patio<\/div><\/div><span class="hm-chev"/);
+  assert.equal(px(decl(rule('.hm-thumb').body, 'width')), 72);
+  assert.equal(px(decl(rule('.hm-thumb').body, 'height')), 48);
+  assert.match(P.render('camera', { camera: 'kitchen' }, hass, NOW, { cam: { pending: {}, rec: { kitchen: { open: true, status: 'error', items: [] } } } }), /<div class="hm-dp"><div class="hm-row"><div class="hm-text"><div class="hm-rs">Couldn&#39;t load recordings<\/div><\/div><\/div><button[^>]*data-act="camera-rec-refresh"[^>]*><div class="hm-text"><div class="hm-rt" style="color:#7aa7ff;font-weight:600">Try again/);
+});
+
+ok('cameras page: cards are spaced by the shared section gap and only the title card is flush at the top', () => {
+  const html = ['parlour', 'kitchen', 'home_office'].map((k) => P.render('camera', { camera: k }, camHass(), NOW));
+  for (const h of html) assert.doesNotMatch(h, /hm-first/);
+  assert.match(P.render('cameras-head', {}, camHass(), NOW), /class="hm hm-first"/);
+  assert.match(P.STYLE, /\.hm\{[^}]*margin-top:max\(0px,calc\(36px - var\(--row-gap,8px\)\)\)/);
+  assert.match(P.STYLE, /\.ptz\{[^\n]*border-top:\.5px solid/, 'the pan/tilt pad uses the list hairline');
 });
 
 ok('camera pan/tilt writes only that camera\'s move buttons; the pad hides when none are available', () => {
@@ -2528,12 +2730,12 @@ ok('camera recordings: Frigate clips are parsed defensively and rendered as load
   assert.match(P.render('camera', { camera: 'parlour' }, hass, NOW), /aria-expanded="false"/);
   assert.match(at({ open: true, status: 'loading', items: [] }), /Loading recordings…/);
   assert.match(at({ open: true, status: 'ok', items: [] }), /No recordings yet/);
-  assert.match(at({ open: true, status: 'error', items: [] }), /Couldn't load recordings[\s\S]*data-act="camera-rec-refresh"/);
+  assert.match(at({ open: true, status: 'error', items: [] }), /Couldn&#39;t load recordings[\s\S]*data-act="camera-rec-refresh"/);
   const list = at({ open: true, status: 'ok', items: clips });
   assert.match(list, /2 recent/);
   assert.match(list, /data-act="camera-clip" data-camera="parlour" data-clip="a"/);
   assert.match(list, /10 min ago/);
-  assert.match(list, /Person · patio/);
+  assert.match(list, /Person, patio/);
   assert.match(list, /snapshot\.jpg/);
   assert.doesNotMatch(list, /<script/i);
 });
@@ -4038,7 +4240,7 @@ ok('room feed rows: the timeline, led by the subsystem the entry is about', () =
   assert.doesNotMatch(html, /hm-tile|<svg/, 'no subsystem tiles on activity rows');
   const quiet = P.render('room-feed', { room: 'kitchen' }, mk(), NOW);
   assert.match(quiet, /<div class="hm-row"><div class="hm-text"><div class="hm-rs">Nothing recorded for this room yet<\/div>/);
-  assert.match(P.STYLE, /\.feed\{[^\n]*grid-template-columns:44px 16px minmax\(0,1fr\)/, 'the camera card still uses the older feed line');
+  assert.doesNotMatch(P.STYLE, /\.feed[{ .]|\.tag[{ .]/, 'the older feed line and the pills are gone from the stylesheet');
 });
 
 ok('House activity rows: subject, verb part, reason part; dot in the subsystem colour', () => {
@@ -4665,7 +4867,6 @@ ok('every theme is readable: text and textSecondary 4.5:1 on bg and surface, tin
     assert.ok(ratio(t.tint, t.surface) >= 3, `${name}: tint on surface ${ratio(t.tint, t.surface).toFixed(2)}`);
     assert.ok(ratio(t.tintInk, t.tint) >= 4.5, `${name}: tintInk on tint ${ratio(t.tintInk, t.tint).toFixed(2)}`);
     assert.ok(ratio(t.attention, t.attentionBg) >= 4.5, `${name}: attention on attentionBg ${ratio(t.attention, t.attentionBg).toFixed(2)}`);
-    assert.ok(ratio(t.attention, t.attentionChip) >= 4.5, `${name}: attention on attentionChip ${ratio(t.attention, t.attentionChip).toFixed(2)}`);
     assert.ok(ratio(t.text, t.control) >= 4.5, `${name}: text on control`);
     assert.ok(ratio(t.textSoft, t.control) >= 4.5, `${name}: textSoft on control`);
   }
@@ -4815,6 +5016,12 @@ const over = (fg, bg) => {
   return '#' + [r, g, b].map((c, i) => Math.round(c * a + base[i] * (1 - a)).toString(16).padStart(2, '0')).join('');
 };
 const long = (c) => (c.length === 4 ? `#${[...c.slice(1)].map((x) => x + x).join('')}` : c); // classic writes its white knob as #fff
+ok('energy tokens: the tile labels read on a tile, in both themes', () => {
+  for (const [name, t] of Object.entries(Raw.THEMES)) {
+    for (const k of ['subEnergy', 'heat', 'textSecondary']) assert.ok(ratio(t[k], t.surface) >= 4.5, `${name}: ${k} label on a tile ${ratio(t[k], t.surface).toFixed(2)}`);
+  }
+});
+
 ok('the new tokens: a slider track that shows on the surface and under the tint fill; the switch knob reads on both tracks; labels read on cards', () => {
   for (const [name, t] of Object.entries(Raw.THEMES)) {
     assert.ok(ratio(t.sliderTrack, t.surface) >= 1.3, `${name}: sliderTrack on surface ${ratio(t.sliderTrack, t.surface).toFixed(2)}`);
@@ -4880,7 +5087,7 @@ ok('price colours follow the theme: same algorithm, the theme\'s stops, and read
   assert.equal(fills('rose-pine'), fills(undefined), 'no theme means the default');
   assert.notEqual(fills('classic'), fills(undefined));
   const roseNow = (cents) => Raw.render('energy-head', { theme: 'rose-pine' }, mk({ [`${BASE}_current_rate`]: { state: String(cents / 100), attributes: {} } }), NOW);
-  const colourOf = (html) => html.match(/line-height:1.15;color:(#[0-9a-f]{6})/)[1];
+  const colourOf = (html) => html.match(/<div class="hm-wv num"><span style="color:(#[0-9a-f]{6})">/)[1];
   assert.equal(colourOf(roseNow(-2)), Raw.THEMES['rose-pine'].priceNegative);
   assert.notEqual(colourOf(roseNow(60)), colourOf(roseNow(-2)), 'the extreme price is its own colour (lightened for text until readable)');
   for (const v of [-5, 0, 5, 15, 25, 35, 44, 50]) assert.ok(ratio(colourOf(roseNow(v)), Raw.THEMES['rose-pine'].surface) >= 4.5, `${v}p`);
