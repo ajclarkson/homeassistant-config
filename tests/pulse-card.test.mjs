@@ -3331,22 +3331,38 @@ ok('room head: a tint back link, the large title, a plain-words subtitle; attent
 });
 
 ok('Readings: Temperature and Light level widgets, each omitted when the room lacks the sensor, a lone widget full width', () => {
-  const room = (over) => withRooms([quietRoom('parlour', { target: 19, hvac_action: 'heating', temp: 18.4, ...over })], [], histSensor('parlour', [histEntry(10, { location: 'parlour', subsystem: 'lighting', decision: 'no_action', reason: 'lux_high', outcome: 'declined', facts: { lux: 85, lux_threshold: 40 } })]));
+  const LUX = 'sensor.parlour_sensor_motion_illuminance';
+  const lx = (v, unit = 'lx') => ({ [LUX]: b(v, { unit_of_measurement: unit }), 'input_number.parlour_automation_lux_threshold_dark': b('40') });
+  const room = (over, extra = lx('85')) => withRooms([quietRoom('parlour', { target: 19, hvac_action: 'heating', temp: 18.4, ...over })], [], extra);
   const html = P.render('readings', { room: 'parlour' }, room({}), NOW);
   assert.match(html, /<div class="hm-wgrid"><div class="hm-w"><div class="hm-wl" style="color:#f08a4b">Temperature<\/div><div class="hm-wv num">18\.4°<\/div><div class="hm-ws">Heating to 19\.0°<\/div><\/div>/);
   assert.match(html, /<div class="hm-wl" style="color:#ffd60a">Light level<\/div><div class="hm-wv num">85<small>lx<\/small><\/div><div class="hm-ws">Bright enough<\/div>/);
-  const dark = P.render('readings', { room: 'parlour' }, withRooms([quietRoom('parlour', { temp: 18.4 })], [], { ...histSensor('parlour', [histEntry(10, { location: 'parlour', subsystem: 'lighting', decision: 'activate_scene', reason: 'lux_low', facts: { lux: 12, lux_threshold: 40 } })]), 'input_number.parlour_automation_lux_threshold_dark': b('50') }), NOW);
-  assert.match(dark, /12<small>lx<\/small><\/div><div class="hm-ws">Dark, lights come on</, 'the helper threshold, not the one at decision time');
+  const light = (v, unit) => P.render('readings', { room: 'parlour' }, room({}, lx(v, unit)), NOW).match(/Light level[\s\S]*?<\/div><div class="hm-wv num">(.*?)<\/div><div class="hm-ws">([^<]*)</);
+  assert.deepEqual(light('12').slice(1), ['12<small>lx</small>', 'Dark, lights come on']);
+  assert.deepEqual(light('40').slice(1), ['40<small>lx</small>', 'Dark, lights come on'], 'at the threshold counts as dark');
+  assert.deepEqual(light('41').slice(1), ['41<small>lx</small>', 'Bright enough']);
+  assert.deepEqual(light('1e12').slice(1), ['200000<small>lx</small>', 'Bright enough'], 'clamped');
+  // A sensor that is there but unusable shows a dash, never a guess.
+  for (const [v, unit] of [['unavailable', 'lx'], ['unknown', 'lx'], ['abc', 'lx'], ['85', 'klx'], ['85', null]]) assert.deepEqual(light(v, unit).slice(1), ['–', ''], `${v} ${unit}`);
+  // No threshold helper: the reading without a verdict.
+  assert.deepEqual(P.render('readings', { room: 'parlour' }, room({}, { [LUX]: b('85', { unit_of_measurement: 'lx' }) }), NOW).match(/85<small>lx<\/small><\/div><div class="hm-ws">([^<]*)</).slice(1), ['']);
+  // The decision-time lux in the history is no longer read.
+  assert.doesNotMatch(P.render('readings', { room: 'parlour' }, room({}, histSensor('parlour', [histEntry(10, { location: 'parlour', subsystem: 'lighting', decision: 'no_action', reason: 'lux_high', outcome: 'declined', facts: { lux: 85, lux_threshold: 40 } })])), NOW), /Light level/);
+  // A missing temperature sensor or entity drops that widget; a lone widget has the row to itself.
+  assert.doesNotMatch(P.render('readings', { room: 'hallway_upstairs' }, withRooms([quietRoom('hallway_upstairs')], [], { 'sensor.hallway_upstairs_sensor_motion_illuminance': b('5', { unit_of_measurement: 'lx' }) }), NOW), /Temperature/);
+  assert.match(P.render('readings', { room: 'hallway_upstairs' }, withRooms([quietRoom('hallway_upstairs')], [], { 'sensor.hallway_upstairs_sensor_motion_illuminance': b('5', { unit_of_measurement: 'lx' }) }), NOW), /Light level/);
+  assert.doesNotMatch(P.render('readings', { room: 'parlour' }, room({}, {}), NOW), /Light level/);
   const sub = (over) => P.render('readings', { room: 'parlour' }, room(over), NOW).match(/Temperature[\s\S]*?hm-ws">([^<]*)</)[1];
   assert.equal(sub({ hvac_action: 'idle' }), 'Target 19.0°');
   assert.equal(sub({ hvac_action: 'off' }), 'Not heating');
   assert.equal(sub({ hvac_action: null }), 'Target 19.0°');
   assert.equal(sub({ hvac_action: 'idle', target: null }), 'Not heating');
-  // No temperature sensor: Light level alone; no light reading: Temperature alone; a stale reading is not shown.
-  assert.doesNotMatch(P.render('readings', { room: 'hallway_upstairs' }, withRooms([quietRoom('hallway_upstairs')], [], histSensor('hallway_upstairs', [histEntry(10, { location: 'hallway_upstairs', subsystem: 'lighting', decision: 'no_action', reason: 'lux_high', outcome: 'declined', facts: { lux: 85, lux_threshold: 40 } })])), NOW), /Temperature/);
-  assert.doesNotMatch(P.render('readings', { room: 'parlour' }, withRooms([quietRoom('parlour', { temp: 18.4 })], []), NOW), /Light level/);
-  assert.doesNotMatch(P.render('readings', { room: 'parlour' }, withRooms([quietRoom('parlour', { temp: 18.4 })], [], histSensor('parlour', [histEntry(120, { location: 'parlour', subsystem: 'lighting', decision: 'no_action', reason: 'lux_high', outcome: 'declined', facts: { lux: 85, lux_threshold: 40 } })])), NOW), /Light level/, 'over an hour old');
   assert.equal(P.render('readings', { room: 'hallway_upstairs' }, withRooms([quietRoom('hallway_upstairs')], []), NOW), '', 'nothing to show, nothing drawn');
+  for (const k of INDOOR_KEYS) {
+    assert.equal(P.ROOMS[k].lux, `sensor.${k}_sensor_motion_illuminance`, k);
+    assert.ok(helperIds.has(`input_number.${k}_automation_lux_threshold_dark`), `${k}: its threshold is a real helper`);
+  }
+  for (const g of GARDENS) assert.equal(P.ROOMS[g].lux, undefined);
   assert.match(rule('.hm-wgrid').body, /grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
   assert.match(rule('.hm-w:only-child').body, /grid-column:1\/-1/);
   assert.match(rule('.hm-w').body, /background:#1a1f26;border-radius:20px;padding:14px 16px/);

@@ -801,7 +801,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     {
       key: 'parlour', kind: 'room', order: 1, area: 'parlour',
       name: 'Parlour', short: 'Parlour', report: true,
-      climate: 'climate.parlour_trv', temp: 'sensor.parlour_sensor_climate_temperature', hum: 'sensor.parlour_sensor_climate_humidity',
+      climate: 'climate.parlour_trv', temp: 'sensor.parlour_sensor_climate_temperature', hum: 'sensor.parlour_sensor_climate_humidity', lux: 'sensor.parlour_sensor_motion_illuminance',
       lights: [
         ['light.parlour_light_floor_lamp', 'Floor lamp'], ['light.parlour_light_ceiling_sofa', 'Sofa ceiling'],
         ['light.parlour_light_ceiling_dining', 'Dining ceiling'], ['switch.parlour_plug_table_lamp', 'Table lamp'],
@@ -813,7 +813,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     {
       key: 'kitchen', kind: 'room', order: 2, area: 'kitchen',
       name: 'Kitchen', short: 'Kitchen', report: true,
-      climate: 'climate.kitchen_trv', temp: 'sensor.kitchen_sensor_climate_temperature', hum: 'sensor.kitchen_sensor_climate_humidity',
+      climate: 'climate.kitchen_trv', temp: 'sensor.kitchen_sensor_climate_temperature', hum: 'sensor.kitchen_sensor_climate_humidity', lux: 'sensor.kitchen_sensor_motion_illuminance',
       lights: [['light.kitchen_light_ceiling', 'Ceiling'], ['light.kitchen_light_cooker', 'Cooker'], ['switch.kitchen_light_cabinets', 'Cabinets']],
       media: [['media_player.kitchen', 'Kitchen speaker', 'player']],
       settings: indoor('kitchen', sonosGroup('kitchen')),
@@ -821,7 +821,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     {
       key: 'hallway_downstairs', kind: 'room', order: 3, area: 'hallway_downstairs',
       name: 'Hallway downstairs', short: 'Hallway down', report: true,
-      climate: 'climate.hallway_downstairs_trv', temp: 'sensor.hallway_downstairs_sensor_climate_temperature', hum: 'sensor.hallway_downstairs_sensor_climate_humidity',
+      climate: 'climate.hallway_downstairs_trv', temp: 'sensor.hallway_downstairs_sensor_climate_temperature', hum: 'sensor.hallway_downstairs_sensor_climate_humidity', lux: 'sensor.hallway_downstairs_sensor_motion_illuminance',
       lights: [['light.hallway_downstairs_light_ceiling', 'Ceiling']],
       media: [],
       settings: indoor('hallway_downstairs'),
@@ -829,7 +829,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     {
       key: 'hallway_upstairs', kind: 'room', order: 4, area: 'hallway_upstairs',
       name: 'Hallway upstairs', short: 'Hallway up', report: true,
-      climate: '', temp: '', hum: '',
+      climate: '', temp: '', hum: '', lux: 'sensor.hallway_upstairs_sensor_motion_illuminance',
       lights: [['light.hallway_upstairs_light_ceiling', 'Ceiling']],
       media: [],
       settings: [lightsGroup('hallway_upstairs', []), presenceGroup('hallway_upstairs')], // no heating automation or helper here
@@ -837,7 +837,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     {
       key: 'bedroom', kind: 'room', order: 5, area: 'bedroom',
       name: 'Bedroom', short: 'Bedroom', report: true,
-      climate: 'climate.bedroom_trv', temp: 'sensor.bedroom_sensor_climate_temperature', hum: 'sensor.bedroom_sensor_climate_humidity',
+      climate: 'climate.bedroom_trv', temp: 'sensor.bedroom_sensor_climate_temperature', hum: 'sensor.bedroom_sensor_climate_humidity', lux: 'sensor.bedroom_sensor_motion_illuminance',
       lights: [['light.bedroom_light_sarah_lamp', "Sarah's lamp"], ['light.bedroom_light_adam_lamp', "Adam's lamp"], ['light.bedroom_light_ceiling', 'Ceiling']],
       media: [],
       settings: indoor('bedroom'),
@@ -845,7 +845,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     {
       key: 'bathroom', kind: 'room', order: 6, area: 'bathroom',
       name: 'Bathroom', short: 'Bathroom', report: true,
-      climate: 'climate.bathroom_trv', temp: 'sensor.bathroom_sensor_climate_temperature', hum: 'sensor.bathroom_sensor_climate_humidity',
+      climate: 'climate.bathroom_trv', temp: 'sensor.bathroom_sensor_climate_temperature', hum: 'sensor.bathroom_sensor_climate_humidity', lux: 'sensor.bathroom_sensor_motion_illuminance',
       lights: [['light.bathroom_light_ceiling', 'Ceiling']],
       media: [],
       settings: [
@@ -863,7 +863,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     {
       key: 'home_office', kind: 'room', order: 7, area: 'home_office',
       name: 'Home office', short: 'Home office', report: true,
-      climate: 'climate.home_office_trv', temp: 'sensor.home_office_sensor_climate_temperature', hum: 'sensor.home_office_sensor_climate_humidity',
+      climate: 'climate.home_office_trv', temp: 'sensor.home_office_sensor_climate_temperature', hum: 'sensor.home_office_sensor_climate_humidity', lux: 'sensor.home_office_sensor_motion_illuminance',
       lights: [['light.home_office_light_desk_lamp', 'Desk lamp'], ['light.home_office_light_floor_lamp', 'Floor lamp'], ['light.home_office_light_ceiling', 'Ceiling']],
       media: [['media_player.home_office', 'Office speaker', 'player']],
       settings: indoor('home_office', sonosGroup('home_office')),
@@ -871,7 +871,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     {
       key: 'foreign_office', kind: 'room', order: 8, area: 'foreign_office',
       name: 'Foreign office', short: 'Foreign office', report: true,
-      climate: 'climate.foreign_office', temp: 'sensor.foreign_office_sensor_climate_temperature', hum: 'sensor.foreign_office_sensor_climate_humidity',
+      climate: 'climate.foreign_office', temp: 'sensor.foreign_office_sensor_climate_temperature', hum: 'sensor.foreign_office_sensor_climate_humidity', lux: 'sensor.foreign_office_sensor_motion_illuminance',
       lights: [['light.dig_uno_v3', 'Lights']],
       media: [],
       settings: [
@@ -909,7 +909,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   const GARDEN_ORDER = byOrder('garden');
   const isGarden = (key) => Object.prototype.hasOwnProperty.call(ROOMS, key) && ROOMS[key].kind === 'garden';
   // What the shared room code may read from a garden: nothing it would otherwise mistake for a room feature.
-  const GARDEN_ROOM_DEFAULTS = { report: false, climate: '', temp: '', hum: '', lights: [], media: [] };
+  const GARDEN_ROOM_DEFAULTS = { report: false, climate: '', temp: '', hum: '', lux: '', lights: [], media: [] };
   const ALL_ROOM_KEYS = ROOM_TABLE.map((r) => r.key);
 
   // Where the dashboard is registered (url_path in configuration.yaml). Defined once: an unknown
@@ -2347,7 +2347,6 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 
   // Readings: Temperature and Light level widgets. A room without the sensor has no widget, and a lone widget
   // takes the full row.
-  const LUX_FRESH_MS = 60 * 60 * 1000;
   // Sub-line of the Temperature widget, from the valve and the target.
   function temperatureSub(m) {
     const target = m.target === null ? '' : `${fmt1(m.target)}°`;
@@ -2355,25 +2354,24 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     if (m.hvac_action === 'off' || (!target && m.hvac_action === 'idle')) return COPY.room.notHeating;
     return target ? COPY.room.targetIs(target) : '';
   }
-  // The latest light reading the lights automation saw (the facts of its newest lighting decision that carry one),
-  // against the room's dark threshold. Nothing when there is none or it is over an hour old: a stale lux must not
-  // claim the room is dark now. Lux is clamped; the threshold comes from the helper, else from that decision.
-  function luxReading(hass, key, now) {
-    const e = readHistory(hass, `sensor.${key}_history`).entries.find((x) => x.subsystem === 'lighting' && num(x.facts.lux) !== null);
-    if (!e) return null;
-    const at = parseTs(e.ts);
-    if (at === null || now - at > LUX_FRESH_MS) return null;
-    const lx = clampInt(num(e.facts.lux), 0, LUX_MAX);
-    const threshold = num(state(hass, `input_number.${key}_automation_lux_threshold_dark`));
-    const limit = threshold !== null ? threshold : num(e.facts.lux_threshold);
-    return { lx, sub: limit === null ? '' : lx <= limit ? COPY.room.luxDark : COPY.room.luxBright };
+  // The room's live illuminance sensor against its dark threshold (the entities the lights automation reads). A
+  // sensor that is absent from HA has no widget; one that is unavailable, non-numeric or not in lx shows a muted
+  // dash rather than a guessed figure. Lux is clamped; "dark" is at or below the threshold, as the automation counts it.
+  function luxReading(hass, key) {
+    const id = ROOMS[key].lux;
+    const s = id ? stateObj(hass, id) : null;
+    if (!s) return null;
+    const lx = attr(hass, id, 'unit_of_measurement') === 'lx' ? num(s.state) : null;
+    if (lx === null) return { text: '–', sub: '' };
+    const limit = num(state(hass, `input_number.${key}_automation_lux_threshold_dark`));
+    return { text: `${clampInt(lx, 0, LUX_MAX)}`, unit: true, sub: limit === null ? '' : lx <= limit ? COPY.room.luxDark : COPY.room.luxBright };
   }
-  function sectionReadings(hass, key, now) {
+  function sectionReadings(hass, key) {
     const m = roomModel(hass, key);
     const cards = [];
     if (m.cfg.temp && m.temp !== null) cards.push(hmWidget(COPY.room.temperature, TOKENS.heat, `${fmt1(m.temp)}°`, temperatureSub(m)));
-    const lux = luxReading(hass, key, now);
-    if (lux) cards.push(hmWidget(COPY.room.lightLevel, TOKENS.subLighting, `${lux.lx}<small>${COPY.room.luxUnit}</small>`, lux.sub));
+    const lux = luxReading(hass, key);
+    if (lux) cards.push(hmWidget(COPY.room.lightLevel, TOKENS.subLighting, lux.unit ? `${lux.text}<small>${COPY.room.luxUnit}</small>` : lux.text, lux.sub));
     return cards.length ? `<div class="hm"><div class="hm-wgrid">${cards.join('')}</div></div>` : '';
   }
 
@@ -3214,7 +3212,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     feed: (h, c, n) => sectionFeed(h, n),
     tabbar: (h, c, n, ui) => sectionTabbar(c, ui),
     'room-head': (h, c, n) => sectionRoomHead(h, c.room, n),
-    readings: (h, c, n) => sectionReadings(h, c.room, n),
+    readings: (h, c) => sectionReadings(h, c.room),
     lights: (h, c, n) => sectionLights(h, c.room, n),
     heating: (h, c) => sectionHeating(h, c.room),
     'chart-head': () => `<div class="hm"><section class="hm-sec"><div class="hm-h"><h2>${COPY.room.last24h}</h2></div></section></div>`,
