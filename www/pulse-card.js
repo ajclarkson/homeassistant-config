@@ -51,6 +51,9 @@
   // no side margin: HA's view padding is the inset.
   const HM_SECTION_GAP = 36;
   const HM_HEADER_INSET = 4;
+  // The space above a block, less the grid's own row gap (see above). `.hm` uses it, and so does the one block that is
+  // not built from these parts yet (the Mo notification switches on Settings), so its gap above matches.
+  const HM_TOP_MARGIN = `max(0px,calc(${HM_SECTION_GAP}px - var(--row-gap,8px)))`;
   // One gutter for both two-column grids (the stat tiles and the scene buttons), so they read as one rhythm.
   const HM_GRID_GAP = 10;
   // A group's extra row (the Individual lights disclosure under the scenes) sits this far below the grid: close
@@ -208,7 +211,7 @@
       tabHouse: 'Home', tabEnergy: 'Energy', tabCameras: 'Cameras', tabSettings: 'Settings',
       on: 'On', off: 'Off', notFound: 'Not found', unavailable: 'Unavailable',
       navLabel: 'Pulse', backToHouse: 'Back to House', modeModifier: 'Mode modifier',
-      openCameras: 'Open cameras', openEnergy: 'Open energy details', openSettings: 'Open settings', shorter: 'Shorter', longer: 'Longer', lower: 'lower', higher: 'higher', play: 'Play', pause: 'Pause',
+      openCameras: 'Open cameras', openEnergy: 'Open energy details', openSettings: 'Open settings', shorter: 'shorter', longer: 'longer', lower: 'lower', higher: 'higher', play: 'Play', pause: 'Pause',
       cardError: 'pulse-card error',
     },
     home: {
@@ -315,7 +318,12 @@
       nothingYet: 'Nothing recorded yet', roomNothingYet: 'Nothing recorded for this room yet', historyUnavailable: 'History unavailable',
     },
     settings: {
-      houseMode: 'House mode', holidayThreshold: 'Holiday threshold', centralHeating: 'Central heating', heating: 'Heating',
+      title: 'Settings', houseMode: 'House mode', holidayThreshold: 'Holiday threshold', centralHeating: 'Central heating', heating: 'Heating',
+      since: (t) => `Since ${t}`, home: 'Home', away: 'Away',
+      thresholdAway: 'Away now, counting from when the house went away', thresholdIdle: 'How long away lasts before holiday heating',
+      heatingOffNote: 'Every room drops to its minimum',
+      workingFromHome: (name) => `${name} working from home`,
+      wfhSub: (where) => `${where ? `${where}. ` : ''}Set automatically from the weekly pattern, tap to override`,
       temperatureModes: 'Temperature modes', temperatureModesNote: 'Applies to every room that uses the global setpoints',
       safety: 'Safety', people: 'People', mo: 'Mo',
     },
@@ -679,7 +687,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 .ptz button:active{transform:scale(.96)}
 .ptz button:disabled{opacity:.35;cursor:default}
 .hm-thumb{width:72px;height:48px;object-fit:cover;border-radius:8px;background:${TOKENS.control};flex:none}
-.hm{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;color:${TOKENS.text};display:flex;flex-direction:column;margin-top:max(0px,calc(${HM_SECTION_GAP}px - var(--row-gap,8px)))}
+.hm{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;color:${TOKENS.text};display:flex;flex-direction:column;margin-top:${HM_TOP_MARGIN}}
 .hm>*+*{margin-top:${HM_SECTION_GAP}px}
 .hm.hm-first{margin-top:0}
 .hm .num,.hm-price,.hm-val{font-family:ui-rounded,"SF Pro Rounded",-apple-system,system-ui,sans-serif;font-variant-numeric:tabular-nums}
@@ -796,8 +804,6 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 .chart:focus-visible{outline:2px solid ${TOKENS.link};outline-offset:2px;border-radius:6px}
 .tip{position:absolute;top:-36px;left:0;pointer-events:none;background:${TOKENS.control};border:1px solid ${TOKENS.controlEdge};border-radius:8px;padding:4px 8px;font-size:12px;line-height:1.3;white-space:nowrap;z-index:2}
 .tip small{display:block;font-size:10px;color:${TOKENS.textSecondary}}
-.round{min-height:44px;min-width:44px;border-radius:999px;border:0;background:${TOKENS.tint};color:${TOKENS.tintInk};display:flex;align-items:center;justify-content:center;cursor:pointer;flex:none}
-.round.quiet{background:${TOKENS.control};color:${TOKENS.text}}
 `;
 
 
@@ -1506,12 +1512,14 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   }
   // Stepper: a 94x32 pill, "−" | "+" either side of a hairline. The current value is in the row's title. The
   // buttons are 44px tall, taller than the pill, so the target is large and the pill stays slim.
-  function hmStepper(act, data, label) {
+  // `names` are the two buttons' spoken names, "lower" and "higher" unless the value is not a level (a duration is
+  // shorter or longer).
+  function hmStepper(act, data, label, names = [COPY.common.lower, COPY.common.higher]) {
     const btn = (delta, name, glyph) => `<button type="button" data-act="${act}" ${dataAttrs(data)} data-delta="${delta}" aria-label="${esc(label)} ${name}">${svg(glyph, 16)}</button>`;
-    return `<span class="hm-step">${btn(-1, COPY.common.lower, 'M5 12h14')}<i class="hm-step-div" aria-hidden="true"></i>${btn(1, COPY.common.higher, 'M12 5v14M5 12h14')}</span>`;
+    return `<span class="hm-step">${btn(-1, names[0], 'M5 12h14')}<i class="hm-step-div" aria-hidden="true"></i>${btn(1, names[1], 'M12 5v14M5 12h14')}</span>`;
   }
-  function hmStepperRow({ title, sub, shown, act, data }) {
-    return hmRow({ title, sub, titleValue: shown, trailing: hmStepper(act, data, title) });
+  function hmStepperRow({ title, sub, shown, act, data, names }) {
+    return hmRow({ title, sub, titleValue: shown, trailing: hmStepper(act, data, title, names) });
   }
   // Slider row: the label and value above a full-width range (track sliderTrack, fill tint via --p).
   function hmSliderRow({ title, pct, act, data, label }) {
@@ -2022,13 +2030,6 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const kwh = usable(state(hass, kwhId)) ? energyText(state(hass, kwhId), attr(hass, kwhId, 'unit_of_measurement') || 'kWh') : '–';
     const cost = usable(state(hass, costId)) ? money(state(hass, costId), a.unit_of_measurement) : '–';
     return hmWidget(label, colourToken, esc(cost), [day, kwh, note].filter(Boolean));
-  }
-
-  // The heading of a tab page (Energy, Settings, Cameras). Those pages are normal views, so HA's header shows
-  // the tab strip (or Material You's bottom bar), not the view title, and there is nowhere to go "back" to: the
-  // card draws the title and no back link.
-  function pageTitle(name) {
-    return `<div style="min-height:44px;display:flex;align-items:center;font-size:28px;font-weight:700;letter-spacing:-.4px">${esc(name)}</div>`;
   }
 
   // Title, today's live usage as the subtitle (the smart meter, dash when stale so it is left out), then the price
@@ -3013,48 +3014,45 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     }
   }
 
+  // Title, the house mode (and modifier) as the subtitle, then what the mode means as a list: one fact per row, the
+  // time it began trailing the first.
   function sectionHouseHead(hass, now) {
     const mode = state(hass, 'sensor.house_active_mode');
     const t = houseModeText(mode, hass, now);
     const since = stateObj(hass, 'sensor.house_active_mode') && stateObj(hass, 'sensor.house_active_mode').last_changed;
-    const when = usable(mode) && hhmm(since) ? ` · since ${hhmm(since)}` : '';
     const mod = state(hass, HOUSE_MODIFIER);
-    const modText = usable(mod) && mod !== 'none' && MODIFIERS[mod] ? ` · ${MODIFIERS[mod].label} modifier` : '';
-    const banner = `<div class="card pad" style="display:flex;gap:10px;align-items:flex-start"><span class="dot${usable(mode) ? '' : ' dim'}" style="margin-top:5px"></span><div><div style="font-size:15px;font-weight:700">${esc(t.title)}</div><div style="font-size:13px;color:${TOKENS.textSecondary};margin-top:3px;line-height:1.45">${esc(t.body)}${esc(when)}${esc(modText)}</div></div></div>`;
-    return `${pageTitle('Settings')}${banner}`;
+    const modifier = usable(mod) && mod !== 'none' && own(MODIFIERS, mod) ? MODIFIERS[mod].label : '';
+    const parts = t.body ? t.body.split(' · ') : usable(mode) ? [t.title] : [];
+    const began = usable(mode) && hhmm(since) ? COPY.settings.since(hhmm(since)) : '';
+    const rows = parts.map((part, i) => hmRow({ title: upperFirst(part), value: i === 0 ? began : '' }));
+    const list = rows.length ? `<section class="hm-sec hm-tight">${hmList(rows.join(''), true)}</section>` : '';
+    return `<div class="hm hm-first">${pageHead(COPY.settings.title, COPY.home.headerLine(t.title, modifier))}${list}</div>`;
   }
 
+  // House mode: the modifier as a segmented control with what it does under it, and the holiday threshold as a stepper row.
   function sectionHouseMode(hass, now) {
     const mod = state(hass, HOUSE_MODIFIER);
     const vac = num(state(hass, HOUSE_VACATION_HOURS));
-    let out = '';
+    const body = [];
     if (usable(mod)) {
       const segs = Object.keys(MODIFIERS).map((k) => `<button class="seg${mod === k ? ' on' : ''}" data-act="house-modifier" data-option="${k}" aria-pressed="${mod === k}">${MODIFIERS[k].label}</button>`).join('');
-      const sub = (MODIFIERS[mod] || MODIFIERS.none).sub;
-      out += `<div class="lbl" style="margin:4px 4px -10px">${COPY.settings.houseMode}</div><div class="card pad"><div class="segs" role="group" aria-label="${COPY.common.modeModifier}">${segs}</div><div style="font-size:12.5px;color:${TOKENS.textSecondary};margin-top:8px;line-height:1.45">${esc(sub)}</div></div>`;
+      body.push(`<div class="segs" role="group" aria-label="${COPY.common.modeModifier}">${segs}</div>${hmFeet([(MODIFIERS[mod] || MODIFIERS.none).sub])}`);
     }
     if (vac !== null) {
       const away = state(hass, 'sensor.house_active_mode') === 'away';
-      out += `<div class="card"><div class="tog"><div><div class="h">${COPY.settings.holidayThreshold}</div><div class="s">${away ? 'Away now · counts from when the house went away' : 'How long away lasts before holiday heating'}</div></div><div style="display:flex;align-items:center;gap:6px"><button class="round" data-act="house-threshold" data-delta="-1" aria-label="${COPY.common.shorter}">${svg('M5 12h14', 20)}</button><span style="min-width:44px;text-align:center;font-weight:600">${Math.round(vac)} h</span><button class="round" data-act="house-threshold" data-delta="1" aria-label="${COPY.common.longer}">${svg('M12 5v14M5 12h14', 20)}</button></div></div></div>`;
+      const row = hmStepperRow({ title: COPY.settings.holidayThreshold, sub: away ? COPY.settings.thresholdAway : COPY.settings.thresholdIdle, shown: `${Math.round(vac)} h`, act: 'house-threshold', data: {}, names: [COPY.common.shorter, COPY.common.longer] });
+      body.push(`<div${body.length ? ' class="hm-group-row"' : ''}>${hmList(row, true)}</div>`);
     }
-    return out;
+    return body.length ? `<div class="hm"><section class="hm-sec">${hmHead(COPY.settings.houseMode)}${body.join('')}</section></div>` : '';
   }
 
-  // One stepper row. `data` becomes the buttons' dataset, which is how handleAction finds the fixed
-  // table entry to write; it never carries the target helper id itself.
-  function stepperRow(d, v, sub, act, data) {
-    const shown = d.step < 1 ? v.toFixed(1) : String(Math.round(v));
-    const attrs = Object.entries(data).map(([k, x]) => `data-${k}="${esc(x)}"`).join(' ');
-    const btn = (delta, label, path) => `<button class="round" data-act="${act}" ${attrs} data-delta="${delta}" aria-label="${d.title} ${label}">${svg(path, 20)}</button>`;
-    return `<div class="tog"><div><div class="h">${d.title}</div><div class="s">${esc(sub)}</div></div><div style="display:flex;align-items:center;gap:6px">${btn(-1, 'lower', 'M5 12h14')}<span style="min-width:58px;text-align:center;font-weight:600">${shown}${d.unit}</span>${btn(1, 'higher', 'M12 5v14M5 12h14')}</div></div>`;
-  }
-
-  // Same stepper as the holiday threshold, driven by a HOUSE_NUMBERS key.
+  // A stepper row driven by a HOUSE_NUMBERS key. `data` is the buttons' dataset, which is how handleAction finds the
+  // fixed table entry to write; it never carries the target helper id itself.
   function numberRow(hass, key, sub) {
     const d = HOUSE_NUMBERS[key];
     const v = num(state(hass, d.id));
     if (v === null) return '';
-    return stepperRow(d, v, sub, 'house-number', { key });
+    return hmStepperRow({ title: d.title, sub, shown: `${d.step < 1 ? v.toFixed(1) : String(Math.round(v))}${d.unit}`, act: 'house-number', data: { key } });
   }
 
   // One step of a table-defined number, snapped to the step and clamped to the table's range.
@@ -3068,12 +3066,12 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 
   function sectionHouseHeating(hass) {
     const master = state(hass, 'input_boolean.house_heating_enabled');
-    const rows = [];
+    const out = [];
     if (usable(master)) {
       const on = master === 'on';
       const firing = state(hass, 'binary_sensor.house_heating_boiler_firing') === 'on';
-      const sub = on ? (firing ? 'On · boiler firing' : 'On · boiler idle') : 'Off · every room drops to its minimum';
-      rows.push(`<button class="tog tap" data-act="toggle" data-entity="input_boolean.house_heating_enabled" aria-pressed="${on}"><div><div class="h">${COPY.settings.centralHeating}</div><div class="s">${sub}</div></div><span class="sw${on ? '' : ' off'}" role="img" aria-label="${on ? COPY.common.on : COPY.common.off}"></span></button>`);
+      const sub = on ? (firing ? COPY.home.boilerFiring : COPY.home.boilerIdle) : COPY.settings.heatingOffNote;
+      out.push(hmSection(COPY.settings.heating, hmToggleRow({ title: COPY.settings.centralHeating, sub, on, act: 'toggle', data: { entity: 'input_boolean.house_heating_enabled' } }), { plain: true }));
     }
     const subs = {
       baseline_day: 'Daytime target for rooms on the global setpoints',
@@ -3084,22 +3082,20 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     };
     const temps = ['baseline_day', 'baseline_night', 'comfort', 'minimum'].map((k) => numberRow(hass, k, subs[k])).join('');
     const grace = numberRow(hass, 'window_grace', subs.window_grace);
-    const out = [];
-    if (rows.length) out.push(`<div class="lbl" style="margin:4px 4px -10px">${COPY.settings.heating}</div><div class="card">${rows.join('')}</div>`);
-    if (temps) out.push(`<div class="lbl" style="margin:4px 4px -10px">${COPY.settings.temperatureModes}</div><div class="card">${temps}</div><div style="font-size:12px;color:${TOKENS.textSecondary};margin:-6px 4px 0">${COPY.settings.temperatureModesNote}</div>`);
-    if (grace) out.push(`<div class="lbl" style="margin:4px 4px -10px">${COPY.settings.safety}</div><div class="card">${grace}</div>`);
-    return out.join('');
+    if (temps) out.push(hmSection(COPY.settings.temperatureModes, temps, { plain: true, notes: [COPY.settings.temperatureModesNote] }));
+    if (grace) out.push(hmSection(COPY.settings.safety, grace, { plain: true }));
+    return out.length ? `<div class="hm">${out.join('')}</div>` : '';
   }
 
+  // People: who is working from home today, with their avatar (the dot says whether they are home).
   function sectionHousePeople(hass) {
     const rows = [['input_boolean.wfh_adam', 'Adam', 'person.adam'], ['input_boolean.wfh_sarah', 'Sarah', 'person.sarah']].map(([id, name, person]) => {
       const s = state(hass, id);
       if (!usable(s)) return '';
-      const on = s === 'on';
-      const where = state(hass, person) === 'home' ? 'Home' : usable(state(hass, person)) ? 'Away' : '';
-      return `<button class="tog tap" data-act="toggle" data-entity="${id}" aria-pressed="${on}"><div><div class="h">${name} working from home</div><div class="s">${[where, 'Set automatically from the weekly pattern, tap to override'].filter(Boolean).join(' · ')}</div></div><span class="sw${on ? '' : ' off'}" role="img" aria-label="${on ? COPY.common.on : COPY.common.off}"></span></button>`;
+      const where = state(hass, person) === 'home' ? COPY.settings.home : usable(state(hass, person)) ? COPY.settings.away : '';
+      return hmToggleRow({ tile: avatar(hass, person, name), title: COPY.settings.workingFromHome(name), sub: COPY.settings.wfhSub(where), on: s === 'on', act: 'toggle', data: { entity: id } });
     }).join('');
-    return rows ? `<div class="lbl" style="margin:4px 4px -10px">${COPY.settings.people}</div><div class="card">${rows}</div>` : '';
+    return rows ? `<div class="hm">${hmSection(COPY.settings.people, rows, { plain: true })}</div>` : '';
   }
 
   // Mo's phone alerts. Same approach as HOUSE_NUMBERS: the page names a key, so turn_on/turn_off through this path
@@ -3115,7 +3111,8 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       const on = st === 'on';
       return `<button class="tog tap" data-act="mo-toggle" data-key="${key}" aria-pressed="${on}"><div><div class="h">${d.title}</div><div class="s">${d.sub}</div></div><span class="sw${on ? '' : ' off'}" role="img" aria-label="${on ? COPY.common.on : COPY.common.off}"></span></button>`;
     }).join('');
-    return rows ? `<div class="lbl" style="margin:4px 4px -10px">${COPY.settings.mo}</div><div class="card">${rows}</div>` : '';
+    // Left as it was apart from the gap above it, which is the shared section gap so it does not crowd the list above.
+    return rows ? `<div class="lbl" style="margin:${HM_TOP_MARGIN} 4px -10px">${COPY.settings.mo}</div><div class="card">${rows}</div>` : '';
   }
 
   // ── Cameras ──────────────────────────────────────────────────────────────────────────────────

@@ -2395,9 +2395,10 @@ ok('house page: mode banner, modifier picker and holiday threshold write only to
   const at = Date.parse('2026-10-29T14:00:00+00:00');
   const head = P.render('house-head', {}, hass, at);
   assert.match(head, />Settings</);
-  assert.match(head, /Away/);
-  assert.match(head, /holiday heating in 44 h/);
-  assert.match(head, /Sitter modifier/);
+  assert.match(head, /<span class="hm-line">Away · Sitter<\/span>/, 'the mode and modifier are the subtitle');
+  assert.match(head, /Heating at night baseline<\/div><\/div><span class="hm-val num">Since 10:00<\/span>/, 'one fact per row, the start time trailing the first');
+  assert.match(head, /Holiday heating in 44 h/);
+  assert.doesNotMatch(head, / · (cameras|holiday)/, 'a second row, not a middle dot');
   const mode = P.render('house-mode', {}, hass, at);
   assert.match(mode, /data-option="sitter"/);
   assert.match(mode, /seg on" data-act="house-modifier" data-option="sitter"/);
@@ -2423,6 +2424,79 @@ ok('house page: mode banner, modifier picker and holiday threshold write only to
   assert.equal(calls[0][2].value, 168);
 });
 
+// The native rhythm of the Settings page.
+const setHass = (over = {}) => {
+  const c = (st, extra = {}) => ({ state: st, attributes: {}, ...extra });
+  return mk({
+    'sensor.house_active_mode': c('normal', { last_changed: '2026-10-29T07:30:00+00:00' }), 'input_select.house_active_mode_modifier': c('guest'),
+    'input_number.house_automation_vacation_threshold_hours': c('48'), 'input_boolean.wfh_adam': c('on'), 'input_boolean.wfh_sarah': c('off'),
+    'person.adam': c('home'), 'person.sarah': c('not_home'), 'input_boolean.house_heating_enabled': c('on'), 'binary_sensor.house_heating_boiler_firing': c('on'),
+    'input_number.global_temperature_baseline_day': c('19.5'), 'input_number.global_temperature_baseline_night': c('17'), 'input_number.global_temperature_comfort': c('21'), 'input_number.global_temperature_minimum': c('12'),
+    'input_number.global_heating_window_open_grace_minutes': c('5'), 'input_boolean.mo_notifications_spotted_enabled': c('on'), 'input_boolean.mo_notifications_eating_enabled': c('off'), ...over,
+  });
+};
+const setPages = () => { const h = setHass(); const at = Date.parse('2026-10-29T14:00:00+00:00'); return { head: P.render('house-head', {}, h, at), mode: P.render('house-mode', {}, h, at), people: P.render('house-people', {}, h, at), heating: P.render('house-heating', {}, h, at), mo: P.render('house-mo', {}, h, at) }; };
+ok('settings page: head is the large title with the house mode as its subtitle (as on Home), then the mode as a list', () => {
+  const { head } = setPages();
+  assert.match(head, /^<div class="p"><div class="hm hm-first"><div class="hm-head"><div class="hm-hd"><h1 class="hm-big">Settings<\/h1><span class="hm-line">At home · Guest<\/span><\/div><\/div><section class="hm-sec hm-tight"><div class="hm-list plain">/);
+  assert.match(head, /Rooms follow their schedules and presence<\/div><\/div><span class="hm-val num">Since 07:30<\/span>/);
+  assert.doesNotMatch(head, /Back to House|data-act="nav"|class="card|class="dot|class="lbl/);
+  assert.doesNotMatch(P.render('house-head', {}, mk(), NOW), /Since/, 'no mode, no start time');
+  assert.match(P.render('house-head', {}, { states: {} }, NOW), /<span class="hm-line">Mode unknown<\/span>/);
+});
+
+ok('settings page: House mode is a segmented control with its description underneath and the holiday threshold a stepper row', () => {
+  const { mode } = setPages();
+  assert.match(mode, /^<div class="p"><div class="hm"><section class="hm-sec"><div class="hm-h"><h2>House mode<\/h2><\/div><div class="segs" role="group" aria-label="Mode modifier">/);
+  assert.equal(count(mode, /class="seg( on)?" data-act="house-modifier"|class="seg on" data-act="house-modifier"/g), 3, 'None, Guest and Sitter are all still there');
+  assert.match(mode, /seg on" data-act="house-modifier" data-option="guest"/);
+  assert.match(mode, /<div class="hm-feet"><p class="hm-foot">Home office held occupied/);
+  assert.match(mode, /Holiday threshold<span class="hm-tv num">48 h<\/span><\/div><div class="hm-rs">How long away lasts before holiday heating<\/div>/);
+  assert.match(mode, /<span class="hm-step"><button type="button" data-act="house-threshold"\s+data-delta="-1" aria-label="Holiday threshold shorter">/);
+  assert.match(mode, /data-delta="1" aria-label="Holiday threshold longer"/);
+  assert.match(mode, /class="hm-group-row"/);
+  const away = P.render('house-mode', {}, setHass({ 'sensor.house_active_mode': { state: 'away', attributes: {} } }), NOW);
+  assert.match(away, /Away now, counting from when the house went away/);
+  assert.equal(P.render('house-mode', {}, { states: {} }, NOW), '', 'nothing to show, nothing drawn');
+});
+
+ok('settings page: people are avatar rows with a native switch; heating settings are list rows with steppers; no pills or round buttons', () => {
+  const { people, heating } = setPages();
+  assert.match(people, /<h2>People<\/h2>/);
+  assert.match(people, /data-entity="input_boolean\.wfh_adam" aria-pressed="true"><span class="hm-av" role="img" aria-label="Adam, home">A<span class="hm-pd"[^>]*><\/span><\/span><div class="hm-text"><div class="hm-rt">Adam working from home<\/div><div class="hm-rs">Home\. Set automatically from the weekly pattern, tap to override<\/div><\/div><span class="hm-sw" aria-hidden="true"><\/span>/);
+  assert.match(people, /aria-label="Sarah, away"/);
+  assert.match(people, /<div class="hm-rs">Away\. Set automatically/);
+  assert.match(people, /<span class="hm-sw off" aria-hidden="true">/);
+  assert.deepEqual([...heating.matchAll(/<h2>([^<]+)<\/h2>/g)].map((m) => m[1]), ['Heating', 'Temperature modes', 'Safety']);
+  assert.match(heating, /Central heating<\/div><div class="hm-rs">Boiler firing<\/div>/);
+  assert.equal(count(heating, /class="hm-step"/g), 5, 'four temperatures and the window grace');
+  assert.match(heating, /Day baseline<span class="hm-tv num">19\.5°<\/span>/);
+  assert.match(heating, /Window open grace<span class="hm-tv num">5 min<\/span>/);
+  assert.match(heating, /data-act="house-number" data-key="comfort" data-delta="1" aria-label="Comfort higher"/);
+  assert.match(heating, /<p class="hm-foot">Applies to every room that uses the global setpoints<\/p>/, 'the note is a footnote under its list');
+  for (const [k, html] of Object.entries({ people, heating })) assert.doesNotMatch(html, /class="(tog|round|sw|lbl|tag)|text-transform|class="card/, k);
+  const idle = P.render('house-heating', {}, setHass({ 'binary_sensor.house_heating_boiler_firing': { state: 'off', attributes: {} } }), NOW);
+  assert.match(idle, /Boiler idle/);
+});
+
+ok('settings page: the Mo switches keep their own look; only the gap above them follows the shared section gap', () => {
+  const { mo } = setPages();
+  assert.match(mo, /^<div class="p"><div class="lbl" style="margin:max\(0px,calc\(36px - var\(--row-gap,8px\)\)\) 4px -10px">Mo<\/div><div class="card">/);
+  assert.equal(count(mo, /<button class="tog tap" data-act="mo-toggle"/g), 2);
+  assert.match(mo, /<span class="sw" role="img" aria-label="On">/);
+  assert.match(mo, /Spotted notifications<\/div><div class="s">A phone alert when Mo is seen on a camera/);
+  assert.match(P.STYLE, /\.lbl\{font-size:11px;font-weight:600;letter-spacing:\.8px;text-transform:uppercase/, 'its label style is untouched');
+});
+
+ok('settings page: sentence-case headers and one block per card; only the title card is flush at the top', () => {
+  const pages = setPages();
+  for (const k of ['head', 'mode', 'people', 'heating']) {
+    assert.match(pages[k], k === 'head' ? /^<div class="p"><div class="hm hm-first">/ : /^<div class="p"><div class="hm">/, k);
+    for (const h of pages[k].matchAll(/<h2>([^<]+)<\/h2>/g)) assert.equal(h[1], h[1].charAt(0) + h[1].slice(1).toLowerCase(), `${k}: "${h[1]}"`);
+  }
+  assert.equal(count(pages.head + pages.mode + pages.people + pages.heating, /hm-first/g), 1);
+});
+
 ok('settings page is reachable from the House header pill and the Heating card, and registered in the dashboard', () => {
   const hdr = P.render('now-header', {}, mk(), NOW);
   assert.match(hdr, new RegExp(`data-act="nav" data-path="${P.SETTINGS_PATH}"`));
@@ -2445,7 +2519,8 @@ ok('house heating section: central heating toggle, temperature steppers and wind
   });
   const out = P.render('house-heating', {}, hass, NOW);
   assert.match(out, /data-entity="input_boolean\.house_heating_enabled"[^>]*aria-pressed="false"/);
-  assert.match(out, /Off · every room drops to its minimum/);
+  assert.match(out, /Every room drops to its minimum/);
+  assert.doesNotMatch(out, /Off · /);
   assert.match(out, /Day baseline[\s\S]*19\.5°/);
   assert.match(out, /Window open grace[\s\S]*5 min/);
   assert.match(out, /Applies to every room that uses the global setpoints/);

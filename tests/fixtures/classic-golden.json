@@ -1,5 +1,5 @@
 {
- "style": "a295cebb88e3266d251203725af99f72fc1813c1a0f63931c0d7ac0c781b0319",
+ "style": "12dcb10c4c810679fc5b06980917190d4c9a93f0fa9bcb251fb7be46fa7f5800",
  "pages": {
   "attention/now-header": "50fffd0345d6168aacf3994ebdd289b17362e76d3f529187905aaf2b68eeb287",
   "attention/status": "9b9c1f4994fe1e072cb1708a80a22a11f89051cf737772348adc665c443c561f",
@@ -345,10 +345,10 @@
   "rich/camera:kitchen": "9196c3809db5ba3cdbc4088d5845cf027cc3fdea3279d7861f4d8736314f5245",
   "rich/camera:home_office": "5f39f0bbe1b1cae3f3cdd65a24c27fb5766c92daa5b06930fc17591f51a02ec7",
   "rich/cameras-head": "0fe8ddc05905011c7b98b728c8f730e2b74394e58b5cd8469363e670e2031f69",
-  "rich/house-head": "973ae40fbb86c65bca671d26a48f2d39ce8bac49798cf0142121a8ee499af93a",
-  "rich/house-mode": "6305d317a6862459225cd68e5e12d0b8c7d434c437cfd3912d31c3b5ddd3d1ff",
-  "rich/house-people": "51440fbcaacecee2a217003569522c71f0f6ecaf3207066abb629fb3341bb856",
-  "rich/house-heating": "1e4e048bc54a8612f2debec902a71f91bbda759dcfc3b7c9aae4ad89471b0839",
+  "rich/house-head": "6872c5d770adb90239b638dbc7495da707562894d8c7ec524523609640287971",
+  "rich/house-mode": "dfb5092f1f0461f700765c4c01b628998b4d56d56ff033b847150fcd20dbaf1c",
+  "rich/house-people": "b4220fcc5ac6b31fef1a8d643f2cdc6b2fc66bd3223c0fd1ca9d7dcc895ce63e",
+  "rich/house-heating": "c4a7977c819275fcf112004d662f795201d4bcbdea1612892ca4f33ed19ce1d1",
   "rich/house-mo": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
  }
 }
