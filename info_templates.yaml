@@ -1,10 +1,10 @@
 # Shared room page for the Pulse dashboard. One template, parameterised by room; every room view
-# (views/info-room-*.yaml) is a single call to it. Sections that do not apply to a room (heating, media,
-# fan, individual lights, chart) hide themselves, so there is no per-room card list to copy.
-# The page reads by subsystem: banner, Lights, Heating (numbers, why, 24 h chart), Presence, Media, the fan
-# row where a room has one, Recent activity. Each subsystem explains itself beside its controls. Automation
-# switches and their tuning are in the settings sheet opened by the gear in the banner (room-head), so this
-# template has no card for them.
+# (views/info-room-*.yaml) is a single call to it. Sections that do not apply to a room (readings, heating, media,
+# fan, scenes, individual lights, chart) hide themselves, so there is no per-room card list to copy.
+# The page reads top to bottom: header (back link, name, occupancy and lights, attention items), readings
+# (temperature, light level), Scenes and Lights, Heating (inset list, then the 24 h chart), Presence, Media, the fan
+# where a room has one, Automation (the room's switches and tuning, inline) and Activity. Each section is a titled
+# inset list built by pulse-card from the House page's parts.
 #
 # Variables (for rooms without climate pass the conventional ids anyway; the chart hides itself):
 #   room     key used by custom:pulse-card (see ROOMS in www/pulse-card.js) and by helper ids
@@ -28,8 +28,10 @@ pulse_room:
       - type: custom:pulse-card
         mode: room-head
         room: '[[room]]'
-      # Lights (why, scenes, and the individual lights expanding inside it) is the control used most, so it
-      # sits straight under the banner.
+      - type: custom:pulse-card
+        mode: readings
+        room: '[[room]]'
+      # Lights (scenes, then one row per light) is the control used most, so it sits straight under the readings.
       - type: custom:pulse-card
         mode: lights
         room: '[[room]]'
@@ -37,93 +39,98 @@ pulse_room:
         mode: heating
         room: '[[room]]'
       # Only rooms with a temperature sensor chart: the numeric condition is false for a missing
-      # entity, so gardens and the upstairs hallway show nothing here.
+      # entity, so gardens and the upstairs hallway show nothing here. The section header is a pulse-card (so it
+      # is the same header as every other section); the chart itself has none.
+      # apexcharts cannot read CSS variables, so the colours below are the rose-pine theme's tokens as literals
+      # (a test holds each to its token in www/pulse-card.js): surface #1f1d2e, text #e0def4, tint #c4a7e7,
+      # heat #ebbcba, separator rgba(110,106,134,.35), textSecondary #908caa.
       - type: conditional
         conditions:
           - condition: numeric_state
             entity: '[[temp]]'
             above: -100
         card:
-          type: custom:apexcharts-card
-          header:
-            show: true
-            title: Last 24 hours
-            show_states: false
-            colorize_states: false
-          graph_span: 24h
-          apex_config:
-            chart:
-              height: 170
-              toolbar: {show: false}
-              zoom: {enabled: false}
-              background: '#1a1f26'
-            legend:
-              show: true
-              position: bottom
-              horizontalAlign: left
-              fontSize: 11px
-              labels: {colors: '#a3adba'}
-              markers: {size: 5}
-            dataLabels: {enabled: false}
-            grid: {borderColor: '#232a33'}
-            tooltip: {x: {format: HH:mm}}
-            xaxis:
-              type: datetime
-              tickAmount: 4
-              axisBorder: {show: false}
-              axisTicks: {show: false}
-              labels:
-                datetimeUTC: false
-                format: HH:mm
-                style: {colors: '#8f9aa8', fontSize: 10px}
-          # Two axes: temperature, and a hidden 0..1 axis so heat demand draws as a band along the bottom.
-          # apexcharts-card forbids `yaxis` inside apex_config once this list is used.
-          yaxis:
-            - id: temp
-              decimals: 0
+          type: vertical-stack
+          cards:
+            - type: custom:pulse-card
+              mode: chart-head
+            - type: custom:apexcharts-card
+              header:
+                show: false
+              graph_span: 24h
               apex_config:
-                labels:
-                  style: {colors: '#8f9aa8', fontSize: 10px}
-                  formatter: |
-                    EVAL:function(value) {
-                      return Math.round(value) + '°';
-                    }
-            - id: demand
-              show: false
-              min: 0
-              max: 1
-          card_mod:
-            style: |
-              ha-card { border: none; border-radius: 16px; box-shadow: none; background: #1a1f26; }
-          series:
-            - entity: '[[temp]]'
-              name: Room
-              yaxis_id: temp
-              color: '#e8ebef'
-              stroke_width: 2
-              curve: smooth
-              show: {legend_value: false}
-            - entity: '[[climate]]'
-              attribute: temperature
-              name: Target
-              yaxis_id: temp
-              color: '#f2b84b'
-              stroke_width: 2
-              curve: stepline
-              show: {legend_value: false}
-            # hvac_action is the valve calling for heat. Unknown states (unavailable after a restart) map
-            # to null so they leave a gap rather than read as "not heating".
-            - entity: '[[climate]]'
-              attribute: hvac_action
-              name: Heating
-              yaxis_id: demand
-              type: area
-              curve: stepline
-              color: '#f08a4b'
-              opacity: 0.3
-              stroke_width: 0
-              transform: "return x === 'heating' ? 1 : (x === 'idle' || x === 'off') ? 0 : null;"
-              show: {legend_value: false}
+                chart:
+                  height: 170
+                  toolbar: {show: false}
+                  zoom: {enabled: false}
+                  background: '#1f1d2e'
+                legend:
+                  show: true
+                  position: bottom
+                  horizontalAlign: left
+                  fontSize: 11px
+                  labels: {colors: '#908caa'}
+                  markers: {size: 5}
+                dataLabels: {enabled: false}
+                grid: {borderColor: 'rgba(110,106,134,.35)'}
+                tooltip: {x: {format: HH:mm}}
+                xaxis:
+                  type: datetime
+                  tickAmount: 4
+                  axisBorder: {show: false}
+                  axisTicks: {show: false}
+                  labels:
+                    datetimeUTC: false
+                    format: HH:mm
+                    style: {colors: '#908caa', fontSize: 10px}
+              # Two axes: temperature, and a hidden 0..1 axis so heat demand draws as a band along the bottom.
+              # apexcharts-card forbids `yaxis` inside apex_config once this list is used.
+              yaxis:
+                - id: temp
+                  decimals: 0
+                  apex_config:
+                    labels:
+                      style: {colors: '#908caa', fontSize: 10px}
+                      formatter: |
+                        EVAL:function(value) {
+                          return Math.round(value) + '°';
+                        }
+                - id: demand
+                  show: false
+                  min: 0
+                  max: 1
+              card_mod:
+                style: |
+                  ha-card { border: none; border-radius: 20px; box-shadow: none; background: #1f1d2e; }
+              series:
+                - entity: '[[temp]]'
+                  name: Room
+                  yaxis_id: temp
+                  color: '#e0def4'
+                  stroke_width: 2
+                  curve: smooth
+                  show: {legend_value: false}
+                - entity: '[[climate]]'
+                  attribute: temperature
+                  name: Target
+                  yaxis_id: temp
+                  color: '#c4a7e7'
+                  stroke_width: 2
+                  curve: stepline
+                  show: {legend_value: false}
+                # hvac_action is the valve calling for heat. Unknown states (unavailable after a restart) map
+                # to null so they leave a gap rather than read as "not heating".
+                - entity: '[[climate]]'
+                  attribute: hvac_action
+                  name: Heating
+                  yaxis_id: demand
+                  type: area
+                  curve: stepline
+                  color: '#ebbcba'
+                  opacity: 0.3
+                  stroke_width: 0
+                  transform: "return x === 'heating' ? 1 : (x === 'idle' || x === 'off') ? 0 : null;"
+                  show: {legend_value: false}
       - type: custom:pulse-card
         mode: presence
         room: '[[room]]'
@@ -136,12 +143,15 @@ pulse_room:
         decision: '[[fan_decision]]'
         label: '[[fan_label]]'
       - type: custom:pulse-card
+        mode: automation
+        room: '[[room]]'
+      - type: custom:pulse-card
         mode: room-feed
         room: '[[room]]'
 
 # Garden page for the Pulse dashboard (views/info-room-front_garden.yaml, info-room-back_garden.yaml).
 # A garden has no climate, presence report or individual scenes: the page shows one lights row, the
-# theme picker (hidden when the garden has no theme helper) and why the garden is as it is.
+# theme picker (hidden when the garden has no theme helper), the garden's Automation switches and its Activity.
 # Variables:
 #   room  garden key (front_garden or back_garden), see ROOMS in www/pulse-card.js
 # Defaults live in `default`, not `variables:`: streamline-card ignores the latter.
@@ -159,6 +169,9 @@ pulse_garden:
         room: '[[room]]'
       - type: custom:pulse-card
         mode: garden-theme
+        room: '[[room]]'
+      - type: custom:pulse-card
+        mode: automation
         room: '[[room]]'
       - type: custom:pulse-card
         mode: room-feed
