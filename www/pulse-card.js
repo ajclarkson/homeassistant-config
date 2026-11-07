@@ -63,9 +63,10 @@
   //   Text: text; textSoft body text on controls; textSecondary sub-lines; textTertiary non-essential
   //     hints only (it can fall below 4.5:1 on some themes).
   //   Accent: tint is the selected / active fill, tintInk the text on it; link; on / off toggle tracks
-  //     with knob / knobOff; ok good status; heat boiler firing.
+  //     with knob / knobOff; sliderTrack the unfilled part of a slider (the fill is tint); ok good status; heat boiler
+  //     firing.
   //   Attention: attention text and dots; attentionBg, attentionBorder, attentionChip, attentionRow fills.
-  //   Chrome: tabBar translucent tab bar; scrim / scrimFull / shadow overlays; streamWell / videoBg
+  //   Chrome: tabBar translucent tab bar; scrimFull the clip player's backdrop; streamWell / videoBg
   //     behind camera pictures.
   //   Tiles (the rounded squares that lead a list row): each fill has an Ink, the glyph colour on it, held to
   //     3:1 by a test. sub<Subsystem> is one per homerun subsystem (activity rows); outside and bins lead those
@@ -79,10 +80,10 @@
       bg: '#12151a', surface: '#1a1f26', control: '#232a33', controlEdge: '#2f3843', separator: '#232a33',
       text: '#e8ebef', textSoft: '#cfd5dd', textSecondary: '#a3adba', textTertiary: '#8f9aa8',
       tint: '#f2c46b', tintInk: '#1d1708', link: '#7aa7ff',
-      on: '#3a8f63', off: '#3a424d', knob: '#fff', knobOff: '#c4ccd6',
+      on: '#3a8f63', off: '#3a424d', knob: '#fff', knobOff: '#c4ccd6', sliderTrack: '#3a424d',
       ok: '#6fcf97', okBg: '#14281d', heat: '#f08a4b', heatBg: '#2a1a10',
       attention: '#f2b84b', attentionBg: '#221d10', attentionBorder: '#4a3d1c', attentionChip: '#2b2415', attentionRow: '#201c10',
-      tabBar: 'rgba(18,21,26,.82)', scrim: 'rgba(0,0,0,.6)', scrimFull: 'rgba(0,0,0,.94)', shadow: 'rgba(0,0,0,.5)',
+      tabBar: 'rgba(18,21,26,.82)', scrimFull: 'rgba(0,0,0,.94)',
       streamWell: '#0c0e12', videoBg: '#000',
       priceNegative: '#2ee6c8', priceExtreme: '#c2003b', priceNeutral: '#6b7684',
       priceStops: [[142, 58, 46], [88, 62, 56], [52, 82, 60], [26, 88, 56], [4, 80, 50]],
@@ -103,10 +104,10 @@
       bg: '#191724', surface: '#1f1d2e', control: '#26233a', controlEdge: '#403d52', separator: 'rgba(110,106,134,.35)',
       text: '#e0def4', textSoft: '#e0def4', textSecondary: '#908caa', textTertiary: '#6e6a86',
       tint: '#c4a7e7', tintInk: '#191724', link: '#7aa2f7',
-      on: '#31748f', off: '#403d52', knob: '#e0def4', knobOff: '#908caa',
+      on: '#31748f', off: '#403d52', knob: '#e0def4', knobOff: '#908caa', sliderTrack: '#403d52',
       ok: '#9ccfd8', okBg: '#1f2b35', heat: '#ebbcba', heatBg: '#2e2230',
       attention: '#eb6f92', attentionBg: '#2b1f33', attentionBorder: '#5c3550', attentionChip: '#3a2640', attentionRow: '#251c2e',
-      tabBar: 'rgba(25,23,36,.82)', scrim: 'rgba(0,0,0,.6)', scrimFull: 'rgba(0,0,0,.94)', shadow: 'rgba(0,0,0,.5)',
+      tabBar: 'rgba(25,23,36,.82)', scrimFull: 'rgba(0,0,0,.94)',
       streamWell: '#14121f', videoBg: '#000',
       priceNegative: '#7dcfff', priceExtreme: '#b4637a', priceNeutral: '#6e6a86',
       // Pine, Foam, Gold, a warm coral, Love (hue -17 = 343, so the last step runs through orange to red).
@@ -197,8 +198,8 @@
     common: {
       tabHouse: 'Home', tabEnergy: 'Energy', tabCameras: 'Cameras', tabSettings: 'Settings',
       on: 'On', off: 'Off', notFound: 'Not found', unavailable: 'Unavailable',
-      navLabel: 'Pulse', backToHouse: 'Back to House', closeSettings: 'Close settings', modeModifier: 'Mode modifier',
-      openCameras: 'Open cameras', openEnergy: 'Open energy details', openSettings: 'Open settings', shorter: 'Shorter', longer: 'Longer',
+      navLabel: 'Pulse', backToHouse: 'Back to House', modeModifier: 'Mode modifier',
+      openCameras: 'Open cameras', openEnergy: 'Open energy details', openSettings: 'Open settings', shorter: 'Shorter', longer: 'Longer', lower: 'lower', higher: 'higher', play: 'Play', pause: 'Pause',
       cardError: 'pulse-card error',
     },
     home: {
@@ -228,13 +229,23 @@
       collected: (days) => (days <= 0 ? 'Collected today' : days === 1 ? 'Collected tomorrow' : `Collected in ${Math.round(days)} days`),
     },
     room: {
-      roomLabel: 'Room', targetLabel: 'Target', heating: 'Heating', presence: 'Presence', lights: 'Lights', media: 'Media', theme: 'Theme',
-      useCalendar: 'Use calendar', keepRoomOccupied: 'Keep room occupied', settingsLink: 'Settings',
-      individualLights: 'Individual lights', noSettings: 'No settings available for this room', volume: 'Volume',
-      lightsAutomationOff: 'Lights automation is off', manual: 'Manual', manualChange: 'Manual change', problem: 'Problem', didntAct: "Didn't act",
-      hold: 'Hold', auto: 'Auto', suspended: 'Suspended', pending: 'Pending', heatingAutomationOff: 'Heating automation is off',
-      heatingOn: 'Heating', idle: 'Idle',
-      individualLightsCount: (on, total) => ` · ${on} of ${total} on`,
+      targetLabel: 'Target', heating: 'Heating', presence: 'Presence', lights: 'Lights', media: 'Media', theme: 'Theme',
+      useCalendar: 'Use calendar', keepRoomOccupied: 'Keep room occupied', volume: 'Volume', brightness: 'Brightness',
+      scenes: 'Scenes', automation: 'Automation', fan: 'Fan', last24h: 'Last 24 hours',
+      temperature: 'Temperature', lightLevel: 'Light level', luxUnit: 'lx', luxDark: 'Dark, lights come on', luxBright: 'Bright enough',
+      occupied: 'Occupied', empty: 'Empty', occupancyUnavailable: 'Occupancy unavailable',
+      held: 'Held', override: 'Override', clear: 'Clear',
+      rightNow: 'Right now', heatingNowStatus: 'Heating now', notHeatingStatus: 'Not heating', heatingOffStatus: 'Heating off',
+      humidity: 'Humidity', normalTarget: 'Normal target', status: 'Status',
+      manual: 'Manual', manualChange: 'Manual change', problem: 'Problem', didntAct: "Didn't act",
+      hold: 'Hold', auto: 'Auto', suspended: 'Suspended', pending: 'Pending', heatingAutomationOff: 'Heating automation is off', pendingNote: 'Heating drops to minimum if it stays open',
+      // The room's subtitle under its name: "Occupied · Lamps on", "Empty · lights off". `scene` is the active
+      // scene's label ('' when none), only said while the lights are on.
+      headLine: (occupancy, lightsOn, scene) => `${occupancy} · ${lightsOn ? (scene ? `${scene} on` : 'lights on') : 'lights off'}`,
+      gardenLine: (reporting, on) => (!reporting ? 'Lights unknown' : on ? 'Lights on' : 'Lights off'),
+      heatingTo: (t) => `Heating to ${t}`, heatingNow: 'Heating', targetIs: (t) => `Target ${t}`, notHeating: 'Not heating',
+      // A setting's explanation, as a footnote under the Automation list.
+      settingNote: (title, sub) => `${title}: ${sub}`,
     },
     energy: {
       now: 'Now', next: 'Next', usage: 'Usage', perKwh: ' p/kWh', cheapestHeading: 'Cheapest 2 hours', nextCheapest: 'Next cheapest 2 hours',
@@ -261,7 +272,7 @@
       offline: (names) => `${names} offline`,
     },
     feed: {
-      activity: 'Activity', nothingYet: 'Nothing recorded yet', recentActivity: 'Recent activity', historyUnavailable: 'History unavailable',
+      activity: 'Activity', nothingYet: 'Nothing recorded yet', roomNothingYet: 'Nothing recorded for this room yet', historyUnavailable: 'History unavailable',
     },
     settings: {
       houseMode: 'House mode', holidayThreshold: 'Holiday threshold', centralHeating: 'Central heating', heating: 'Heating',
@@ -613,10 +624,6 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 .feed.muted{color:${TOKENS.textSecondary}}
 .feed.warn{color:${TOKENS.attention}}
 .feed .si{display:flex;align-items:center;justify-content:center;height:1.4em;color:${TOKENS.textTertiary}}
-.sl{font-size:12px;line-height:16px;min-height:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.item{display:grid;grid-template-columns:22px 1fr auto;gap:10px;align-items:start;padding:12px 14px;border-top:1px solid ${TOKENS.separator}}
-.item:first-child{border-top:0}
-.item svg,.ic{width:18px;height:18px;stroke:${TOKENS.textSecondary};fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;margin-top:1px}
 .h{font-size:14px;font-weight:600}
 .s{font-size:12.5px;color:${TOKENS.textSecondary};margin-top:2px;line-height:1.4}
 .tog{display:flex;align-items:center;gap:12px;justify-content:space-between;min-height:56px;padding:6px 14px;border-top:1px solid ${TOKENS.separator};width:100%;background:none;border-left:0;border-right:0;border-bottom:0;color:inherit;font:inherit;text-align:left}
@@ -625,11 +632,6 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 .sw::after{content:'';position:absolute;top:3px;right:3px;width:22px;height:22px;border-radius:50%;background:${TOKENS.knob}}
 .sw.off{background:${TOKENS.off}}
 .sw.off::after{right:auto;left:3px;background:${TOKENS.knobOff}}
-.tiles{display:grid;gap:8px}
-.tile{border:0;font:inherit;border-radius:14px;min-height:64px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;cursor:pointer;font-size:13px;font-weight:600;background:${TOKENS.control};color:${TOKENS.textSoft}}
-.tile.on{background:${TOKENS.tint};color:${TOKENS.tintInk}}
-.lt{display:grid;grid-template-columns:1fr 130px;gap:12px;align-items:center;min-height:56px;padding:6px 14px;border-top:1px solid ${TOKENS.separator}}
-.lt:first-child{border-top:0}
 .segs{display:flex;gap:8px;background:${TOKENS.surface};border-radius:14px;padding:4px}
 .seg{border:0;font:inherit;font-size:14px;font-weight:600;min-height:44px;border-radius:12px;cursor:pointer;flex:1;background:transparent;color:${TOKENS.textSoft}}
 .seg.on{background:${TOKENS.tint};color:${TOKENS.tintInk}}
@@ -700,6 +702,45 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 .hm-efoot{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-top:14px;padding-top:12px;border-top:.5px solid ${TOKENS.separator};font-size:15px;line-height:20px}
 .hm-efoot .hm-es{font-size:15px;line-height:20px}
 @media (max-width:359px){.hm-price{font-size:36px}}
+.hm .hm-tight{margin-top:16px}
+.hm-back{display:flex;align-items:center;align-self:flex-start;gap:2px;min-height:44px;min-width:44px;margin-left:-6px;padding-right:8px;font-size:17px;line-height:22px;color:${TOKENS.tint}}
+.hm-back:focus-visible{outline:2px solid ${TOKENS.link};outline-offset:-2px;border-radius:10px}
+.hm-list.plain .hm-row+.hm-row::before{left:14px}
+.hm-list.plain .hm-row{padding-top:8px;padding-bottom:8px}
+.hm-list.plain .hm-rt,.hm-list.plain .hm-rs{white-space:normal;overflow:visible}
+.hm-btn{width:100%;border:0;background:none;font:inherit;text-align:left;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.hm-btn:disabled{opacity:.4;cursor:default}
+.hm-tv{margin-left:8px;color:${TOKENS.textSecondary}}
+.hm-feet{display:flex;flex-direction:column;gap:6px}
+.hm-wgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.hm-w{background:${TOKENS.surface};border-radius:20px;padding:14px 16px;min-width:0}
+.hm-w:only-child{grid-column:1/-1}
+.hm-wl{font-size:13px;line-height:18px;font-weight:600}
+.hm-wv{font-family:ui-rounded,"SF Pro Rounded",-apple-system,system-ui,sans-serif;font-size:34px;line-height:41px;font-weight:700}
+.hm-wv small{font-size:17px;font-weight:600;margin-left:3px;color:${TOKENS.textSecondary}}
+.hm-ws{font-size:14px;line-height:19px;color:${TOKENS.textSecondary};min-height:19px}
+.hm-scenes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.hm-scene{display:flex;flex-direction:column;align-items:flex-start;justify-content:space-between;min-height:76px;padding:12px 14px;border:0;border-radius:16px;font:inherit;font-size:15px;line-height:20px;font-weight:600;text-align:left;cursor:pointer;background:${TOKENS.surface};color:${TOKENS.text};-webkit-tap-highlight-color:transparent}
+.hm-scene.on{background:${TOKENS.tint};color:${TOKENS.tintInk}}
+.hm-scene:focus-visible{outline:2px solid ${TOKENS.link};outline-offset:2px}
+.hm-sw{position:relative;flex:none;width:51px;height:31px;border-radius:16px;background:${TOKENS.on}}
+.hm-sw::after{content:'';position:absolute;top:2px;right:2px;width:27px;height:27px;border-radius:50%;background:${TOKENS.knob}}
+.hm-sw.off{background:${TOKENS.off}}
+.hm-sw.off::after{right:auto;left:2px}
+.hm-step{position:relative;flex:none;display:flex;align-items:center;width:94px;height:32px;border-radius:8px;background:${TOKENS.control}}
+.hm-step button{width:47px;min-height:44px;margin:-6px 0;padding:0;border:0;background:none;color:${TOKENS.text};display:flex;align-items:center;justify-content:center;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.hm-step button:active{opacity:.6}
+.hm-step button:focus-visible{outline:2px solid ${TOKENS.link};outline-offset:-2px;border-radius:8px}
+.hm-step-div{flex:none;width:1px;height:18px;background:${TOKENS.separator}}
+.hm-check{flex:none;display:flex;color:${TOKENS.tint}}
+.hm-slr{flex-direction:column;align-items:stretch;justify-content:center;gap:0;padding:8px 14px}
+.hm-slr .hm-l1{align-items:center}
+.hm-slider{-webkit-appearance:none;appearance:none;width:100%;height:44px;margin:0;background:transparent;accent-color:${TOKENS.tint}}
+.hm-slider::-webkit-slider-runnable-track{height:6px;border-radius:3px;background:linear-gradient(to right,${TOKENS.tint} var(--p,0%),${TOKENS.sliderTrack} var(--p,0%))}
+.hm-slider::-webkit-slider-thumb{-webkit-appearance:none;width:24px;height:24px;margin-top:-9px;border-radius:50%;background:${TOKENS.knob};border:0}
+.hm-slider::-moz-range-track{height:6px;border-radius:3px;background:${TOKENS.sliderTrack}}
+.hm-slider::-moz-range-progress{height:6px;border-radius:3px;background:${TOKENS.tint}}
+.hm-slider::-moz-range-thumb{width:24px;height:24px;border-radius:50%;background:${TOKENS.knob};border:0}
 .tabbar-spacer{height:var(--tbh)}
 .tabs{--tbh:${TABBAR_H};box-sizing:border-box;height:var(--tbh);padding:0 8px max(34px, env(safe-area-inset-bottom, 0px));display:flex;background:${TOKENS.tabBar};-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);border-top:.5px solid ${TOKENS.separator}}
 .tabs.fixed{position:fixed;left:0;right:0;bottom:0;z-index:100}
@@ -710,46 +751,19 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 .chart:focus-visible{outline:2px solid ${TOKENS.link};outline-offset:2px;border-radius:6px}
 .tip{position:absolute;top:-36px;left:0;pointer-events:none;background:${TOKENS.control};border:1px solid ${TOKENS.controlEdge};border-radius:8px;padding:4px 8px;font-size:12px;line-height:1.3;white-space:nowrap;z-index:2}
 .tip small{display:block;font-size:10px;color:${TOKENS.textSecondary}}
-.lh{display:flex;justify-content:space-between;align-items:center;width:100%;min-height:52px;padding:0 14px;background:none;border:0;color:inherit;font:inherit;cursor:pointer}
-.lt input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:44px;margin:0;background:transparent;accent-color:${TOKENS.tint}}
-.lt input[type=range]::-webkit-slider-runnable-track{height:6px;border-radius:3px;background:linear-gradient(to right,${TOKENS.tint} var(--p,0%),${TOKENS.off} var(--p,0%))}
-.lt input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:24px;height:24px;margin-top:-9px;border-radius:50%;background:${TOKENS.tint};border:2px solid ${TOKENS.surface}}
-.lt input[type=range]::-moz-range-track{height:6px;border-radius:3px;background:${TOKENS.off}}
-.lt input[type=range]::-moz-range-progress{height:6px;border-radius:3px;background:${TOKENS.tint}}
-.lt input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:${TOKENS.tint};border:2px solid ${TOKENS.surface}}
 .round{min-height:44px;min-width:44px;border-radius:999px;border:0;background:${TOKENS.tint};color:${TOKENS.tintInk};display:flex;align-items:center;justify-content:center;cursor:pointer;flex:none}
 .round.quiet{background:${TOKENS.control};color:${TOKENS.text}}
-.gbtn{border:0;font:inherit;font-size:13.5px;font-weight:600;min-height:44px;min-width:92px;padding:0 16px;border-radius:999px;cursor:pointer;background:${TOKENS.tint};color:${TOKENS.tintInk};align-self:center}
-.gbtn.quiet{background:${TOKENS.control};color:${TOKENS.text}}
-.gbtn:disabled{opacity:.4;cursor:default}
-.gl{align-items:center}
-.lnk{display:block;min-height:44px;padding:0;margin-top:2px;border:0;background:none;color:${TOKENS.link};font:inherit;font-size:13px;font-weight:600;text-align:left;cursor:pointer}
-.ovl{position:fixed;inset:0;z-index:2147483000;display:flex;flex-direction:column;justify-content:flex-end;padding-bottom:var(--sheet-inset,0px);box-sizing:border-box;overscroll-behavior:contain}
-.scrim{position:absolute;inset:0;background:${TOKENS.scrim};touch-action:none}
-.sheet{position:relative;max-height:var(--sheet-max,min(88vh,calc(100vh - env(safe-area-inset-top,0px) - 16px)));max-height:var(--sheet-max,min(88dvh,calc(100dvh - env(safe-area-inset-top,0px) - 16px)));min-height:0;display:flex;flex-direction:column;background:${TOKENS.bg};border-radius:20px 20px 0 0;border-top:1px solid ${TOKENS.separator};box-shadow:0 -8px 32px ${TOKENS.shadow};animation:sheetup .22s ease-out;outline:none}
-.sh{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 16px 8px;flex:none;touch-action:none}
-.sb{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y;padding:0 14px calc(24px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:14px}
-/* Scroll bug: flex children default to shrink, so a bounded .sb squeezed them (the .card clips) instead of overflowing, leaving nothing to scroll. */
-.sb>*{flex-shrink:0}
-@keyframes sheetup{from{transform:translateY(40px);opacity:0}to{transform:none;opacity:1}}
-@media (prefers-reduced-motion:reduce){.sheet{animation:none}}
-.big{font-size:32px;font-weight:700;letter-spacing:-.6px;line-height:1.1;margin-top:4px}
-.two{display:flex;gap:10px}
-.two .card{flex:1}
-.note{font-size:11.5px;color:${TOKENS.textTertiary};margin:10px 2px 0;line-height:1.4}
-.mrow{display:flex;align-items:flex-start;gap:8px;margin:10px 2px 0}
-.mrow span:last-child{font-size:11.5px;color:${TOKENS.textSecondary};line-height:1.4}
 `;
 
 
   // ── Room settings ────────────────────────────────────────────────────────────────────────────
-  // The settings panel (a sheet opened from the gear in the room banner) holds what means "this room should
-  // behave differently from now on": automation switches and their tuning, by subsystem. What a person changes
-  // because of something happening right now (scenes, lights, the fan on/off, keep-room-occupied) stays on the page.
+  // The Automation list on each room and garden page holds what means "this room should behave differently from
+  // now on": automation switches and their tuning, by subsystem. What a person changes because of something
+  // happening right now (scenes, lights, the fan on/off, keep-room-occupied) has its own list higher up the page.
   //
   // Rows are either a toggle or a stepper with a fixed min/max/step. A write names a room, group and key from
   // this table, never an entity id, so turn_on/turn_off/set_value can only reach the helpers listed here. A row
-  // whose helper is missing or unusable is left out when rendering, and a group left empty is not shown.
+  // whose helper is missing or unusable is left out when rendering, and the list is hidden when no row remains.
   //
   // Stepper ranges equal the clamp in the automation that reads the helper (a test holds the numbers to a list of
   // expected clamps, so a change on one side has to be made on both). Where the automation does not clamp, the
@@ -775,7 +789,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   // have no area, and no climate entity has one). `report` means sensor.info_rooms has an entry for the room.
   // Gardens (kind 'garden') have no report, climate or lights here: their lights come from
   // sensor.<garden>_lighting_scenes and their look from `theme`, the theme helper ('' when the garden has none).
-  // `settings` are the settings panel rows (the header above says what belongs there). Gap, reported rather than
+  // `settings` are the Automation list's rows (the header above says what belongs there). Gap, reported rather than
   // guessed: foreign_office has no media player in views/foreign-office.yaml. Room keys must match the
   // `room-<key>` views and sensor.info_rooms (a test holds all three together).
   const SCENE_LABELS = {
@@ -1316,16 +1330,6 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   function houseActivity(hass) {
     return activityOf(hass, readHistory(hass, 'sensor.house_history'), true);
   }
-  // One fixed-width icon column between the time and the text keeps every row's text at the same x. The icon
-  // is decoration (aria-hidden): the subject in the text carries the meaning.
-  function activityRows(rows, limit) {
-    return rows.slice(0, limit).map((r) => {
-      const icon = svg(ICON[subsystemOf(r.subsystem).icon], 14);
-      return `<div class="feed ${r.tone}"><span class="a">${esc(hhmm(r.ts))}</span><span class="si" aria-hidden="true">${icon}</span><span>${esc(r.text)}${r.count > 1 ? ` <b>x${r.count}</b>` : ''}</span></div>`;
-    }).join('');
-  }
-  const quietRow = (msg) => `<div class="feed"><span class="a"></span><span class="si"></span><span style="color:${TOKENS.textSecondary}">${esc(msg)}</span></div>`;
-
   // ── Icons ────────────────────────────────────────────────────────────────────────────────────
   const ICON = {
     bulb: 'M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z',
@@ -1359,6 +1363,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     guest: 'M10 4.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7zM3 20a7 7 0 0 1 14 0M19 8v6M16 11h6',
     dot: 'M12 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4z',
     next: 'M9 5l7 7-7 7',
+    check: 'M5 12.5l4.5 4.5L19 7.5',
     warn: 'M12 4l9 16H3zM12 10v4M12 17h.01',
     sunset: 'M3 19h18M7 19a5 5 0 0 1 10 0M12 7v3M5.5 11.5l1.4 1.4M18.5 11.5l-1.4 1.4M12 3l-2 2M12 3l2 2',
     bin: 'M5 7h14M10 7V4.5h4V7M7 7l1 13h8l1-13M10 11v6M14 11v6',
@@ -1371,12 +1376,12 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   const SCENE_ICON = { off: 'power', lamps: 'lamp', low: 'moon', full: 'sun', all_full: 'sun', daylight: 'sun' };
 
   // ── Wording ──────────────────────────────────────────────────────────────────────────────────
-  // The only place lights are put into words. `badge` is the short form for tiles and chips, `phrase` the
-  // headline of the Lights card, `clause` the lower-case fragment inside the banner's sentence.
+  // The only place lights are put into words. `badge` is the short form (the scene's label, "On" or "Off"), `clause`
+  // the lower-case fragment inside verdictFor's sentence.
   function lightsState(m, scene) {
-    if (!(m.lights_on > 0)) return { on: false, badge: 'Off', phrase: 'Lights off', clause: 'lights off' };
-    if (scene && scene !== 'off') return { on: true, badge: sceneLabel(scene), phrase: `${sceneLabel(scene)} scene`, clause: 'lights on' };
-    return { on: true, badge: 'On', phrase: 'Lights on', clause: 'lights on' };
+    if (!(m.lights_on > 0)) return { on: false, badge: 'Off', clause: 'lights off' };
+    if (scene && scene !== 'off') return { on: true, badge: sceneLabel(scene), clause: 'lights on' };
+    return { on: true, badge: 'On', clause: 'lights on' };
   }
 
   // The room's one-line state, built here from facts rather than taken from a string the sensor made up.
@@ -1423,15 +1428,53 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   // and rows (a tile, a title with one subtitle line, an optional trailing value, a chevron). Rows are real links
   // (<a>) wherever they lead somewhere. Glyphs are decoration (aria-hidden); the text carries the meaning.
   const hmTile = (fill, ink, glyph, filled) => `<span class="hm-tile" style="background:${fill};color:${ink}">${filled ? svgFilled(glyph, 18) : svg(glyph, 18)}</span>`;
-  // One list row. `path` makes it a link (with a chevron); without one it is a plain row. `subColour` is a token
-  // value for the subtitle (attention); `value` is the trailing figure.
-  function hmRow({ tile, title, sub, subColour, value, path, label }) {
-    const text = `<div class="hm-text"><div class="hm-rt">${esc(title)}</div><div class="hm-rs"${subColour ? ` style="color:${subColour}"` : ''}>${esc(sub)}</div></div>`;
+  // data-* attributes from an object; values are escaped. The dataset is how a tap finds its fixed table entry.
+  const dataAttrs = (data) => Object.entries(data).map(([k, x]) => `data-${k}="${esc(x)}"`).join(' ');
+  // One list row. `path` makes it a link (with a chevron); `ctl` (attributes, already escaped) makes the whole row
+  // a button; without either it is a plain row. `subColour` and `titleColour` are token values (the title is then
+  // semibold); `titleValue` is a figure after the title, `value` the trailing figure, `trailing` a control.
+  // A row without `tile` leads with its text; `sub` undefined leaves the subtitle line out.
+  function hmRow({ tile, title, titleColour, titleValue, sub, subColour, value, path, label, ctl, trailing }) {
+    const lead = tile || '';
+    const tv = titleValue ? `<span class="hm-tv num">${esc(titleValue)}</span>` : '';
+    const subLine = sub === undefined ? '' : `<div class="hm-rs"${subColour ? ` style="color:${subColour}"` : ''}>${esc(sub)}</div>`;
+    const text = `<div class="hm-text"><div class="hm-rt"${titleColour ? ` style="color:${titleColour};font-weight:600"` : ''}>${esc(title)}${tv}</div>${subLine}</div>`;
     const val = value ? `<span class="hm-val num">${esc(value)}</span>` : '';
-    if (!path) return `<div class="hm-row">${tile}${text}${val}</div>`;
-    return `<a class="hm-row tap" data-act="nav" data-path="${esc(path)}"${label ? ` aria-label="${esc(label)}"` : ''}>${tile}${text}${val}<span class="hm-chev">${svg(ICON.next, 14)}</span></a>`;
+    const end = trailing || '';
+    if (ctl) return `<button type="button" class="hm-row hm-btn tap" ${ctl}>${lead}${text}${val}${end}</button>`;
+    if (!path) return `<div class="hm-row">${lead}${text}${val}${end}</div>`;
+    return `<a class="hm-row tap" data-act="nav" data-path="${esc(path)}"${label ? ` aria-label="${esc(label)}"` : ''}>${lead}${text}${val}${end}<span class="hm-chev">${svg(ICON.next, 14)}</span></a>`;
   }
-  const hmSection = (title, rows, opts) => `<section class="hm-sec"><div class="hm-h"><h2${opts && opts.colour ? ` style="color:${opts.colour}"` : ''}>${esc(title)}</h2>${opts && opts.trailing ? `<span class="hm-tr">${esc(opts.trailing)}</span>` : ''}</div><div class="hm-list">${rows}</div></section>`;
+  const hmList = (rows, plain) => `<div class="hm-list${plain ? ' plain' : ''}">${rows}</div>`;
+  // 13px footnotes under a list or grid.
+  const hmFeet = (notes) => (notes && notes.length ? `<div class="hm-feet">${notes.map((t) => `<p class="hm-foot">${esc(t)}</p>`).join('')}</div>` : '');
+  // A section: header, then the body in an inset grouped list (`plain`: its rows have no leading tile) or, with
+  // `bare`, as it is (a grid), then `notes`.
+  const hmSection = (title, rows, opts) => `<section class="hm-sec"><div class="hm-h"><h2${opts && opts.colour ? ` style="color:${opts.colour}"` : ''}>${esc(title)}</h2>${opts && opts.trailing ? `<span class="hm-tr">${esc(opts.trailing)}</span>` : ''}</div>${opts && opts.bare ? rows : hmList(rows, opts && opts.plain)}${hmFeet(opts && opts.notes)}</section>`;
+
+  // Native-style controls: the one definition every control on the room and garden pages uses.
+  // Switch: 51x31, knob 27. It is decoration inside a row button, which carries aria-pressed and the title.
+  const hmSwitch = (on) => `<span class="hm-sw${on ? '' : ' off'}" aria-hidden="true"></span>`;
+  function hmToggleRow({ title, sub, on, act, data, disabled }) {
+    const ctl = `data-act="${act}" ${dataAttrs(data)} aria-pressed="${on}"${disabled ? ' disabled' : ''}`;
+    return hmRow({ title, sub, ctl, trailing: hmSwitch(on) });
+  }
+  // Stepper: a 94x32 pill, "−" | "+" either side of a hairline. The current value is in the row's title. The
+  // buttons are 44px tall, taller than the pill, so the target is large and the pill stays slim.
+  function hmStepper(act, data, label) {
+    const btn = (delta, name, glyph) => `<button type="button" data-act="${act}" ${dataAttrs(data)} data-delta="${delta}" aria-label="${esc(label)} ${name}">${svg(glyph, 16)}</button>`;
+    return `<span class="hm-step">${btn(-1, COPY.common.lower, 'M5 12h14')}<i class="hm-step-div" aria-hidden="true"></i>${btn(1, COPY.common.higher, 'M12 5v14M5 12h14')}</span>`;
+  }
+  function hmStepperRow({ title, shown, act, data }) {
+    return hmRow({ title, titleValue: shown, trailing: hmStepper(act, data, title) });
+  }
+  // Slider row: the label and value above a full-width range (track sliderTrack, fill tint via --p).
+  function hmSliderRow({ title, pct, act, data, label }) {
+    const p = Math.max(0, Math.min(100, Math.round(pct)));
+    return `<div class="hm-row hm-slr"><div class="hm-l1"><span class="hm-rt">${esc(title)}</span><span class="hm-val num">${p}%</span></div><input type="range" class="hm-slider" min="0" max="100" value="${p}" style="--p:${p}%" data-act="${act}" ${dataAttrs(data)} aria-label="${esc(label)}"></div>`;
+  }
+  // A two-up grid of widget cards; a lone widget spans the row.
+  const hmWidget = (label, colour, valueHtml, sub) => `<div class="hm-w"><div class="hm-wl" style="color:${colour}">${esc(label)}</div><div class="hm-wv num">${valueHtml}</div><div class="hm-ws">${esc(sub)}</div></div>`;
 
   // Header: the large title, the house mode and occupancy, and who is home.
   function avatar(hass, id, name) {
@@ -2213,84 +2256,6 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return h > 0 ? `<div data-top-guard style="height:${h}px;margin-bottom:-14px" aria-hidden="true"></div>` : '';
   }
 
-  // The settings sheet is position:fixed, but an ancestor with a transform, filter or contain makes it relative to
-  // that ancestor instead. Given the overlay's real rect and the viewport height, say how far to lift the sheet
-  // off the bottom and how tall it may be so it lies inside the visible viewport either way. Null when the
-  // overlay already covers the viewport (the CSS dvh rules are then right).
-  function sheetFit(viewportH, rect) {
-    if (!Number.isFinite(viewportH) || viewportH <= 0 || !rectOk(rect)) return null;
-    if (Math.abs(rect.top) < 1 && Math.abs(rect.bottom - viewportH) < 1) return null;
-    const inset = Math.max(0, Math.min(viewportH, Math.round(rect.bottom - viewportH)));
-    const top = Math.max(0, rect.top);
-    const room = Math.max(0, viewportH - inset - top);
-    return { inset, max: Math.max(120, Math.floor(room * 0.88)) };
-  }
-
-  // ── Settings sheet portal ──────────────────────────────────────────────────────────────────────
-  // The sheet is rendered as the last thing in the room-head html, starting at this marker. The card moves it out
-  // of its own shadow root into a host on document.body, so position:fixed is relative to the viewport whatever
-  // transform/filter/contain HA's view containers carry. Returns the page html and the sheet html (empty when closed).
-  // Appended after STYLE on repaints of an already-open sheet, so the open animation does not replay.
-  const STILL = '<style>.sheet{animation:none}</style>';
-  const SHEET_MARK = '<div class="ovl">';
-  function splitSheet(html) {
-    const s = typeof html === 'string' ? html : '';
-    const at = s.indexOf(SHEET_MARK);
-    return at < 0 ? { page: s, sheet: '' } : { page: s.slice(0, at), sheet: s.slice(at) };
-  }
-
-  // iOS WebKit hands a touch scroll to the page when the inner scroller cannot move, and rubber-bands even with
-  // overscroll-behavior. So every touchmove on the open sheet is cancelled unless it is inside the sheet body and the
-  // body can still scroll the way the finger is going. deltaY is the finger's movement since the last event: positive
-  // is a swipe down, which scrolls the content toward its top. Anything unmeasurable is cancelled (fail safe).
-  function touchGuard(scrollTop, scrollHeight, clientHeight, deltaY, insideBody) {
-    if (!insideBody) return 'prevent';
-    if (![scrollTop, scrollHeight, clientHeight, deltaY].every(Number.isFinite)) return 'prevent';
-    const max = scrollHeight - clientHeight;
-    if (max < 1) return 'prevent'; // nothing to scroll: any move would chain to the page
-    if (deltaY === 0) return 'allow';
-    // 1px of slack: fractional scroll positions on high-density screens never quite reach the bounds.
-    return deltaY > 0 ? (scrollTop > 1 ? 'allow' : 'prevent') : scrollTop < max - 1 ? 'allow' : 'prevent';
-  }
-
-  // Lock the page's scrollers while the sheet is open and put each back exactly. Targets are elements (or anything
-  // with style and scrollTop). overflow:hidden alone does not stop iOS (hence touchGuard) but does stop wheel,
-  // keyboard and other scroll paths, and the saved scrollTop makes the close land where the page was.
-  function lockScroll(targets) {
-    const saved = [];
-    for (const el of Array.isArray(targets) ? targets : []) {
-      if (!el || typeof el !== 'object' || !el.style) continue;
-      saved.push({ el, overflow: el.style.overflow, top: Number.isFinite(el.scrollTop) ? el.scrollTop : 0 });
-      el.style.overflow = 'hidden';
-    }
-    let done = false;
-    return function unlock() {
-      if (done) return;
-      done = true;
-      for (const s of saved) {
-        s.el.style.overflow = s.overflow;
-        if (s.el.scrollTop !== s.top) s.el.scrollTop = s.top;
-      }
-    };
-  }
-
-  // HA's page scroller differs by version and by theme (Material You restyles the header), so find it rather than
-  // assume it: the document scroller plus every ancestor of the card, through shadow roots, that really scrolls.
-  function scrollTargets(from, doc) {
-    const out = [];
-    const add = (el) => { if (el && !out.includes(el)) out.push(el); };
-    let node = from;
-    while (node) {
-      if (node.nodeType === 1 && typeof getComputedStyle === 'function') {
-        const oy = getComputedStyle(node).overflowY;
-        if ((oy === 'auto' || oy === 'scroll' || oy === 'overlay') && node.scrollHeight > node.clientHeight) add(node);
-      }
-      node = node.assignedSlot || node.parentNode || node.host || null;
-    }
-    if (doc) { add(doc.scrollingElement); add(doc.documentElement); add(doc.body); }
-    return out;
-  }
-
   // ── Bottom tab bar ─────────────────────────────────────────────────────────────────────────────
   // position:fixed only works if no ancestor creates a containing block for fixed descendants (transform,
   // filter, perspective, contain, will-change, backdrop-filter). tabbarPlacement decides from computed-style
@@ -2330,12 +2295,14 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   }
 
   // ── Room page sections ───────────────────────────────────────────────────────────────────────
+  // Every room and garden page is built from the House page's parts (hmRow, hmSection, the native controls above):
+  // header, readings, then one titled inset list per subsystem. Whole-page spacing is HM_SECTION_GAP, from `.hm`.
   // Whether the valve is calling for heat right now, from the climate entity's hvac_action. Unknown
   // actions say nothing rather than guess "not heating".
   function heatingStatus(m) {
-    if (m.hvac_action === 'heating') return { on: true, text: 'Heating now' };
-    if (m.hvac_action === 'idle') return { on: false, text: 'Not heating' };
-    if (m.hvac_action === 'off') return { on: false, text: 'Heating off' };
+    if (m.hvac_action === 'heating') return { on: true, text: COPY.room.heatingNowStatus };
+    if (m.hvac_action === 'idle') return { on: false, text: COPY.room.notHeatingStatus };
+    if (m.hvac_action === 'off') return { on: false, text: COPY.room.heatingOffStatus };
     return null;
   }
 
@@ -2346,20 +2313,68 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return m.house_heating_off ? 'house heating off' : '';
   }
 
-  // Pulse's own header row (back to House, the room name, the settings gear) then the banner. Room and garden
-  // pages are normal views, so HA draws no header of its own and this row is the only one, styled like the
-  // Energy/Cameras/Settings headings. Each subsystem (lights, heating, presence) has its own section further
-  // down and explains itself next to its controls. The sheet is part of this card (ui.settings), so it works
-  // the same on indoor rooms and gardens.
-  function sectionRoomHead(hass, key, ui) {
+  // The subtitle under the room's name: occupancy and the lights in plain words. Gardens have no occupancy.
+  function roomHeadLine(hass, key, now) {
+    if (isGarden(key)) {
+      const g = gardenModel(hass, key, now);
+      return COPY.room.gardenLine(g.reporting, g.on);
+    }
     const m = roomModel(hass, key);
-    const b = bannerFor(m, attentionItems(hass), activeScene(hass, key));
-    const back = `<a class="round quiet tap" data-act="nav" data-path="${HOUSE_PATH}" aria-label="${COPY.common.backToHouse}" style="text-decoration:none;margin-left:-8px">${svg(ICON.back, 22)}</a>`;
-    const title = `<div style="flex:1;min-width:0;min-height:44px;display:flex;align-items:center;font-size:28px;font-weight:700;letter-spacing:-.4px">${esc(m.cfg.name)}</div>`;
-    const gear = `<button class="round quiet tap" data-act="settings-open" data-room="${key}" aria-haspopup="dialog" aria-label="${esc(m.cfg.name)} settings" style="margin-right:-8px">${svg(ICON.gear, 22)}</button>`;
-    const head = `<div style="display:flex;align-items:center;gap:8px">${back}${title}${gear}</div>`;
-    const banner = `<div class="card pad${b.warn ? ' warn' : ''}" style="display:flex;gap:10px;align-items:flex-start"><span class="dot${b.warn ? ' warn' : b.dim ? ' dim' : ''}" style="margin-top:5px"></span><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:700;${b.warn ? 'color:' + TOKENS.attention : ''}">${esc(b.title)}</div><div style="font-size:13px;color:${b.warn ? TOKENS.text : TOKENS.textSecondary};margin-top:3px;line-height:1.45">${esc(b.body)}</div></div></div>`;
-    return `${head}${banner}${ui && ui.settings ? settingsSheet(hass, key) : ''}`;
+    if (!m.hasReport) return COPY.home.noReport;
+    const occupancy = m.occupancy_unavailable ? COPY.room.occupancyUnavailable : m.occupied ? COPY.room.occupied : COPY.room.empty;
+    const lights = lightsState(m, activeScene(hass, key));
+    return COPY.room.headLine(occupancy, lights.on, lights.on && lights.badge !== 'On' ? lights.badge : '');
+  }
+
+  // This room's attention items as an inset list right under the header: the short label in the attention colour,
+  // the detail beneath. No other banner: what the heating is doing is in the Heating list.
+  function roomAttention(hass, key) {
+    const m = roomModel(hass, key);
+    const rows = attentionItems(hass).filter((i) => i.key === key).map((i) => hmRow({
+      tile: hmTile(TOKENS.attention, TOKENS.attentionInk, attentionGlyph(i.kind)), title: itemLabel(i, m), titleColour: TOKENS.attention, sub: itemDetail(i, m),
+    }));
+    return rows.length ? `<section class="hm-sec hm-tight">${hmList(rows.join(''))}</section>` : '';
+  }
+
+  // Back link (tint, 44px target), the large title and the subtitle. Room and garden pages are normal views, so HA
+  // draws no header of its own and this is the only one.
+  function sectionRoomHead(hass, key, now) {
+    const m = roomModel(hass, key);
+    const back = `<a class="hm-back tap" data-act="nav" data-path="${HOUSE_PATH}" aria-label="${COPY.common.backToHouse}">${svg(ICON.back, 22)}<span>${COPY.common.tabHouse}</span></a>`;
+    const title = `<div class="hm-hd"><h1 class="hm-big">${esc(m.cfg.name)}</h1><span class="hm-line">${esc(roomHeadLine(hass, key, now))}</span></div>`;
+    return `<div class="hm hm-first"><div class="hm-head">${back}${title}</div>${roomAttention(hass, key)}</div>`;
+  }
+
+  // Readings: Temperature and Light level widgets. A room without the sensor has no widget, and a lone widget
+  // takes the full row.
+  const LUX_FRESH_MS = 60 * 60 * 1000;
+  // Sub-line of the Temperature widget, from the valve and the target.
+  function temperatureSub(m) {
+    const target = m.target === null ? '' : `${fmt1(m.target)}°`;
+    if (m.hvac_action === 'heating') return target ? COPY.room.heatingTo(target) : COPY.room.heatingNow;
+    if (m.hvac_action === 'off' || (!target && m.hvac_action === 'idle')) return COPY.room.notHeating;
+    return target ? COPY.room.targetIs(target) : '';
+  }
+  // The latest light reading the lights automation saw (the facts of its newest lighting decision that carry one),
+  // against the room's dark threshold. Nothing when there is none or it is over an hour old: a stale lux must not
+  // claim the room is dark now. Lux is clamped; the threshold comes from the helper, else from that decision.
+  function luxReading(hass, key, now) {
+    const e = readHistory(hass, `sensor.${key}_history`).entries.find((x) => x.subsystem === 'lighting' && num(x.facts.lux) !== null);
+    if (!e) return null;
+    const at = parseTs(e.ts);
+    if (at === null || now - at > LUX_FRESH_MS) return null;
+    const lx = clampInt(num(e.facts.lux), 0, LUX_MAX);
+    const threshold = num(state(hass, `input_number.${key}_automation_lux_threshold_dark`));
+    const limit = threshold !== null ? threshold : num(e.facts.lux_threshold);
+    return { lx, sub: limit === null ? '' : lx <= limit ? COPY.room.luxDark : COPY.room.luxBright };
+  }
+  function sectionReadings(hass, key, now) {
+    const m = roomModel(hass, key);
+    const cards = [];
+    if (m.cfg.temp && m.temp !== null) cards.push(hmWidget(COPY.room.temperature, TOKENS.heat, `${fmt1(m.temp)}°`, temperatureSub(m)));
+    const lux = luxReading(hass, key, now);
+    if (lux) cards.push(hmWidget(COPY.room.lightLevel, TOKENS.subLighting, `${lux.lx}<small>${COPY.room.luxUnit}</small>`, lux.sub));
+    return cards.length ? `<div class="hm"><div class="hm-wgrid">${cards.join('')}</div></div>` : '';
   }
 
   // The lights row of the Lights card: why the lights are as they are, including why they are NOT on. One
@@ -2411,48 +2426,55 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return out('none', `${h.note ? `Lighting ${h.note.toLowerCase()}` : 'No lighting decision recorded yet'}${tail}`, h.note ? 'warn' : 'muted');
   }
 
-  function lightsTag(story) {
-    switch (story.state) {
-      case 'disabled': return `<span class="tag">${COPY.room.lightsAutomationOff}</span>`;
-      case 'manual': return `<span class="tag">${COPY.room.manual}</span>`;
-      case 'problem': return `<span class="tag">${COPY.room.problem}</span>`;
-      case 'declined': return `<span class="tag off">${COPY.room.didntAct}</span>`;
-      default: return story.holds ? `<span class="tag off">${COPY.room.hold}</span>` : `<span class="tag ok">${COPY.room.auto}</span>`;
-    }
+  // How the lights automation stands, as the footnote under the scenes: its mode, then why the lights are as they are.
+  function lightsNote(story) {
+    const lead = { disabled: '', manual: COPY.room.manual, problem: COPY.room.problem, declined: COPY.room.didntAct }[story.state];
+    const tag = lead !== undefined ? lead : story.holds ? COPY.room.hold : COPY.room.auto;
+    return [tag, story.why].filter(Boolean).join(' · ');
   }
 
-  // Heating: the room and target numbers, then why the target is what it is. The 24 h chart is its own card
-  // directly under this one (info_templates.yaml), so the whole subsystem reads as one block.
-  function heatingNumbers(m) {
+  // Heating: an inset list of what the card shows, values trailing. The 24 h chart is its own card directly under
+  // this one (info_templates.yaml).
+  const upperFirst = (t) => str(t).replace(/^./, (c) => c.toUpperCase());
+  // Why the target is what it is, as one line. The order of the rules is the point: a window or door held past
+  // its grace period (safety), a hold still waiting out the grace (held), a deviation from the mode, the mode.
+  function heatingReason(m) {
     const differs = !!m.target_reason;
-    const sub2 = differs ? (m.mode_name && m.mode_target !== null ? `Mode ${m.mode_name} ${fmt1(m.mode_target)}°` : m.target_reason.replace(/^./, (c) => c.toUpperCase())) : [m.heating_active.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase()), m.heating_source ? 'from ' + m.heating_source.replace(/_/g, ' ') : ''].filter(Boolean).join(' ');
-    const hs = heatingStatus(m);
-    const status = hs ? `<div style="display:flex;align-items:center;gap:5px;font-size:12.5px;font-weight:600;margin-top:2px;color:${hs.on ? TOKENS.heat : TOKENS.textSecondary}">${hs.on ? svg(ICON.flame, 14) : ''}${hs.text}</div>` : '';
-    return `<div class="two"><div class="card pad"><div class="lbl">${COPY.room.roomLabel}</div><div class="big">${m.temp === null ? '–' : fmt1(m.temp) + '°'}</div><div style="font-size:12px;color:${TOKENS.textSecondary};margin-top:2px">${m.humidity === null ? 'no humidity' : Math.round(m.humidity) + '% humidity'}</div></div>
-<div class="card pad"><div class="lbl">${COPY.room.targetLabel}</div><div class="big" style="${differs ? 'color:' + TOKENS.attention : ''}">${m.target === null ? '–' : fmt1(m.target) + '°'}</div>${status}<div style="font-size:12px;color:${TOKENS.textSecondary};margin-top:2px">${esc(sub2)}</div></div></div>`;
-  }
-  function heatingWhy(m) {
-    const differs = !!m.target_reason;
-    const h = m.target !== null ? `Heating target ${fmt1(m.target)}°` : 'Heating';
-    const s = differs ? `${esc(m.target_reason.replace(/^./, (c) => c.toUpperCase()))}${m.mode_name && m.mode_target !== null ? ` · normally ${esc(m.mode_name)} ${fmt1(m.mode_target)}°` : ''}` : [m.mode_name && m.mode_target !== null ? `${esc(m.mode_name.replace(/^./, (c) => c.toUpperCase()))} ${fmt1(m.mode_target)}°` : '', m.heating_source ? esc(m.heating_source.replace(/_/g, ' ')) : ''].filter(Boolean).join(' from ') || 'No mode reported';
+    const modeText = m.mode_name && m.mode_target !== null ? `${upperFirst(m.mode_name)} ${fmt1(m.mode_target)}°` : '';
+    const plain = [modeText, m.heating_source ? m.heating_source.replace(/_/g, ' ') : ''].filter(Boolean).join(' from ') || 'No mode reported';
     const safety = !differs && m.heating_source === 'safety';
     const held = !differs && m.heat_labels.length > 0;
-    const minT = m.mode_target !== null ? m.mode_target : m.target;
-    const cause = safetyCause(m);
-    const resumes = m.house_heating_off ? 'stays at minimum while house heating is off' : m.heat_labels.length ? 'normal heating resumes when it closes' : '';
-    const sub = safety ? `Held at ${esc(m.mode_name || 'minimum')}${minT !== null ? ' ' + fmt1(minT) + '°' : ''}${cause ? ' · ' + esc(cause) : ''}${resumes ? ' · ' + resumes : ''}` : held ? `${esc(m.heat_labels.join(' · '))} · ${s}` : s;
-    const tag = differs ? `<span class="tag">${esc(m.target_reason.replace(/^./, (c) => c.toUpperCase()))}</span>` : safety ? `<span class="tag">${COPY.room.suspended}</span>` : held ? `<span class="tag">${COPY.room.pending}</span>` : m.heating_enabled === false ? `<span class="tag">${COPY.room.heatingAutomationOff}</span>` : m.hvac_action === 'heating' ? `<span class="tag heat">${COPY.room.heatingOn}</span>` : m.hvac_action === 'idle' ? `<span class="tag off">${COPY.room.idle}</span>` : '';
-    return `<div class="item">${svg(ICON.flame, 18)}<div><div class="h">${esc(h)}</div><div class="s">${sub}</div></div>${tag}</div>`;
+    if (differs) return upperFirst(m.target_reason);
+    if (safety) {
+      const minT = m.mode_target !== null ? m.mode_target : m.target;
+      const cause = safetyCause(m);
+      const resumes = m.house_heating_off ? 'stays at minimum while house heating is off' : m.heat_labels.length ? 'normal heating resumes when it closes' : '';
+      return `Held at ${m.mode_name || 'minimum'}${minT !== null ? ' ' + fmt1(minT) + '°' : ''}${cause ? ' · ' + cause : ''}${resumes ? ' · ' + resumes : ''}`;
+    }
+    return held ? `${m.heat_labels.join(' · ')} · ${plain}` : plain;
+  }
+  // The automation's own state when it is not simply running: suspended, waiting out a grace period, or switched off.
+  function heatingStateText(m) {
+    if (m.target_reason) return '';
+    if (m.heating_source === 'safety') return COPY.room.suspended;
+    if (m.heat_labels.length > 0) return COPY.room.pending;
+    return m.heating_enabled === false ? COPY.room.heatingAutomationOff : '';
   }
   function sectionHeating(hass, key) {
     const m = roomModel(hass, key);
     if (!m.hasReport || !m.cfg.climate) return '';
-    return `<div class="lbl" style="margin:4px 4px -10px">${COPY.room.heating}</div>${heatingNumbers(m)}<div class="card">${heatingWhy(m)}</div>`;
+    const rows = [hmRow({ title: COPY.room.targetLabel, sub: heatingReason(m), value: m.target === null ? '–' : `${fmt1(m.target)}°` })];
+    if (m.target_reason && m.mode_name && m.mode_target !== null) rows.push(hmRow({ title: COPY.room.normalTarget, sub: upperFirst(m.mode_name), value: `${fmt1(m.mode_target)}°` }));
+    const hs = heatingStatus(m);
+    if (hs) rows.push(hmRow({ title: COPY.room.rightNow, value: hs.text }));
+    if (m.humidity !== null) rows.push(hmRow({ title: COPY.room.humidity, value: `${Math.round(m.humidity)}%` }));
+    const stateText = heatingStateText(m);
+    if (stateText) rows.push(hmRow({ title: COPY.room.status, sub: stateText === COPY.room.pending ? COPY.room.pendingNote : undefined, value: stateText }));
+    return `<div class="hm">${hmSection(COPY.room.heating, rows.join(''), { plain: true })}</div>`;
   }
 
   // Presence: occupied or empty, what holds the room occupied and what ends it, and "Keep room occupied" (acts now,
-  // so it lives here and not in settings). When the motion sensor is switched off the row says so and links to
-  // the settings sheet, where the switch is.
+  // so it lives here and not in Automation).
   function keepOccupiedRow(hass, key) {
     const id = `input_boolean.${key}_automation_presence_override`;
     const s = state(hass, id);
@@ -2460,7 +2482,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const on = s === 'on';
     const guest = key === 'home_office' && state(hass, 'input_select.house_active_mode_modifier') === 'guest';
     const sub = on ? (guest ? 'Set by guest mode · lights and heating treat the room as in use' : 'Room held occupied · lights and heating treat it as in use') : 'Holds the room occupied until switched off';
-    return `<button class="tog tap" data-act="toggle" data-entity="${id}" aria-pressed="${on}"><div><div class="h">${COPY.room.keepRoomOccupied}</div><div class="s">${sub}</div></div><span class="sw${on ? '' : ' off'}" role="img" aria-label="${on ? COPY.common.on : COPY.common.off}"></span></button>`;
+    return hmToggleRow({ title: COPY.room.keepRoomOccupied, sub, on, act: 'toggle', data: { entity: id } });
   }
   function sectionPresence(hass, key) {
     const m = roomModel(hass, key);
@@ -2469,70 +2491,38 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     let row = '';
     if (m.hasReport) {
       const holds = m.pres_labels;
-      const occ = m.occupancy_unavailable ? 'Occupancy unavailable' : m.occupied ? 'Occupied' : 'Empty';
-      const pres = holds.length ? `${esc(holds.join(' · '))} · empty a few minutes after ${holds.length > 1 ? 'the last one clears' : 'it clears'}` : m.occupied ? 'No holds · empty a few minutes after the last movement' : 'No holds';
-      const ovr = m.override_text ? ` · ${esc(m.override_text)}` : '';
-      const motionOff = state(hass, `input_boolean.${key}_sensor_motion_enabled`) === 'off';
-      const noMotion = motionOff ? ' · Motion sensor off, so movement is ignored' : '';
-      const link = motionOff ? `<button class="lnk tap" data-act="settings-open" data-room="${key}" aria-haspopup="dialog">${COPY.room.settingsLink}</button>` : '';
-      row = `<div class="item">${svg(ICON.person, 18)}<div><div class="h">${occ}</div><div class="s">${pres}${ovr}${noMotion}</div>${link}</div><span class="tag${m.override && !holds.length ? '' : ' off'}">${holds.length ? 'Held' : m.override ? 'Override' : 'Clear'}</span></div>`;
+      const occ = m.occupancy_unavailable ? COPY.room.occupancyUnavailable : m.occupied ? COPY.room.occupied : COPY.room.empty;
+      const pres = holds.length ? `${holds.join(' · ')} · empty a few minutes after ${holds.length > 1 ? 'the last one clears' : 'it clears'}` : m.occupied ? 'No holds · empty a few minutes after the last movement' : 'No holds';
+      const ovr = m.override_text ? ` · ${m.override_text}` : '';
+      const noMotion = state(hass, `input_boolean.${key}_sensor_motion_enabled`) === 'off' ? ' · Motion sensor off, so movement is ignored' : '';
+      row = hmRow({ title: occ, sub: `${pres}${ovr}${noMotion}`, value: holds.length ? COPY.room.held : m.override ? COPY.room.override : COPY.room.clear });
     }
-    return `<div class="lbl" style="margin:4px 4px -10px">${COPY.room.presence}</div><div class="card">${row}${keep}</div>`;
+    return `<div class="hm">${hmSection(COPY.room.presence, row + keep, { plain: true })}</div>`;
   }
 
-  // Lights: what they are doing and why (including why they are not on), the scene tiles, and the individual
-  // lights expanding under a hairline, all in one card. The headline wording is lightsState, as everywhere.
-  function lightsStoryRow(hass, key, now, m, scene) {
-    const story = lightsStory(hass, key, now);
-    const tint = story.tone === 'warn' ? ` style="color:${TOKENS.attention}"` : '';
-    return `<div class="item">${svg(ICON.bulb, 18)}<div><div class="h">${esc(lightsState(m, scene).phrase)}</div><div class="s"${tint}>${esc(story.why)}</div></div>${lightsTag(story)}</div>`;
+  // Lights: the scene buttons (found in the HA registry, see sceneRegistry), then one row per light.
+  function sceneButton(key, id, active) {
+    const on = id === active;
+    return `<button type="button" class="hm-scene${on ? ' on' : ''}" data-act="scene" data-entity="scene.${key}_${id}" aria-pressed="${on}">${svg(ICON[SCENE_ICON[id] || 'bulb'], 22)}<span>${esc(sceneLabel(id))}</span></button>`;
   }
-  function sectionLights(hass, key, now, ui) {
+  // One light: its name, brightness or state, a switch; a dimmable light that is on has its slider under it.
+  function lightRows(hass, id, label) {
+    const s = stateObj(hass, id);
+    if (!s || !usable(s.state)) return hmRow({ title: label, sub: s ? COPY.common.unavailable : COPY.common.notFound });
+    const on = s.state === 'on';
+    const modes = attr(hass, id, 'supported_color_modes');
+    const dimmable = id.startsWith('light.') && Array.isArray(modes) && modes.some((x) => x !== 'onoff');
+    const pct = on ? Math.max(0, Math.min(100, Math.round(((num(attr(hass, id, 'brightness')) || 0) / 255) * 100))) : 0;
+    const row = hmToggleRow({ title: label, sub: on ? (dimmable ? `${pct}%` : COPY.common.on) : COPY.common.off, on, act: 'toggle', data: { entity: id } });
+    return dimmable && on ? row + hmSliderRow({ title: COPY.room.brightness, pct, act: 'brightness', data: { entity: id }, label: `${label} ${COPY.room.brightness.toLowerCase()}` }) : row;
+  }
+  function sectionLights(hass, key, now) {
     const m = roomModel(hass, key);
     const active = activeScene(hass, key);
-    const cols = Math.min(4, Math.max(1, m.scenes.length));
-    const tiles = m.scenes.map((id) => {
-      const on = id === active;
-      const ic = ICON[SCENE_ICON[id] || 'bulb'];
-      return `<button class="tile${on ? ' on' : ''}" data-act="scene" data-entity="scene.${key}_${id}" aria-pressed="${on}">${svg(ic, 20)}<span>${esc(sceneLabel(id))}</span></button>`;
-    }).join('');
-    const story = m.hasReport ? lightsStoryRow(hass, key, now, m, active) : '';
-    const exp = lightsExpander(hass, key, ui);
-    const more = exp ? `<div style="margin:10px -12px -10px;border-top:1px solid ${TOKENS.separator}">${exp}</div>` : '';
-    const controls = `<div style="padding:12px 12px 10px${story ? `;border-top:1px solid ${TOKENS.separator}` : ''}"><div class="tiles" style="grid-template-columns:repeat(${cols},minmax(0,1fr))">${tiles}</div>${more}</div>`;
-    return `<div class="lbl" style="margin:4px 4px -10px">${COPY.room.lights}</div><div class="card">${story}${controls}</div>`;
-  }
-
-  function lightCounts(hass, key) {
-    const m = roomModel(hass, key);
-    if (m.lights_total > 0) return { on: m.lights_on, total: m.lights_total };
-    const list = m.cfg.lights;
-    return { on: list.filter(([id]) => state(hass, id) === 'on').length, total: list.length };
-  }
-
-  // Collapsible list kept inside the Lighting card (no expander-card): one header row with a single
-  // chevron, collapsed by default. The open flag lives in the element instance (ui.open), so hass
-  // updates do not reset it.
-  function lightsExpander(hass, key, ui) {
-    const m = roomModel(hass, key);
-    if (m.cfg.lights.length === 0) return '';
-    const open = !!(ui && ui.open);
-    const c = lightCounts(hass, key);
-    const head = `<button class="lh tap" data-act="lights-toggle" aria-expanded="${open}"><span style="font-size:14px;font-weight:600">${COPY.room.individualLights}<span style="font-weight:500;color:${TOKENS.textSecondary}">${COPY.room.individualLightsCount(c.on, c.total)}</span></span><span style="display:flex;color:${TOKENS.textSecondary};transform:${open ? 'rotate(180deg)' : 'none'}">${svg(ICON.chev, 18)}</span></button>`;
-    if (!open) return head;
-    const rows = m.cfg.lights.map(([id, label]) => {
-      const s = stateObj(hass, id);
-      if (!s || !usable(s.state)) return `<div class="tog"><div><div class="h">${esc(label)}</div><div class="s">${s ? COPY.common.unavailable : COPY.common.notFound}</div></div></div>`;
-      const on = s.state === 'on';
-      const modes = attr(hass, id, 'supported_color_modes');
-      const dimmable = id.startsWith('light.') && Array.isArray(modes) && modes.some((x) => x !== 'onoff');
-      if (dimmable) {
-        const pct = on ? Math.max(0, Math.min(100, Math.round(((num(attr(hass, id, 'brightness')) || 0) / 255) * 100))) : 0;
-        return `<div class="lt"><div><div class="h">${esc(label)}</div><div class="s">${on ? pct + '%' : 'Off'}</div></div><input type="range" min="0" max="100" value="${pct}" style="--p:${pct}%" data-act="brightness" data-entity="${esc(id)}" aria-label="${esc(label)} brightness"></div>`;
-      }
-      return `<button class="tog tap" data-act="toggle" data-entity="${esc(id)}" aria-pressed="${on}"><div><div class="h">${esc(label)}</div><div class="s">${on ? COPY.common.on : COPY.common.off}</div></div><span class="sw${on ? '' : ' off'}" role="img" aria-label="${on ? COPY.common.on : COPY.common.off}"></span></button>`;
-    }).join('');
-    return `${head}${rows}`;
+    const notes = m.hasReport ? [lightsNote(lightsStory(hass, key, now))] : [];
+    const scenes = m.scenes.length ? hmSection(COPY.room.scenes, `<div class="hm-scenes">${m.scenes.map((id) => sceneButton(key, id, active)).join('')}</div>`, { bare: true, notes }) : '';
+    const lights = m.cfg.lights.length ? hmSection(COPY.room.lights, m.cfg.lights.map(([id, label]) => lightRows(hass, id, label)).join(''), { plain: true, notes: scenes ? [] : notes }) : '';
+    return scenes || lights ? `<div class="hm">${scenes}${lights}</div>` : '';
   }
 
   // A single switchable device with the reason homerun last gave for its state (the fan row on the
@@ -2588,67 +2578,35 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return row;
   }
 
-  // Visible rows of one group, as {row, html}; rows whose helper cannot be read are dropped.
+  // One setting of the Automation list: a switch row, or a stepper row with its value in the label. A row whose
+  // helper cannot be read is left out.
   function settingRowHtml(hass, room, group, row) {
-    const ds = { room, group, key: row.key };
+    const data = { room, group, key: row.key };
     if (row.kind === 'toggle') {
       const s = state(hass, row.id);
-      if (!usable(s)) return '';
-      const on = s === 'on';
-      return `<button class="tog tap" data-act="setting-toggle" data-room="${room}" data-group="${group}" data-key="${row.key}" aria-pressed="${on}"><div><div class="h">${esc(row.title)}</div><div class="s">${esc(row.sub)}</div></div><span class="sw${on ? '' : ' off'}" role="img" aria-label="${on ? COPY.common.on : COPY.common.off}"></span></button>`;
+      return usable(s) ? hmToggleRow({ title: row.title, on: s === 'on', act: 'setting-toggle', data }) : '';
     }
     const v = num(state(hass, row.id));
-    return v === null ? '' : stepperRow(row, v, row.sub, 'setting-number', ds);
+    return v === null ? '' : hmStepperRow({ title: row.title, shown: `${row.step < 1 ? v.toFixed(1) : String(Math.round(v))}${row.unit}`, act: 'setting-number', data });
   }
-  function settingGroupsHtml(hass, room) {
-    return ROOM_SETTINGS[room].map((g) => {
-      const rows = g.rows.map((r) => settingRowHtml(hass, room, g.key, r)).filter(Boolean).join('');
-      return rows ? `<div class="lbl" style="margin:4px 4px -10px">${esc(g.title)}</div><div class="card">${rows}</div>` : '';
-    }).join('');
-  }
-
-  // The sheet. It is inside the room-head card, fixed over the page, so the page underneath is untouched
-  // and keeps its scroll position. Escape, the Close button and the scrim all close it; focus handling is in
-  // the element (settingsOpen / settingsClose say where focus goes).
-  function settingsSheet(hass, room) {
-    const body = settingGroupsHtml(hass, room) || `<div class="card pad" style="color:${TOKENS.textSecondary};font-size:13px">${COPY.room.noSettings}</div>`;
-    const title = `${ROOMS[room].name} settings`;
-    return `<div class="ovl"><div class="scrim" data-act="settings-close" aria-hidden="true"></div><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title" tabindex="-1"><div class="sh"><div id="sheet-title" style="font-size:20px;font-weight:700;letter-spacing:-.2px">${esc(title)}</div><button class="round quiet" data-act="settings-close" aria-label="${COPY.common.closeSettings}">${svg('M6 6l12 12M18 6L6 18', 20)}</button></div><div class="sb">${body}</div></div></div>`;
+  // Automation: every setting of the room's table (ROOM_TABLE settings, rooms and gardens alike) in one inset list,
+  // each explained by a footnote under it.
+  function sectionAutomation(hass, key) {
+    const shown = ROOM_SETTINGS[key].flatMap((g) => g.rows.map((r) => ({ r, html: settingRowHtml(hass, key, g.key, r) }))).filter((x) => x.html);
+    if (shown.length === 0) return '';
+    return `<div class="hm">${hmSection(COPY.room.automation, shown.map((x) => x.html).join(''), { plain: true, notes: shown.map((x) => COPY.room.settingNote(x.r.title, x.r.sub)) })}</div>`;
   }
 
-  // Open/closed lives in ui.settings; ui.focus names the control that takes focus after the next paint
-  // (the element reads it): into the sheet on open, back to the gear on close.
-  function settingsOpen(ui, room) {
-    if (!isObj(ui)) throw new Error('pulse-card: settingsOpen needs the card ui state');
-    if (!Object.prototype.hasOwnProperty.call(ROOM_SETTINGS, room)) throw new Error(`pulse-card: no settings for "${room}"`);
-    ui.settings = true;
-    ui.focus = { act: 'settings-close' };
-    return ui;
-  }
-  function settingsClose(ui) {
-    if (!isObj(ui)) throw new Error('pulse-card: settingsClose needs the card ui state');
-    ui.settings = false;
-    ui.focus = { act: 'settings-open' };
-    return ui;
-  }
-  // Tab wraps inside the open sheet. index -1 (focus outside the list) enters at the first or last control.
-  function tabTarget(index, count, back) {
-    if (!(count > 0)) return -1;
-    if (index < 0 || index >= count) return back ? count - 1 : 0;
-    return (index + (back ? -1 : 1) + count) % count;
-  }
-
+  // The fan (the bathroom page): its switch, with the reason homerun last gave.
   function sectionDevice(hass, config) {
     if (config.entity === '') return '';
     const id = config.entity;
-    const label = str(config.label) || 'Fan';
+    const label = str(config.label) || COPY.room.fan;
     const s = stateObj(hass, id);
-    if (!s) return `<div class="card"><div class="tog"><div><div class="h">${esc(label)}</div><div class="s">${COPY.common.notFound}</div></div></div></div>`;
-    if (!usable(s.state)) return `<div class="card"><div class="tog"><div><div class="h">${esc(label)}</div><div class="s">${COPY.common.unavailable}</div></div></div></div>`;
-    const on = s.state === 'on';
-    const why = deviceReason(attr(hass, config.decision, 'reason'), on);
-    const text = [on ? COPY.common.on : COPY.common.off, why].filter(Boolean).join(' · ');
-    return `<div class="card"><button class="tog tap" data-act="toggle" data-entity="${esc(id)}" aria-pressed="${on}"><div><div class="h">${esc(label)}</div><div class="s">${esc(text)}</div></div><span class="sw${on ? '' : ' off'}" role="img" aria-label="${on ? COPY.common.on : COPY.common.off}"></span></button></div>`;
+    const body = !s || !usable(s.state)
+      ? hmRow({ title: label, sub: s ? COPY.common.unavailable : COPY.common.notFound })
+      : hmToggleRow({ title: label, sub: [s.state === 'on' ? COPY.common.on : COPY.common.off, deviceReason(attr(hass, config.decision, 'reason'), s.state === 'on')].filter(Boolean).join(' · '), on: s.state === 'on', act: 'toggle', data: { entity: id } });
+    return `<div class="hm">${hmSection(COPY.room.fan, body, { plain: true })}</div>`;
   }
 
   function sectionMedia(hass, key) {
@@ -2656,22 +2614,19 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     if (m.cfg.media.length === 0) return '';
     const rows = m.cfg.media.map(([id, label, kind]) => {
       const s = stateObj(hass, id);
-      const name = esc(label); // the device role from the room config, not the entity's friendly name
-      if (!s) return `<div class="tog"><div><div class="h">${esc(label)}</div><div class="s">${COPY.common.notFound}</div></div></div>`;
-      if (!usable(s.state)) return `<div class="tog"><div><div class="h">${name}</div><div class="s">${COPY.common.unavailable}</div></div></div>`;
+      if (!s || !usable(s.state)) return hmRow({ title: label, sub: s ? COPY.common.unavailable : COPY.common.notFound });
       const off = s.state === 'off' || s.state === 'standby';
       const playing = s.state === 'playing';
       const title = str(attr(hass, id, 'media_title'));
       const artist = str(attr(hass, id, 'media_artist'));
-      const text = playing ? [title, artist].filter(Boolean).join(' · ') || 'Playing' : s.state === 'paused' ? 'Paused' : off ? 'Off' : s.state === 'idle' ? 'Idle' : esc(s.state);
-      if (kind === 'tv') {
-        return `<button class="tog tap" data-act="media-power" data-entity="${esc(id)}" aria-pressed="${!off}"><div><div class="h">${name}</div><div class="s">${esc(text)}</div></div><span class="sw${off ? ' off' : ''}" role="img" aria-label="${off ? 'Off' : 'On'}"></span></button>`;
-      }
+      const text = playing ? [title, artist].filter(Boolean).join(' · ') || 'Playing' : s.state === 'paused' ? 'Paused' : off ? 'Off' : s.state === 'idle' ? 'Idle' : s.state;
+      if (kind === 'tv') return hmToggleRow({ title: label, sub: text, on: !off, act: 'media-power', data: { entity: id } });
       const vol = num(attr(hass, id, 'volume_level'));
-      const volRow = vol === null ? '' : `<div class="lt"><div><div class="h">${COPY.room.volume}</div><div class="s">${Math.round(vol * 100)}%</div></div><input type="range" min="0" max="100" value="${Math.round(vol * 100)}" data-act="volume" data-entity="${esc(id)}" aria-label="${name} volume"></div>`;
-      return `<div class="tog"><div><div class="h">${name}</div><div class="s">${esc(text)}</div></div><button class="round${playing ? '' : ' quiet'}" data-act="media-play" data-entity="${esc(id)}" aria-label="${playing ? 'Pause' : 'Play'}">${svg(playing ? ICON.pause : ICON.play, 20)}</button></div>${volRow}`;
+      const play = `<button type="button" class="round${playing ? '' : ' quiet'}" data-act="media-play" data-entity="${esc(id)}" aria-label="${playing ? COPY.common.pause : COPY.common.play}">${svg(playing ? ICON.pause : ICON.play, 20)}</button>`;
+      const volume = vol === null ? '' : hmSliderRow({ title: COPY.room.volume, pct: vol * 100, act: 'volume', data: { entity: id }, label: `${label} ${COPY.room.volume.toLowerCase()}` });
+      return hmRow({ title: label, sub: text, trailing: play }) + volume;
     }).join('');
-    return `<div class="lbl" style="margin:4px 4px -10px">${COPY.room.media}</div><div class="card">${rows}</div>`;
+    return `<div class="hm">${hmSection(COPY.room.media, rows, { plain: true })}</div>`;
   }
 
   // ── Gardens ──────────────────────────────────────────────────────────────────────────────────
@@ -2807,21 +2762,23 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const g = gardenModel(hass, key, now);
     const wantOn = !g.on;
     const target = wantOn ? g.onScene : g.offScene;
-    const disabled = !g.reporting || !target;
-    const btn = `<button class="gbtn${wantOn ? '' : ' quiet'}" data-act="garden-power" data-garden="${key}" data-want="${wantOn ? 'on' : 'off'}"${disabled ? ' disabled' : ''}>${wantOn ? 'Turn on' : 'Turn off'}</button>`;
-    return `<div class="card"><div class="item gl">${svg(ICON.bulb, 18)}<div><div class="h">${esc(gardenHeadline(g))}</div><div class="s">${esc(gardenSub(g, now))}</div></div>${btn}</div></div>`;
+    const row = hmToggleRow({ title: COPY.room.lights, sub: gardenSub(g, now), on: g.on, act: 'garden-power', data: { garden: key, want: wantOn ? 'on' : 'off' }, disabled: !g.reporting || !target });
+    return `<div class="hm">${hmSection(COPY.room.lights, row, { plain: true })}</div>`;
   }
 
+  // The theme picker: one row per option, a tint checkmark on the chosen one. Where the theme comes from and when it
+  // applies are footnotes; "Use calendar" is a last row when the calendar is not in charge.
   function sectionGardenTheme(hass, key, now) {
     const g = gardenModel(hass, key, now);
     if (!g.hasTheme || !g.options.length) return '';
-    const cols = g.options.length <= 4 ? g.options.length : 3;
-    const tiles = g.options.map((o) => `<button class="tile${o === g.theme ? ' on' : ''}" data-act="garden-theme" data-garden="${key}" data-option="${esc(o)}" aria-pressed="${o === g.theme}">${svg(themeIcon(o), 20)}<span>${esc(themeLabel(o))}</span></button>`).join('');
-    const lines = [themeSource(g), themeApplies(g, now)].filter(Boolean).map((t) => `<div class="note">${esc(t)}</div>`).join('');
+    const rows = g.options.map((o) => {
+      const chosen = o === g.theme;
+      return hmRow({ title: themeLabel(o), ctl: `data-act="garden-theme" data-garden="${esc(key)}" data-option="${esc(o)}" aria-pressed="${chosen}"`, trailing: chosen ? `<span class="hm-check">${svg(ICON.check, 22)}</span>` : '' });
+    });
     // Only when the calendar is not in charge: paused, or a theme picked by hand. Acting needs the toggle's state.
     const follow = !!g.calToday && !!g.calToggle && (g.calToggle === 'off' || g.theme !== g.calToday);
-    const use = follow ? `<button class="tog tap" data-act="use-calendar" data-garden="${key}"><div><div class="h">${COPY.room.useCalendar}</div><div class="s">Back to ${esc(themeLabel(g.calToday))}, then follow the calendar</div></div></button>` : '';
-    return `<div class="lbl" style="margin:4px 4px -10px">${COPY.room.theme}</div><div class="card" style="padding:12px 12px 10px"><div class="tiles" style="grid-template-columns:repeat(${cols},minmax(0,1fr))">${tiles}</div>${lines}</div>${use ? `<div class="card">${use}</div>` : ''}`;
+    if (follow) rows.push(hmRow({ title: COPY.room.useCalendar, sub: `Back to ${themeLabel(g.calToday)}, then follow the calendar`, ctl: `data-act="use-calendar" data-garden="${esc(key)}"` }));
+    return `<div class="hm">${hmSection(COPY.room.theme, rows.join(''), { plain: true, notes: [themeSource(g), themeApplies(g, now)].filter(Boolean) })}</div>`;
   }
 
   // ── Settings page ───────────────────────────────────────────────────────────────────────────────
@@ -3121,11 +3078,11 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return toggle + body;
   }
 
-  function sectionRoomFeed(hass, key, now) {
+  // Activity: the same notification-style rows as the House page, led by what each entry is about.
+  function sectionRoomFeed(hass, key) {
     const { rows, note } = roomActivity(hass, key);
-    const quiet = quietRow;
-    const body = (rows.length ? activityRows(rows, ACTIVITY_ROWS) : quiet('Nothing recorded for this room yet')) + (note ? quiet(note) : '');
-    return `<div class="lbl" style="margin:4px 4px -10px">${COPY.feed.recentActivity}</div><div class="card">${body}</div>`;
+    const body = (rows.length ? rows.slice(0, ACTIVITY_ROWS).map((r) => feedRow({ ...r, subject: subsystemOf(r.subsystem).noun })).join('') : quietFeedRow(COPY.feed.roomNothingYet)) + (note ? quietFeedRow(note) : '');
+    return `<div class="hm">${hmSection(COPY.feed.activity, body)}</div>`;
   }
 
   // ── Tap feedback ─────────────────────────────────────────────────────────────────────────────
@@ -3256,13 +3213,16 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     'energy-usage': (h) => sectionEnergyUsage(h),
     feed: (h, c, n) => sectionFeed(h, n),
     tabbar: (h, c, n, ui) => sectionTabbar(c, ui),
-    'room-head': (h, c, n, ui) => sectionRoomHead(h, c.room, ui),
-    lights: (h, c, n, ui) => sectionLights(h, c.room, n, ui),
+    'room-head': (h, c, n) => sectionRoomHead(h, c.room, n),
+    readings: (h, c, n) => sectionReadings(h, c.room, n),
+    lights: (h, c, n) => sectionLights(h, c.room, n),
     heating: (h, c) => sectionHeating(h, c.room),
+    'chart-head': () => `<div class="hm"><section class="hm-sec"><div class="hm-h"><h2>${COPY.room.last24h}</h2></div></section></div>`,
     presence: (h, c) => sectionPresence(h, c.room),
     media: (h, c) => sectionMedia(h, c.room),
     device: (h, c) => sectionDevice(h, c),
-    'room-feed': (h, c, n) => sectionRoomFeed(h, c.room, n),
+    automation: (h, c) => sectionAutomation(h, c.room),
+    'room-feed': (h, c) => sectionRoomFeed(h, c.room),
     'garden-lights': (h, c, n) => sectionGardenLights(h, c.room, n),
     'garden-theme': (h, c, n) => sectionGardenTheme(h, c.room, n),
     'house-head': (h, c, n) => sectionHouseHead(h, n),
@@ -3273,11 +3233,11 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     'cameras-head': (h, c, n) => sectionCamerasHead(h, n),
     camera: (h, c, n, ui) => sectionCamera(h, c.camera, n, ui),
   };
-  const ROOM_MODES = ['room-head', 'lights', 'heating', 'presence', 'media', 'room-feed', 'garden-lights', 'garden-theme'];
+  const ROOM_MODES = ['room-head', 'readings', 'lights', 'heating', 'presence', 'media', 'automation', 'room-feed', 'garden-lights', 'garden-theme'];
   // Indoor rooms have scenes, a report and media; gardens have a lights row and a theme. The shared modes
   // (room-head, room-feed) work for both.
   const GARDEN_MODES = ['garden-lights', 'garden-theme'];
-  const INDOOR_MODES = ['lights', 'heating', 'presence', 'media'];
+  const INDOOR_MODES = ['readings', 'lights', 'heating', 'presence', 'media'];
 
   function validate(config) {
     if (!isObj(config) || !MODES[config.mode]) throw new Error(`pulse-card: unknown mode "${config && config.mode}"`);
@@ -3527,12 +3487,11 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     }
   }
 
-  const api = { parsedAttr, setOptimise, trackHass, depsUnchanged, makeRenderGate, RENDER_MAX_AGE_MS, deriveScenes, sceneRegistry, ROOM_TABLE, lightsStory, lightsState, verdictFor, houseActivity, parseHistory, readHistory, sentenceFor, roomActivity, unexplainedReasons, REASON_TEXT, UNDECLARED, SUPPRESS_SOURCES, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, SETTINGS_PATH, takesTaps, coverNeed, topGuard, sheetFit, splitSheet, touchGuard, lockScroll, scrollTargets, SHEET_MARK, STILL, HEAD_MODES, TOP_GUARD_MAX, CAMERAS_PATH, PENDING_MS, cameraParts, cameraToggle, cameraPending, perform, pendingStart, pendingFor, pendingKey, markPending, ERROR_MS, parseClips, frigateClipsId, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, GARDEN_ORDER, ALL_ROOM_KEYS, THEME_LABELS, THEME_ICON, ICON, SUBSYSTEMS, subsystemOf, placed, gardenModel, gardenSub, themeSource, shortDate, ALLOWED, writeAllowed, HOUSE_NUMBERS, HOUSE_MODIFIER, HOUSE_VACATION_HOURS, CAMERAS, PTZ_DIRS, DEVICE_REASONS, ROOM_SETTINGS, MO_TOGGLES, settingFor, settingsOpen, settingsClose, tabTarget, render, priceColour, PRICE_AT, PRICE_EXTREME_P, THEMES, COLOUR_KEYS, DEFAULT_THEME, TOKENS, COPY, checkThemes, themeOf, useTheme, colour, resolveVars, styleFor, roomModel, attentionItems, handleAction, callService, num, parseList };
+  const api = { parsedAttr, setOptimise, trackHass, depsUnchanged, makeRenderGate, RENDER_MAX_AGE_MS, deriveScenes, sceneRegistry, ROOM_TABLE, lightsStory, lightsState, verdictFor, houseActivity, parseHistory, readHistory, sentenceFor, roomActivity, unexplainedReasons, REASON_TEXT, UNDECLARED, SUPPRESS_SOURCES, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, SETTINGS_PATH, takesTaps, coverNeed, topGuard, HEAD_MODES, TOP_GUARD_MAX, CAMERAS_PATH, PENDING_MS, cameraParts, cameraToggle, cameraPending, perform, pendingStart, pendingFor, pendingKey, markPending, ERROR_MS, parseClips, frigateClipsId, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, GARDEN_ORDER, ALL_ROOM_KEYS, THEME_LABELS, THEME_ICON, ICON, SUBSYSTEMS, subsystemOf, placed, gardenModel, gardenSub, themeSource, shortDate, ALLOWED, writeAllowed, HOUSE_NUMBERS, HOUSE_MODIFIER, HOUSE_VACATION_HOURS, CAMERAS, PTZ_DIRS, DEVICE_REASONS, ROOM_SETTINGS, MO_TOGGLES, settingFor, render, priceColour, PRICE_AT, PRICE_EXTREME_P, THEMES, COLOUR_KEYS, DEFAULT_THEME, TOKENS, COPY, checkThemes, themeOf, useTheme, colour, resolveVars, styleFor, roomModel, attentionItems, handleAction, callService, num, parseList };
   root.PulseLib = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 
   // ── Custom element (browser only) ────────────────────────────────────────────────────────────
-  const hasWindowEvents = () => typeof window !== 'undefined' && typeof window.addEventListener === 'function' && typeof window.removeEventListener === 'function';
   if (typeof customElements !== 'undefined' && typeof HTMLElement !== 'undefined' && !customElements.get('pulse-card')) {
     class PulseCard extends HTMLElement {
       constructor() {
@@ -3541,27 +3500,22 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         this._html = null;
         this._gate = makeRenderGate();
         this._busy = false;
-        this._ui = { top: 0, tb: 'inflow', open: false, settings: false, focus: null, day: 'today', fuel: 'electricity', cam: { rec: {} }, pending: {}, error: null, hist: { electricity: { status: 'loading', days: [] }, gas: { status: 'loading', days: [] } } };
+        this._ui = { top: 0, tb: 'inflow', day: 'today', fuel: 'electricity', cam: { rec: {} }, pending: {}, error: null, hist: { electricity: { status: 'loading', days: [] }, gas: { status: 'loading', days: [] } } };
         this._histBusy = false;
         this._histSeq = 0;
         this._histAt = 0;
         this._histRetryAt = 0;
         this._scrub = { idx: null, slots: null, active: false, pending: null, timer: null };
         this._wireControls(this._root);
-        this._portal = null; // the settings sheet's host on document.body while it is open
-        this._portalBroken = false;
         // Price chart scrubbing (see PR for the manual test list; not testable in node).
         this._root.addEventListener('pointerdown', (ev) => this._chartDown(ev));
         this._root.addEventListener('pointermove', (ev) => this._chartMove(ev));
         this._root.addEventListener('pointerup', (ev) => this._chartUp(ev));
         this._root.addEventListener('pointercancel', () => this._chartCancel());
         this._root.addEventListener('keydown', (ev) => this._chartKey(ev));
-        this._opener = null; // the control (maybe in another card) that opened the settings sheet
-        this._onOpenRequest = (ev) => this._settingsRequest(ev);
-        this._onWindowKey = (ev) => this._settingsKey(ev);
         this._root.addEventListener('focusout', (ev) => { if (ev.target && ev.target.closest && ev.target.closest('[data-chart]') && !this._scrub.active) this._chartClear(); });
       }
-      // Taps, toggles and slider drags: wired to the card's root and, while open, to the sheet's portal root.
+      // Taps, toggles and slider drags: wired to the card's root.
       _wireControls(root) {
         root.addEventListener('click', (ev) => this._click(ev));
         root.addEventListener('change', (ev) => this._change(ev));
@@ -3586,25 +3540,12 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       }
       connectedCallback() {
         this._gate.reset(); // a (re)mount always renders once
-        // Any card on the page (the gear, the Presence link) asks for the sheet by event; only the room-head card has one.
-        if (hasWindowEvents()) {
-          window.addEventListener('pulse-card:settings', this._onOpenRequest);
-          window.addEventListener('keydown', this._onWindowKey);
-        }
         this._histEnsure();
         this._tabbarProbeLater();
         this._topProbeLater();
       }
       disconnectedCallback() {
         this._gate.reset();
-        if (hasWindowEvents()) {
-          window.removeEventListener('pulse-card:settings', this._onOpenRequest);
-          window.removeEventListener('keydown', this._onWindowKey);
-        }
-        // The portal lives outside this element, so unmounting must take it down; the sheet state goes with it
-        // so a remount does not come back to an invisible open sheet.
-        this._portalHide();
-        if (this._ui.settings) { this._ui.settings = false; this._ui.focus = null; this._opener = null; this._html = null; }
         this._histSeq += 1;
         this._histBusy = false;
         for (const t of this._tbTimers || []) clearTimeout(t);
@@ -3649,7 +3590,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       }
       getCardSize() { return 3; }
       // `fromHass` is true only for a hass update, the one caller allowed to skip an unchanged render. Taps,
-      // timers (pending and error expiry), the settings sheet, history arrival and scrubbing always render.
+      // timers (pending and error expiry), history arrival and scrubbing always render.
       _paint(fromHass = false) {
         // Never re-render under a finger: a slider drag or a chart scrub owns the DOM until release.
         if (!this._config || !this._hass || this._busy || this._scrub.active) return;
@@ -3665,135 +3606,23 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         this._html = html;
         this.style.display = html ? '' : 'none';
         const kept = this._captureFocus();
-        const { page, sheet } = splitSheet(html);
-        // The open animation belongs to the moment the sheet appears; a repaint of an open sheet builds a new
-        // element, which would replay it (the sheet fading out and sliding back on every stepper tap).
-        const still = sheet && this._sheetPainted ? STILL : '';
-        this._sheetPainted = !!sheet;
-        const portaled = sheet ? this._portalShow(sheet, still) : (this._portalHide(), false);
-        // No sheet, or a sheet that could not be portaled (fallback: it stays in the card): paint all of it here.
-        this._root.innerHTML = `<style>${styleFor(this._config)}</style>${still}${portaled ? page : html}`;
+        this._root.innerHTML = `<style>${styleFor(this._config)}</style>${html}`;
         this._restoreFocus(kept);
         if (this._config.mode === 'tabbar' && !this._tbProbed) this._tabbarProbeLater();
-        this._fitSheet();
         if (!this._topTimers) this._topProbeLater();
         // The repaint replaced the chart nodes: put a live readout back instead of flickering it away.
         if (this._scrub.idx !== null) this._chartShow(this._scrub.idx, false);
       }
-      // ── settings sheet ──
-      // A repaint replaces the DOM, which would drop focus and the sheet's scroll position on every stepper tap.
-      // So both are captured before and put back after. A pending focus request (ui.focus: into the sheet on open,
-      // back to the gear on close) wins over the captured one.
+      // A repaint replaces the DOM, which would drop keyboard focus on a control that was just used (a stepper's
+      // "+" tapped twice). The focused control is found again by its data-* identity after the paint.
       _captureFocus() {
-        const root = this._sheetRoot();
-        const sheet = root.querySelector ? root.querySelector('.sb') : null;
-        const active = root.activeElement || this._root.activeElement;
-        return {
-          scroll: sheet ? sheet.scrollTop : 0,
-          key: sheet && active && active.dataset && active.dataset.act ? pendingKey(active.dataset) : null,
-        };
+        const active = this._root.activeElement;
+        return active && active.dataset && active.dataset.act ? pendingKey(active.dataset) : null;
       }
-      // Controls only: the scrim shares the Close button's data-act but is not focusable.
-      _focusables() {
-        const sel = 'button[data-act], a[data-act]';
-        return [...this._root.querySelectorAll(sel), ...(this._portal ? this._portal.root.querySelectorAll(sel) : [])];
-      }
-      _restoreFocus(kept) {
-        const sheet = this._sheetRoot().querySelector('.sb');
-        if (sheet && kept.scroll) sheet.scrollTop = kept.scroll;
-        const req = this._ui.focus;
-        this._ui.focus = null; // one-shot: a request that finds nothing must not steal focus on a later paint
-        const list = this._focusables();
-        const el = req ? list.find((x) => x.dataset.act === req.act) : kept.key ? list.find((x) => pendingKey(x.dataset) === kept.key) : null;
+      _restoreFocus(key) {
+        if (!key) return;
+        const el = [...this._root.querySelectorAll('button[data-act], a[data-act]')].find((x) => pendingKey(x.dataset) === key);
         if (el) el.focus({ preventScroll: true });
-      }
-      _sheetControls() {
-        return [...this._sheetRoot().querySelectorAll('.sheet button:not([disabled])')];
-      }
-      // Where the sheet's DOM lives: the portal while it is open there, else the card (closed, or the fallback).
-      _sheetRoot() { return this._portal ? this._portal.root : this._root; }
-      // Show or update the portaled sheet. False means it could not be attached: the caller keeps the sheet in the card.
-      _portalShow(sheetHtml, still = '') {
-        if (this._portalBroken || typeof document === 'undefined' || !document.body) {
-          this._portalWarn(this._portalBroken ? 'earlier failure' : 'no document body');
-          return false;
-        }
-        try {
-          if (!this._portal) this._portalOpen();
-          this._portal.root.innerHTML = `<style>${styleFor(this._config)}</style>${still}<div class="p">${sheetHtml}</div>`;
-          return true;
-        } catch (err) {
-          this._portalBroken = true;
-          this._portalHide();
-          this._portalWarn(err && err.message ? err.message : err);
-          return false;
-        }
-      }
-      _portalWarn(why) {
-        if (this._portalWarned) return;
-        this._portalWarned = true;
-        console.warn(`pulse-card: settings sheet kept inside the card (portal unavailable: ${why}); it may not scroll on iOS`);
-      }
-      _portalOpen() {
-        const host = document.createElement('div');
-        host.setAttribute('data-pulse-sheet', '');
-        const root = host.attachShadow({ mode: 'open' });
-        this._wireControls(root);
-        // Non-passive: the guard has to be able to cancel. touchstart only records where the finger is.
-        const pos = { x: null, y: null };
-        const start = (ev) => { const t = ev.touches && ev.touches[0]; if (t) { pos.x = t.clientX; pos.y = t.clientY; } };
-        const move = (ev) => this._sheetTouch(ev, pos);
-        root.addEventListener('touchstart', start, { passive: true });
-        root.addEventListener('touchmove', move, { passive: false });
-        document.body.appendChild(host);
-        this._portal = { host, root, unlock: lockScroll(scrollTargets(this, document)) };
-      }
-      _sheetTouch(ev, pos) {
-        const t = ev.touches && ev.touches[0];
-        if (!t) return;
-        const dx = pos.x === null ? 0 : t.clientX - pos.x;
-        const dy = pos.y === null ? 0 : t.clientY - pos.y;
-        pos.x = t.clientX;
-        pos.y = t.clientY;
-        const body = ev.target && ev.target.closest ? ev.target.closest('.sb') : null;
-        // A mostly sideways drag inside the body (a brightness slider) is not a scroll: leave it to the control.
-        if (body && Math.abs(dx) > Math.abs(dy)) return;
-        const verdict = touchGuard(body ? body.scrollTop : 0, body ? body.scrollHeight : 0, body ? body.clientHeight : 0, dy, !!body);
-        if (verdict === 'prevent' && ev.cancelable) ev.preventDefault();
-      }
-      _portalHide() {
-        const p = this._portal;
-        if (!p) return;
-        this._portal = null;
-        p.unlock();
-        p.host.remove();
-      }
-      _settingsRequest(ev) {
-        const room = ev && ev.detail ? ev.detail.room : '';
-        if (!this._config || this._config.mode !== 'room-head' || this._config.room !== room) return;
-        this._opener = ev.detail.opener || null;
-        settingsOpen(this._ui, room);
-        this._paint();
-      }
-      _settingsClose() {
-        if (!this._ui.settings) return;
-        const opener = this._opener;
-        this._opener = null;
-        settingsClose(this._ui);
-        this._paint();
-        // Back to whatever opened it, if it is still on the page (the Presence link); else the gear, via ui.focus.
-        if (opener && opener.isConnected && typeof opener.focus === 'function') { opener.focus(); this._ui.focus = null; }
-      }
-      _settingsKey(ev) {
-        if (!this._ui.settings || !ev) return;
-        if (ev.key === 'Escape') { ev.preventDefault(); this._settingsClose(); return; }
-        if (ev.key !== 'Tab') return;
-        const list = this._sheetControls();
-        const at = list.indexOf(this._sheetRoot().activeElement);
-        const to = tabTarget(at, list.length, ev.shiftKey);
-        if (to < 0) return;
-        ev.preventDefault();
-        list[to].focus();
       }
       // ── cameras ──
       // The live stream is a real element, and moving or re-creating it restarts the video. So a camera card is
@@ -3911,7 +3740,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
           status.textContent = "Couldn't play this recording";
         }
       }
-      // ── top guard and sheet fit ──
+      // ── top guard ──
       _topProbeLater() {
         if (!this._config || !HEAD_MODES.includes(this._config.mode) || this._topTimers) return;
         // HA and Material You build the header asynchronously: look again as it settles. The probe itself is cheap.
@@ -3938,7 +3767,6 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       _topProbe() {
         if (!this.isConnected || typeof getComputedStyle !== 'function' || !this._config || !HEAD_MODES.includes(this._config.mode)) return;
         const targets = [...this._root.querySelectorAll('[data-act]')]
-          .filter((el) => !el.closest('.ovl'))
           .map((el) => el.getBoundingClientRect())
           .map((r) => ({ left: r.left, top: r.top, right: r.right, bottom: r.bottom }));
         const need = coverNeed(this._headerBlockers(), targets, this._ui.top);
@@ -3947,16 +3775,6 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
           this._ui.top = need;
           this._paint();
         }
-      }
-      // After a paint with the sheet open: if the overlay is not the viewport (an ancestor contains it), size and lift
-      // the sheet from the overlay's real rect. Otherwise the CSS rules stand.
-      _fitSheet() {
-        const ovl = this._root.querySelector('.ovl');
-        if (!ovl || typeof window === 'undefined') return;
-        const fit = sheetFit(window.innerHeight, ovl.getBoundingClientRect());
-        if (!fit) return;
-        ovl.style.setProperty('--sheet-inset', `${fit.inset}px`);
-        ovl.style.setProperty('--sheet-max', `${fit.max}px`);
       }
       // ── tab bar placement ──
       _tabbarProbeLater() {
@@ -4132,16 +3950,6 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         if (el.dataset.act === 'camera-rec') { this._recOpen(el.dataset.camera, false); return; }
         if (el.dataset.act === 'camera-rec-refresh') { this._recOpen(el.dataset.camera, true); return; }
         if (el.dataset.act === 'camera-clip') { this._playClip(el.dataset.camera, el.dataset.clip); return; }
-        if (el.dataset.act === 'settings-open') {
-          window.dispatchEvent(new CustomEvent('pulse-card:settings', { detail: { room: el.dataset.room, opener: el } }));
-          return;
-        }
-        if (el.dataset.act === 'settings-close') { this._settingsClose(); return; }
-        if (el.dataset.act === 'lights-toggle') {
-          this._ui.open = !this._ui.open;
-          this._paint();
-          return;
-        }
         if (el.type === 'range') return;
         this._act(el);
       }
