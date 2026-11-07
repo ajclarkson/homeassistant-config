@@ -5035,13 +5035,34 @@ ok('day plan: the schedule draws areas by warmth, the target step line, the dimm
   assert.equal(countOf(html, /class="plan-heat"/g), 2, 'a heating bar per span');
 });
 
+ok('day plan: hour labels that would touch the now label are hidden', () => {
+  const x = (min) => min / 1440 * 326;
+  assert.deepEqual(P.planHours(x(970)), [0, 6, 12], '16:10: 18 sits beside now');
+  assert.deepEqual(P.planHours(x(600)), [0, 6, 12, 18]);
+  assert.deepEqual(P.planHours(x(10)), [6, 12, 18], 'just after midnight: 00 is covered');
+  assert.deepEqual(P.planHours(x(375)), [0, 12, 18], '06:15: 06 is covered');
+  const html = planHtml('schedule', { heatData: heatData() });
+  assert.equal(countOf(html, /<text[^>]*>now<\/text>/g), 1);
+});
+
+ok('day plan: the heating bar bridges gaps under 10 min, then drops spans under 5 min', () => {
+  assert.deepEqual(P.tidyHeatSpans([[60, 70], [78, 90]]), [[60, 90]], 'an 8 min gap is bridged');
+  assert.deepEqual(P.tidyHeatSpans([[60, 70], [80, 90]]), [[60, 70], [80, 90]], 'a 10 min gap is not');
+  assert.deepEqual(P.tidyHeatSpans([[60, 63], [200, 210]]), [[200, 210]], 'a 3 min blip goes');
+  assert.deepEqual(P.tidyHeatSpans([[60, 63], [66, 69]]), [[60, 69]], 'blips that merge into 9 min stay');
+  assert.deepEqual(P.tidyHeatSpans([[60, 65]]), [[60, 65]], 'exactly 5 min stays');
+  assert.deepEqual(P.tidyHeatSpans([[200, 210], [60, 90], [-5, 0], [50, 50], [1430, 1500]]), [[60, 90], [200, 210], [1430, 1440]], 'unsorted, empty and out-of-day spans are cleaned');
+  assert.deepEqual(P.tidyHeatSpans([]), []);
+  assert.throws(() => P.tidyHeatSpans(null), /list of spans/);
+});
+
 ok('day plan: the card says what the room is doing and the next blocks trail their temperature', () => {
   const html = planHtml('schedule', { heatData: heatData() });
   assert.match(html, /plan-big[^>]*>18\.4°</);
   assert.match(html, />Day · 18\.0°</);
   assert.match(html, />until 16:15 · radiator idle</);
   const rows = [...html.matchAll(/class="hm-rt">([^<]*)<\/div><div class="hm-rs">([^<]*)<\/div><\/div><span class="hm-val num">([^<]*)</g)].map((m) => m.slice(1));
-  assert.deepEqual(rows, [['Comfort', 'From 16:15', '20.0°'], ['Night', 'From 22:00', '16.5°']]);
+  assert.deepEqual(rows, [['Next: Comfort', 'From 16:15', '20.0°'], ['Then: Night', 'From 22:00', '16.5°']]);
   assert.match(planHtml('schedule', undefined, { temp: 18.4, hvac_action: 'heating' }), />until 16:15 · radiator heating</);
   // Late in the evening only one block is left, and with none left the rows go.
   assert.equal(countOf(planHtml('schedule_wrap'), /class="hm-rs">From/g), 0);
@@ -5061,6 +5082,7 @@ ok('day plan: an override is drawn in the tint over its span with the replaced p
   assert.match(html, new RegExp(`class="plan-mode-t num" style="color:#f2c46b"`));
   const rows = [...html.matchAll(/class="hm-rs">([^<]*)</g)].map((m) => m[1]);
   assert.deepEqual(rows.slice(0, 2), ['From 19:00 · schedule resumes', 'From 22:00']);
+  assert.deepEqual([...html.matchAll(/class="hm-rt">([^<]*)</g)].map((m) => m[1]).slice(0, 2), ['Next: Comfort', 'Then: Night'], 'the end of an override leads with Next too');
   const { now, hass } = planAt('manual');
   const chosen = P.render('heating', { room: 'parlour' }, { ...hass, states: { ...hass.states, 'input_select.parlour_heating_manual_mode': { state: 'comfort', attributes: {} } } }, now);
   assert.equal(footnote(chosen), 'Comfort 20.0° until 19:00, then back to the schedule');

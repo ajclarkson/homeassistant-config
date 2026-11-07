@@ -269,7 +269,7 @@
       planNow: 'now', heatedToday: 'Heated today', radiatorHeating: 'radiator heating', radiatorIdle: 'radiator idle',
       planMode: (mode, temp) => `${mode} · ${temp}°`,
       planUntil: (time) => `until ${time}`, planByHand: (time) => `by hand until ${time}`, planHeld: 'held for now',
-      planFrom: (time) => `From ${time}`, planResumes: (time) => `From ${time} · schedule resumes`,
+      planFrom: (time) => `From ${time}`, planNext: (mode) => `Next: ${mode}`, planThen: (mode) => `Then: ${mode}`, planResumes: (time) => `From ${time} · schedule resumes`,
       planLabel: (mode, temp, until) => `Today's heating plan. Now ${mode} ${temp} degrees${until ? ` until ${until}` : ''}.`,
       hoursMinutes: (h, min) => (min ? `${h} h ${min} min` : `${h} h`), minutes: (min) => `${min} min`,
       planMissing: 'There is no heating plan to show yet, so the day is not drawn',
@@ -769,7 +769,8 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 .hm-row:focus-visible,.hm-card:focus-visible,.hm-line:focus-visible{outline:2px solid ${TOKENS.link};outline-offset:-2px}
 .hm-card{background:${TOKENS.surface};border-radius:20px;padding:16px;display:block;color:inherit;text-decoration:none}
 .plan-card{padding-bottom:0}
-.plan-card .segs{margin:12px 0 16px}
+.hm-card .segs{background:${TOKENS.control};margin:12px 0 16px}
+.hm-card .seg.on{background:${TOKENS.controlEdge};color:${TOKENS.text};box-shadow:0 1px 3px ${TOKENS.bg}}
 .plan-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .plan-big{font-size:44px;line-height:48px;font-weight:300;letter-spacing:-1px}
 .plan-mode{display:flex;flex-direction:column;align-items:flex-end;text-align:right}
@@ -2752,6 +2753,13 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   const HEAT_BUCKET_MS = 5 * 60000; // one drawn point per five minutes keeps a day under 300 points
   const HEAT_REFRESH_MS = 5 * 60000;
   const HEAT_RETRY_MS = 5 * 60000;
+  // Axis labels are 10px text; these half-widths are a little generous so a label is hidden rather than touching.
+  const PLAN_NOW_HALF_W = 14;
+  const PLAN_HOUR_HALF_W = 9;
+  const PLAN_LABEL_GAP = 4;
+  // Heating bar tidy-up: bridge off-gaps shorter than this, then drop blips shorter than HEAT_SPAN_MIN (in that order).
+  const HEAT_GAP_MERGE_MIN = 10;
+  const HEAT_SPAN_MIN = 5;
   const PLAN_DATE = /^\d{4}-\d{2}-\d{2}$/;
   const PLAN_CLOCK = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
@@ -2955,6 +2963,32 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const d = isObj(ui) ? ui.heatData : null;
     return isObj(d) && d.day === zonedClock(view.now, view.tz).date ? d : null;
   }
+  // The spans the bar draws: spans split by a gap under HEAT_GAP_MERGE_MIN become one, then any span under
+  // HEAT_SPAN_MIN is dropped. Merging first, so a run of short bursts that adds up to real heating survives.
+  function tidyHeatSpans(spans) {
+    if (!Array.isArray(spans)) throw new Error('pulse-card: tidyHeatSpans needs a list of spans');
+    const sorted = spans.filter((s) => Array.isArray(s) && Number.isFinite(s[0]) && Number.isFinite(s[1]) && s[1] > s[0])
+      .map((s) => [Math.max(0, s[0]), Math.min(DAY_MIN, s[1])]).filter((s) => s[1] > s[0]).sort((x, y) => x[0] - y[0]);
+    const merged = [];
+    for (const [a, b] of sorted) {
+      const last = merged[merged.length - 1];
+      if (last && a - last[1] < HEAT_GAP_MERGE_MIN) last[1] = Math.max(last[1], b);
+      else merged.push([a, b]);
+    }
+    return merged.filter(([a, b]) => b - a >= HEAT_SPAN_MIN);
+  }
+  // The hours (0, 6, 12, 18) whose label does not run into the "now" label centred on nowLabelX (already clamped
+  // to the picture). The 00 label is left-anchored, the others centred.
+  function planHours(nowLabelX) {
+    const lo = nowLabelX - PLAN_NOW_HALF_W - PLAN_LABEL_GAP;
+    const hi = nowLabelX + PLAN_NOW_HALF_W + PLAN_LABEL_GAP;
+    return [0, 6, 12, 18].filter((h) => {
+      const x = planX(h * 60);
+      const from = h === 0 ? x : x - PLAN_HOUR_HALF_W;
+      const to = h === 0 ? x + 2 * PLAN_HOUR_HALF_W : x + PLAN_HOUR_HALF_W;
+      return to < lo || from > hi;
+    });
+  }
   const heatedMinutes = (spans) => Math.round(spans.reduce((sum, [a, b]) => sum + Math.max(0, b - a), 0));
 
   // The picture. Plan areas (not under an override), the future dimmed, the step line (dashed under an override,
@@ -3002,10 +3036,11 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     if (pts.length >= 2) out += `<path class="plan-room" d="${pts.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join('')}" fill="none" stroke="${text}" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>`;
     out += `<path d="M${nowX.toFixed(1)} 0V${PLAN_PLOT_H}" stroke="${text}" stroke-width="1" stroke-dasharray="2 3" opacity=".6"/>`;
     if (pts.length) out += `<circle class="plan-dot" cx="${pts[pts.length - 1][0].toFixed(1)}" cy="${pts[pts.length - 1][1].toFixed(1)}" r="4" fill="${text}" stroke="${surface}" stroke-width="2"/>`;
-    if (data && data.spans) for (const [a, b] of data.spans) out += `<rect class="plan-heat" x="${planX(a).toFixed(1)}" y="${PLAN_PLOT_H + 4}" width="${Math.max(1.5, planX(b) - planX(a)).toFixed(1)}" height="4" rx="2" fill="${heat}"/>`;
+    if (data && data.spans) for (const [a, b] of tidyHeatSpans(data.spans)) out += `<rect class="plan-heat" x="${planX(a).toFixed(1)}" y="${PLAN_PLOT_H + 4}" width="${Math.max(1.5, planX(b) - planX(a)).toFixed(1)}" height="4" rx="2" fill="${heat}"/>`;
     const label = (x, s, anchor, fill, weight) => `<text x="${x.toFixed(1)}" y="${PLAN_H - 2}" fill="${fill}" font-size="10"${weight ? ` font-weight="${weight}"` : ''} text-anchor="${anchor}">${s}</text>`;
-    for (const h of [0, 6, 12, 18]) if (h === 0 || Math.abs(planX(h * 60) - nowX) > 18) out += label(planX(h * 60), String(h).padStart(2, '0'), h === 0 ? 'start' : 'middle', sec);
-    out += label(Math.max(10, Math.min(PLAN_W - 10, nowX)), esc(COPY.room.planNow), 'middle', text, 600);
+    const nowLabelX = Math.max(PLAN_NOW_HALF_W, Math.min(PLAN_W - PLAN_NOW_HALF_W, nowX));
+    for (const h of planHours(nowLabelX)) out += label(planX(h * 60), String(h).padStart(2, '0'), h === 0 ? 'start' : 'middle', sec);
+    out += label(nowLabelX, esc(COPY.room.planNow), 'middle', text, 600);
     const endMs = view.eff ? view.eff.until : view.plan.active.until;
     const aria = COPY.room.planLabel(COPY.room.heatingModes[view.plan.active.mode], fmt1(t(view.plan.active.mode)), endMs === null ? '' : clockText(zonedClock(endMs, view.tz).min));
     return `<svg class="plan" viewBox="0 0 ${PLAN_W} ${PLAN_H}" width="100%" role="img" aria-label="${esc(aria)}" style="display:block;margin-top:12px">${out}</svg>`;
@@ -3024,7 +3059,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const sub = [when, radiator].filter(Boolean).join(' · ');
     const big = m.temp !== null ? `${fmt1(m.temp)}°` : '–';
     const head = `<div class="plan-head"><span class="num plan-big">${esc(big)}</span><span class="plan-mode"><span class="plan-mode-t num"${view.eff ? ` style="color:${TOKENS.tint}"` : ''}>${esc(COPY.room.planMode(label, temp))}</span>${sub ? `<span class="plan-mode-s">${esc(sub)}</span>` : ''}</span></div>`;
-    const rows = planNext(view).map((n) => hmRow({ title: COPY.room.heatingModes[n.mode], sub: n.resumes ? COPY.room.planResumes(clockText(n.at)) : COPY.room.planFrom(clockText(n.at)), value: `${fmt1(view.temps[n.mode])}°` })).join('');
+    const rows = planNext(view).map((n, i) => hmRow({ title: (i === 0 ? COPY.room.planNext : COPY.room.planThen)(COPY.room.heatingModes[n.mode]), sub: n.resumes ? COPY.room.planResumes(clockText(n.at)) : COPY.room.planFrom(clockText(n.at)), value: `${fmt1(view.temps[n.mode])}°` })).join('');
     return `<div class="hm-card plan-card">${head}${planSvg(view, data, m.temp)}${control}${rows ? hmList(rows, true) : ''}</div>`;
   }
   const planNote = (why) => own({ missing: COPY.room.planMissing, stale: COPY.room.planStale, invalid: COPY.room.planInvalid }, why) || COPY.room.planInvalid;
@@ -4160,7 +4195,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return disclosureStore[id] === true;
   }
 
-  const api = { parsedAttr, disclosureStore, toggleDisclosure, setOptimise, trackHass, depsUnchanged, makeRenderGate, RENDER_MAX_AGE_MS, deriveScenes, sceneRegistry, ROOM_TABLE, lightsStory, lightsState, verdictFor, houseActivity, parseHistory, readHistory, sentenceFor, roomActivity, splitSentence, timelineLead, unexplainedReasons, REASON_TEXT, UNDECLARED, SUPPRESS_SOURCES, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, SETTINGS_PATH, takesTaps, invisibleControl, disarm, rearm, coverNeed, topGuard, HEAD_MODES, TOP_GUARD_MAX, CAMERAS_PATH, PENDING_MS, cameraParts, cameraToggle, cameraPending, perform, pendingStart, pendingFor, pendingKey, markPending, ERROR_MS, haptic, tapHaptic, HAPTIC_TYPES, HAPTICS, ACT_HAPTIC, parseClips, frigateClipsId, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, GARDEN_ORDER, ALL_ROOM_KEYS, THEME_LABELS, THEME_ICON, ICON, SUBSYSTEMS, subsystemOf, placed, gardenModel, gardenSub, themeSource, shortDate, ALLOWED, writeAllowed, HOUSE_NUMBERS, HOUSE_MODIFIER, HOUSE_VACATION_HOURS, CAMERAS, PTZ_DIRS, DEVICE_REASONS, ROOM_SETTINGS, MO_TOGGLES, settingFor, render, priceColour, PRICE_AT, PRICE_EXTREME_P, THEMES, COLOUR_KEYS, DEFAULT_THEME, TOKENS, COPY, checkThemes, themeOf, useTheme, colour, resolveVars, styleFor, roomModel, attentionItems, handleAction, HEATING_MODES, heatingLock, setHeatingMode, zonedClock, parsePlan, planSegments, dayPlan, planNext, parseHeatHistory, heatRequest, makeHeatLoader, HEAT_REFRESH_MS, HEAT_RETRY_MS, callService, num, parseList };
+  const api = { parsedAttr, disclosureStore, toggleDisclosure, setOptimise, trackHass, depsUnchanged, makeRenderGate, RENDER_MAX_AGE_MS, deriveScenes, sceneRegistry, ROOM_TABLE, lightsStory, lightsState, verdictFor, houseActivity, parseHistory, readHistory, sentenceFor, roomActivity, splitSentence, timelineLead, unexplainedReasons, REASON_TEXT, UNDECLARED, SUPPRESS_SOURCES, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, SETTINGS_PATH, takesTaps, invisibleControl, disarm, rearm, coverNeed, topGuard, HEAD_MODES, TOP_GUARD_MAX, CAMERAS_PATH, PENDING_MS, cameraParts, cameraToggle, cameraPending, perform, pendingStart, pendingFor, pendingKey, markPending, ERROR_MS, haptic, tapHaptic, HAPTIC_TYPES, HAPTICS, ACT_HAPTIC, parseClips, frigateClipsId, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, GARDEN_ORDER, ALL_ROOM_KEYS, THEME_LABELS, THEME_ICON, ICON, SUBSYSTEMS, subsystemOf, placed, gardenModel, gardenSub, themeSource, shortDate, ALLOWED, writeAllowed, HOUSE_NUMBERS, HOUSE_MODIFIER, HOUSE_VACATION_HOURS, CAMERAS, PTZ_DIRS, DEVICE_REASONS, ROOM_SETTINGS, MO_TOGGLES, settingFor, render, priceColour, PRICE_AT, PRICE_EXTREME_P, THEMES, COLOUR_KEYS, DEFAULT_THEME, TOKENS, COPY, checkThemes, themeOf, useTheme, colour, resolveVars, styleFor, roomModel, attentionItems, handleAction, HEATING_MODES, heatingLock, setHeatingMode, zonedClock, parsePlan, planSegments, dayPlan, planNext, planHours, tidyHeatSpans, parseHeatHistory, heatRequest, makeHeatLoader, HEAT_REFRESH_MS, HEAT_RETRY_MS, callService, num, parseList };
   root.PulseLib = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 
