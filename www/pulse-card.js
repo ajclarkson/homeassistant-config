@@ -2724,7 +2724,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const guest = state(hass, HOUSE_MODIFIER) === 'guest';
     const all = (v, over = {}) => Object.assign(Object.fromEntries(CAMERAS.map((c) => [c.k, v])), over);
     // `reason` is the short why for the Now card, whose title already says on or off.
-    if (mode === 'away') return guest ? { text: 'House is away, but a guest is staying so cameras are left as they are', reason: 'Guest staying, so left as they are', want: null } : { text: 'House is away · cameras on', reason: 'On while the house is away', want: all(true) };
+    if (mode === 'away') return guest ? { text: 'House is away, but a guest is staying · cameras off', reason: 'Off while a guest is staying', want: all(false) } : { text: 'House is away · cameras on', reason: 'On while the house is away', want: all(true) };
     if (mode === 'sleep') return { text: 'House is asleep · only the kitchen camera is on, for Mo', reason: 'Only the kitchen is on overnight, for Mo', want: all(false, { kitchen: true }) };
     if (mode === 'normal') return { text: 'House is at home · cameras off', reason: "Off while someone's home", want: all(false) };
     return { text: 'Cameras follow the house mode', reason: 'Following the house mode', want: null };

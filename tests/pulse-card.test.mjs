@@ -3908,7 +3908,10 @@ ok('cameras card sub line gives the reason per state, never restating the title'
   assert.match(card(privacy(allPriv, 'normal')), /All cameras off<\/div>/);
   assert.equal(sub(privacy(allPriv, 'normal')), 'Off while someone&#39;s home');
   assert.equal(sub(privacy({}, 'away')), 'On while the house is away');
-  assert.equal(sub(privacy({}, 'away', { 'input_select.house_active_mode_modifier': b('guest') })), 'Guest staying, so left as they are');
+  const guestAway = { 'input_select.house_active_mode_modifier': b('guest') };
+  assert.equal(sub(privacy(allPriv, 'away', guestAway)), 'Off while a guest is staying');
+  assert.equal(sub(privacy({}, 'away', guestAway)), 'Changed by hand · usually off while a guest is staying', 'cameras on with a guest while away is a deviation');
+  assert.match(P.render('cameras-head', {}, privacy(allPriv, 'away', guestAway), NOW), /House is away, but a guest is staying · cameras off/);
   assert.equal(sub(privacy({ parlour: 1, home_office: 1 }, 'sleep')), 'Only the kitchen is on overnight, for Mo');
   assert.equal(sub(privacy(allPriv, 'unknown_mode')), 'Following the house mode');
   assert.equal(sub(privacy({ parlour: 1, kitchen: 1 }, 'normal')), 'Changed by hand · usually off while someone&#39;s home');
