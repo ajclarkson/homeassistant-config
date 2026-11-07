@@ -330,13 +330,16 @@ ok('Recent activity rows by kind: acted plain, declined muted, guard muted, fail
   const failed = histEntry(5, { kind: 'action_failed', decision: '', reason: '', outcome: undefined, detail: { failure: 'error', action: 'scene.turn_on', entity: 'scene.kitchen_all' } });
   const entries = [histEntry(1), histEntry(2), luxHigh(3), abort, failed];
   const html = P.render('room-feed', { room: 'kitchen' }, mk(histSensor('kitchen', entries, {})), NOW);
-  // A row: the subject and time on the first line, the sentence in its tone's colour on the second.
-  const feedLine = (time, tone, sentence) => new RegExp(`<span class="hm-time num">${time}</span></div><div class="hm-l2" style="color:${tone}">${sentence}`);
-  assert.match(html, feedLine('18:41', '#e8ebef', 'Lights off · room empty <b>x2</b>'));
-  assert.match(html, feedLine('18:39', '#a3adba', 'Stayed off: bright enough \\(85 lx, on at 40 or below\\)'));
-  assert.match(html, feedLine('18:38', '#a3adba', 'Held back</div>'), 'a guard is routine: muted on a room page, not amber');
-  assert.match(html, feedLine('18:37', '#f2b84b', 'scene\\.kitchen_all couldn&#39;t be controlled \\(turn on\\)'));
-  assert.equal((html.match(/class="hm-row act"/g) || []).length, 4, 'one row per distinct entry; homerun stores no plumbing, so the card has nothing to hide');
+  // A row: the time, the dot (kind in the class), then the subject in bold, the verb part and the reason part.
+  const line = (time, kind, text) => new RegExp(`<div class="tl-row ${kind}"><span class="tl-t num">${time}</span><span class="tl-rail" aria-hidden="true"><i class="tl-dot"[^>]*></i></span><div class="tl-b" style="color:[^"]*">${text}`);
+  assert.match(html, line('18:41', 'acted', '<b class="tl-s">Lights</b> off<span style="color:#a3adba"> · room empty</span> <span class="tl-n">x2</span>'));
+  assert.match(html, line('18:39', 'declined', '<b class="tl-s">Lights</b> stayed off: bright enough \\(85 lx, on at 40 or below\\)</div>'));
+  assert.match(html, line('18:38', 'declined', '<b class="tl-s">Lights</b> held back</div>'), 'a guard is routine: a quiet row on a room page, not amber');
+  assert.match(html, line('18:37', 'problem', '<b class="tl-s">Lights</b> couldn&#39;t be controlled \\(turn on\\)'));
+  assert.match(html, /class="tl-row acted">[^]*?class="tl-b" style="color:#e8ebef"/);
+  assert.match(html, /class="tl-row declined">[^]*?class="tl-b" style="color:#a3adba"/);
+  assert.match(html, /class="tl-row problem">[^]*?class="tl-b" style="color:#f2b84b"/);
+  assert.equal((html.match(/class="tl-row /g) || []).length, 4, 'one row per distinct entry; homerun stores no plumbing, so the card has nothing to hide');
   assert.match(html, /<h2>Activity<\/h2>/);
   assert.doesNotMatch(html, /⊘/);
   assert.match(P.render('room-feed', { room: 'kitchen' }, mk(histSensor('kitchen', [])), NOW), /Nothing recorded for this room yet/);
@@ -532,15 +535,15 @@ ok('House feed reads sensor.house_history, says where, and a stored info_decisio
   const stale = { 'sensor.info_decision_feed': { state: 'x', attributes: { entries: JSON.stringify([{ loc: 'kitchen', ts: '2026-10-25T18:20:00+00:00', sentence: 'OLD FEED SENTENCE' }]) } } };
   const hass = mk({ ...histSensor('house', [histEntry(1, { location: 'kitchen' }), histEntry(5, { location: 'house', subsystem: 'energy', decision: 'spin', reason: 'wheels_spun', automation_id: 'house:wheel' })]), ...stale });
   const feed = P.render('feed', {}, hass, NOW);
-  assert.match(feed, /<span class="hm-subj">Kitchen<\/span><span class="hm-time num">18:41<\/span><\/div><div class="hm-l2"[^>]*>Lights off · room empty/);
-  assert.match(feed, /<span class="hm-subj">Energy<\/span><span class="hm-time num">18:37<\/span><\/div><div class="hm-l2"[^>]*>Spun the Octopus wheels/, 'whole-house entries carry their subsystem noun');
+  assert.match(feed, /<span class="tl-t num">18:41<\/span>[^]*?<b class="tl-s">Kitchen<\/b> lights off<span style="color:#a3adba"> · room empty<\/span>/);
+  assert.match(feed, /<span class="tl-t num">18:37<\/span>[^]*?<b class="tl-s">Energy<\/b> spun the Octopus wheels/, 'whole-house entries carry their subsystem noun');
   assert.doesNotMatch(feed, /OLD FEED SENTENCE/, 'the old feed sensor is no longer read');
   assert.match(P.render('feed', {}, house([]), NOW), /Nothing recorded yet/);
   assert.match(P.render('feed', {}, mk(), NOW), /Nothing recorded yet[\s\S]*History unavailable/, 'no sensor: say so rather than imply a quiet house');
   assert.match(P.render('feed', {}, house([], { schema: 'nope' }), NOW), /History unreadable/);
   const declined = P.render('feed', {}, house([luxHigh(2)]), NOW);
-  assert.match(declined, /<span class="hm-subj">Kitchen<\/span>[\s\S]*?class="hm-l2" style="color:#a3adba">Stayed off: bright enough/, 'a rule that chose not to act reads muted, as on the room page');
-  assert.match(P.render('room-feed', { room: 'kitchen' }, mk({ ...histSensor('kitchen', [histEntry(1)]) }), NOW), /Lights off · room empty/);
+  assert.match(declined, /<b class="tl-s">Kitchen<\/b> stayed off: bright enough/, 'a rule that chose not to act reads muted, as on the room page');
+  assert.match(P.render('room-feed', { room: 'kitchen' }, mk({ ...histSensor('kitchen', [histEntry(1)]) }), NOW), /<b class="tl-s">Lights<\/b> off<span style="color:#a3adba"> · room empty/);
 });
 
 ok('unknown room and unknown mode fail loudly', () => {
@@ -1066,17 +1069,17 @@ ok('House electricity widget: a mini chart of the next 9 half-hour slots, curren
   assert.deepEqual([...neg.matchAll(/class="hm-bar[ "][^>]*height:(\d+)px/g)].map((m) => +m[1]), [4, 4, 44], 'zero and negative prices keep a stub; negative keeps its colour');
 });
 
-ok('Activity rows: the subject is 17px semibold, the sentence 15px so a typical sentence fits one line', () => {
-  assert.match(P.STYLE, /\.hm-subj\{font-size:17px;line-height:22px;font-weight:600/);
-  assert.match(P.STYLE, /\.hm-l2\{font-size:15px;line-height:20px\}/);
+ok('Activity rows: the sentence is 15px/20px with the subject semibold, so a typical sentence fits one line', () => {
+  assert.match(P.STYLE, /\.tl-b\{font-size:15px;line-height:20px/);
+  assert.match(P.STYLE, /\.tl-s\{font-weight:600\}/);
 });
 
 ok('House feed limited to 3 rows, repeats collapse', () => {
   const e = (i, over) => histEntry(i, over);
   const entries = [e(1, { location: 'bathroom' }), e(2, { location: 'bathroom' }), e(3, { location: 'kitchen', decision: 'turn_on', reason: 'occupancy_on' }), e(4, { location: 'hallway_downstairs' }), e(5, { location: 'home_office' })];
   const html = P.render('feed', {}, mk(histSensor('house', entries)), NOW);
-  assert.equal(count(html, /class="hm-row act"/g), 3);
-  assert.match(html, /<b>x2<\/b>/);
+  assert.equal(count(html, /class="tl-row /g), 3);
+  assert.match(html, /<span class="tl-n">x2<\/span>/);
   assert.doesNotMatch(html, /Home office/);
 });
 
@@ -1609,6 +1612,19 @@ ok('the occupancy row on every room page says Occupied or Empty; no bed icon any
   assert.match(rows, /Occupied<\/div>/);
 });
 
+ok('Presence row: no trailing value when nothing holds the room; a short hold label when something does', () => {
+  const pres = (over) => P.render('presence', { room: 'parlour' }, withRooms(calmRooms({ parlour: { occupied: true, ...over } }), []), NOW);
+  const free = pres({});
+  assert.match(free, /No holds · empty a few minutes after the last movement/);
+  assert.doesNotMatch(free, /hm-val|Clear/, 'no status word that reads like a button');
+  const bed = pres({ pres_labels: ['Bed occupied'], labels: ['Bed occupied'] });
+  assert.match(bed, /<span class="hm-val num">Bed<\/span>/);
+  assert.match(pres({ pres_labels: ['Doors closed'], labels: ['Doors closed'] }), /<span class="hm-val num">Doors<\/span>/);
+  assert.match(pres({ pres_labels: ['Monitor on'], labels: ['Monitor on'] }), /<span class="hm-val num">Monitor on<\/span>/, 'a hold without a short word shows its own label');
+  assert.match(pres({ pres_labels: ['Bed occupied', 'Doors closed'] }), /<span class="hm-val num">Bed \+1<\/span>/);
+  assert.doesNotMatch(P.render('presence', { room: 'parlour' }, withRooms(calmRooms({ parlour: { occupied: false } }), []), NOW), /hm-val|Clear/, 'an empty room with no holds is quiet too');
+});
+
 ok('undeclared decisions are worded from one table by sentenceFor, with a prettified fallback', () => {
   const und = (decision, reason, over = {}) => ({ ...histEntry(1), outcome: undefined, subsystem: 'heating', decision, reason, ...over });
   const say = (e) => P.sentenceFor(e, mk()).text;
@@ -1619,7 +1635,7 @@ ok('undeclared decisions are worded from one table by sentenceFor, with a pretti
   assert.equal(say(und('constructor', 'toString')), 'Heating constructor · toString', 'slugs cannot reach into object prototypes');
   assert.equal(P.sentenceFor(und('turn_on', 'x'), mk()).tone, 'ok');
   const feed = P.render('feed', {}, mk(histSensor('house', [histEntry(1, { location: 'bedroom', subsystem: 'heating', decision: 'set_mode', reason: 'safety_window_open', outcome: undefined })])), NOW);
-  assert.match(feed, /<span class="hm-subj">Bedroom<\/span>[\s\S]*?>Heating mode changed · window open</);
+  assert.match(feed, /<b class="tl-s">Bedroom<\/b> heating mode changed<span style="color:#a3adba"> · window open<\/span>/);
 });
 
 ok('media players are labelled by device role from the room config, not the entity name', () => {
@@ -1695,7 +1711,7 @@ ok('House type scale: 34/41 title, 20 bold sentence-case section headers, 17 row
   assert.match(css, /\.hm-rt\{font-size:17px/);
   assert.match(css, /\.hm-rs\{font-size:14px;line-height:19px;color:#a3adba/);
   assert.match(css, /\.hm-foot\{[^}]*font-size:13px/);
-  assert.match(css, /\.hm \.num,\.hm-price,\.hm-val,\.hm-time\{font-family:ui-rounded,"SF Pro Rounded",-apple-system,system-ui,sans-serif;font-variant-numeric:tabular-nums\}/);
+  assert.match(css, /\.hm \.num,\.hm-price,\.hm-val\{font-family:ui-rounded,"SF Pro Rounded",-apple-system,system-ui,sans-serif;font-variant-numeric:tabular-nums\}/);
   assert.match(css, /\.hm\{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif/);
   const hm = css.split('\n').filter((l) => /^\.hm/.test(l)).join('\n');
   assert.doesNotMatch(hm, /uppercase|letter-spacing:\.[4-9]/);
@@ -2063,14 +2079,13 @@ ok('list rows have their arithmetic: a 60px row holds the 30px tile and the 22px
   const gap = px(decl(row, 'gap'));
   assert.equal(pad[1], '14px');
   assert.equal(px(decl(rule('.hm-row+.hm-row::before').body, 'left')), px(pad[1]) + tile + gap, 'separator starts at the text column');
-  assert.match(rule('.hm-row.act').body, /align-items:flex-start/, 'the activity tile sits level with the first line');
 });
 
 ok('every fixed height or clipping rule is accounted for (a new one needs its arithmetic)', () => {
   const fixed = cssRules().filter((r) => px(decl(r.body, 'height'))).map((r) => r.sel).sort();
   // Fixed SHAPES that hold no text: dots, icons, avatars, tiles, bars, switch track and knob, slider track and
   // thumb, the 1px visually-hidden helper. No content box has a fixed height.
-  const shapes = ['.clip img', '.dot', '.sw', '.sw::after', '.sr', '.hm-sw', '.hm-sw::after', '.hm-step', '.hm-step-div', '.hm-slider', '.hm-slider::-webkit-slider-runnable-track', '.hm-slider::-webkit-slider-thumb', '.hm-slider::-moz-range-track', '.hm-slider::-moz-range-progress', '.hm-slider::-moz-range-thumb', '.hm-av', '.hm-pd', '.hm-tile', '.hm-bars', '.hm-row+.hm-row::before', '.hm-dp .hm-row::before', '.ptz button'];
+  const shapes = ['.clip img', '.dot', '.sw', '.sw::after', '.sr', '.hm-sw', '.hm-sw::after', '.hm-step', '.hm-step-div', '.hm-slider', '.hm-slider::-webkit-slider-runnable-track', '.hm-slider::-webkit-slider-thumb', '.hm-slider::-moz-range-track', '.hm-slider::-moz-range-progress', '.hm-slider::-moz-range-thumb', '.hm-av', '.hm-pd', '.hm-tile', '.hm-bars', '.hm-row+.hm-row::before', '.hm-dp .hm-row::before', '.ptz button', '.tl-dot', '.tl-row:last-child .tl-rail::before'];
   assert.deepEqual(fixed.filter((f) => f !== '.ptz button'), shapes.filter((f) => f !== '.ptz button').sort());
   const sw = px(decl(rule('.sw').body, 'height'));
   const knob = P.STYLE.match(/\.sw::after\{[^\n]*top:(\d+)px[^\n]*height:(\d+)px/);
@@ -2087,7 +2102,7 @@ ok('every fixed height or clipping rule is accounted for (a new one needs its ar
   for (const sel of ['.hm-back', '.hm-scene']) assert.ok(px(decl(rule(sel).body, 'min-height')) >= 44 && px(decl(rule(sel).body, 'height')) === null, sel);
   assert.equal(px(decl(rule('.hm-scene').body, 'min-height')), 76);
   const clip = cssRules().filter((r) => /overflow:hidden/.test(r.body)).map((r) => r.sel).sort();
-  assert.deepEqual(clip, ['.card', '.hm-list', '.hm-rs', '.hm-rt', '.hm-subj', '.sr'].sort()); // .hm-rt/.hm-rs/.hm-subj: single lines that ellipsise; .hm-list clips the row corners to its 12px radius
+  assert.deepEqual(clip, ['.card', '.hm-list', '.hm-rs', '.hm-rt', '.sr'].sort()); // .hm-rt/.hm-rs: single lines that ellipsise; .hm-list clips the row corners to its 12px radius
   for (const r of cssRules().filter((x) => /overflow:hidden/.test(x.body) && x.sel !== '.sr')) assert.equal(px(decl(r.body, 'height')), null, r.sel);
   for (const sel of ['.hm-row', '.tog', '.link', '.seg', '.wrow', '.row']) assert.ok(px(decl(rule(sel).body, 'min-height')) > 0 && px(decl(rule(sel).body, 'height')) === null, sel);
   // The bar chart: the tallest bar fits its 44px box and a zero or negative price keeps a 4px stub.
@@ -2782,8 +2797,8 @@ ok('a theme switch reads in words (the daily calendar publish is declared ignore
   const entries = [histEntry(1, { ...cal, decision: 'switch_theme', reason: 'calendar_boundary', facts: { theme: 'halloween' } })];
   const html = gr(frontGarden(histSensor(FG, entries)), 'room-feed');
   assert.doesNotMatch(html, /publish|calendar publish|not a calendar boundary/i);
-  assert.match(html, /Theme switched to Halloween · calendar/);
-  assert.equal((html.match(/class="hm-row act"/g) || []).length, 1);
+  assert.match(html, /<b class="tl-s">Lights<\/b> theme switched to Halloween<span style="color:#a3adba"> · calendar/);
+  assert.equal((html.match(/class="tl-row /g) || []).length, 1);
 });
 
 ok('garden YAML: views use the garden template, Mobile links to Pulse, feed and attention wording are in place', () => {
@@ -3712,10 +3727,12 @@ ok('lights note: a declined decision reads time first, no "Didn\'t act" prefix',
   assert.equal(P.REASON_TEXT['lighting:lux_high']({ lux: 85, lux_threshold: 40 }, {}), 'Stayed off: bright enough (85 lx, on at 40 or below)', 'REASON_TEXT is untouched');
 });
 
-ok('presence: the Clear value is unchanged (it is a status, not an action)', () => {
+ok('presence: no trailing value when nothing holds the room, and no action either (supersedes the old Clear pin)', () => {
   const html = P.render('presence', { room: 'parlour' }, withRooms([quietRoom('parlour', { occupied: false, pres_labels: [] })], []), NOW);
-  assert.match(html, /<span class="hm-val num">Clear<\/span>/);
+  assert.doesNotMatch(html, /hm-val|Clear/);
   assert.doesNotMatch(html, /data-act="clear/);
+  const held = P.render('presence', { room: 'parlour' }, withRooms([quietRoom('parlour', { occupied: true, pres_labels: ['Bed occupied'] })], []), NOW);
+  assert.match(held, /<span class="hm-val num">Bed<\/span>/, 'a hold keeps a value: its short label');
 });
 
 // ── Render cost: memoised parses, per-pass room models, skipped renders ──────────────────────────
@@ -3995,45 +4012,137 @@ ok('feed: suppress sources get a plain phrase from a table, unknown sources keep
   assert.equal(text('toString'), 'Stayed off: held off by toString', 'inherited object keys are not sources');
 });
 
-ok('room feed rows: the House Activity rows, led by the subsystem the entry is about', () => {
+const tlRows = (html) => html.split('<div class="tl-row ').slice(1).map((r) => '<div class="tl-row ' + r);
+const dotOf = (row) => row.match(/<i class="tl-dot"([^>]*)><\/i>/)[1];
+
+ok('room feed rows: the timeline, led by the subsystem the entry is about', () => {
   const html = P.render('room-feed', { room: 'kitchen' }, mk(histSensor('kitchen', [histEntry(1), luxHigh(2), histEntry(3, { subsystem: 'weird_new' })])), NOW);
   assert.match(html, /<h2>Activity<\/h2>/);
-  const rows = html.split('<div class="hm-row act">').slice(1);
+  const rows = tlRows(html);
   assert.equal(rows.length, 3);
-  for (const r of rows) assert.match(r, /^<span class="hm-tile" style="[^"]*"><svg[^>]*aria-hidden="true"><path d="[^"]+"\/><\/svg><\/span><div class="hm-text"><div class="hm-l1"><span class="hm-subj">[^<]+<\/span><span class="hm-time num">\d\d:\d\d<\/span><\/div><div class="hm-l2" style="color:#[0-9a-f]{6}">[^<]/);
-  assert.deepEqual(rows.map((r) => r.match(/hm-subj">([^<]+)</)[1]), ['Lights', 'Lights', 'Weird new'], 'the subsystem noun, not the room the page is about');
-  assert.match(rows[1], /hm-l2" style="color:#a3adba">Stayed off/, 'a declined decision is muted text on an idle tile');
-  assert.match(html, new RegExp(P.ICON.dot.replace(/[.]/g, '\\.') + '"'), 'an unknown subsystem gets the neutral dot');
+  assert.deepEqual(rows.map((r) => r.match(/<b class="tl-s">([^<]+)</)[1]), ['Lights', 'Lights', 'Weird'], 'the subsystem noun, not the room the page is about');
+  assert.match(rows[1], /class="tl-b" style="color:#a3adba"/, 'a declined decision reads in secondary text');
+  assert.match(html, /<b class="tl-s">Weird<\/b> new occupancy off/, 'an unknown subsystem: its prettified id leads');
+  assert.doesNotMatch(html, /hm-tile|<svg/, 'no subsystem tiles on activity rows');
   const quiet = P.render('room-feed', { room: 'kitchen' }, mk(), NOW);
   assert.match(quiet, /<div class="hm-row"><div class="hm-text"><div class="hm-rs">Nothing recorded for this room yet<\/div>/);
   assert.match(P.STYLE, /\.feed\{[^\n]*grid-template-columns:44px 16px minmax\(0,1fr\)/, 'the camera card still uses the older feed line');
 });
 
-ok('House activity rows: subject (room short name or subsystem noun) with the time, then the sentence; tile in the subsystem colour', () => {
+ok('House activity rows: subject, verb part, reason part; dot in the subsystem colour', () => {
   const house = [histEntry(1, { location: 'hallway_upstairs' }), luxHigh(2), histEntry(3, { location: 'house', subsystem: 'weird_new' })];
   const html = P.render('feed', {}, mk(histSensor('house', house)), NOW);
-  const rows = html.split('<div class="hm-row act">').slice(1);
+  const rows = tlRows(html);
   assert.equal(rows.length, 3);
-  for (const r of rows) assert.match(r, /^<span class="hm-tile" style="[^"]*"><svg[^>]*aria-hidden="true"><path d="[^"]+"\/><\/svg><\/span><div class="hm-text"><div class="hm-l1"><span class="hm-subj">[^<]+<\/span><span class="hm-time num">\d\d:\d\d<\/span><\/div><div class="hm-l2" style="color:#[0-9a-f]{6}">[^<]/);
-  assert.match(html, /<span class="hm-subj">Hallway up<\/span>/);
-  assert.match(html, /<span class="hm-subj">Weird new<\/span>[\s\S]*?>Weird new occupancy off</, 'unknown subsystem: its prettified id is the subject, with the neutral dot on an idle tile');
-  assert.match(html, new RegExp(P.ICON.dot.replace(/[.]/g, '\\.') + '"'));
-  assert.match(rows[0], /^<span class="hm-tile" style="background:#ffd60a;color:#000000">/, 'lighting: its tile colour and ink');
-  assert.match(rows[0], /class="hm-l2" style="color:#e8ebef"/);
-  assert.match(rows[1], /^<span class="hm-tile" style="background:#2c2c2e;color:#ffd60a">/, 'declined: idle tile, glyph in the subsystem colour');
-  assert.match(rows[1], /class="hm-l2" style="color:#a3adba"/, 'declined sentence is secondary text');
-  assert.match(P.STYLE, /\.hm-row\.act\{align-items:flex-start/, 'the tile is top-aligned with the first line');
-  assert.match(P.STYLE, /\.hm-time\{[^}]*font-size:14px[^}]*color:#a3adba/);
-  assert.match(P.STYLE, /\.hm-l2\{font-size:15px/);
-  assert.match(P.STYLE, /\.hm-subj\{font-size:17px;line-height:22px;font-weight:600/);
+  assert.match(rows[0], /<b class="tl-s">Hallway up<\/b> lights off<span style="color:#a3adba"> · room empty<\/span>/);
+  assert.match(rows[2], /<b class="tl-s">Weird<\/b> new occupancy off/);
+  assert.equal(dotOf(rows[0]), ' style="background:#ffd60a"', 'acted: filled with the subsystem colour');
+  assert.equal(dotOf(rows[1]), ' style="border-color:#ffd60a"', 'declined: a ring in the subsystem colour');
+  assert.match(rows[1], /class="tl-row declined">/);
+  assert.match(rows[1], /class="tl-b" style="color:#a3adba"><b class="tl-s">Kitchen<\/b> stayed off/, 'declined sentence is secondary text');
+  assert.equal(dotOf(rows[2]), ' style="background:#a3adba"', 'no subsystem colour: secondary text');
   const quiet = P.render('feed', {}, mk(), NOW);
   assert.match(quiet, /Nothing recorded yet/);
   assert.match(quiet, /<h2>Activity<\/h2>/);
-  // A declined glyph in a colour that would vanish on the idle tile falls back to secondary text.
+  // A subsystem colour that would vanish on the surface falls back to secondary text.
   const cams = P.render('feed', {}, mk(histSensor('house', [histEntry(1, { location: 'house', subsystem: 'cameras', decision: 'no_action', reason: 'x', outcome: 'declined' })])), NOW);
-  assert.match(cams, /^<div class="p"><div class="hm"><section class="hm-sec"><div class="hm-h"><h2>Activity<\/h2><\/div><div class="hm-list"><div class="hm-row act"><span class="hm-tile" style="background:#2c2c2e;color:#a3adba">/);
+  assert.equal(dotOf(tlRows(cams)[0]), ' style="border-color:#a3adba"');
   const problem = P.render('feed', {}, mk(histSensor('house', [histEntry(1, { kind: 'abort', decision: '', reason: '', outcome: undefined, detail: { abort_kind: 'unhandled_error' }, location: 'house' })])), NOW);
-  assert.match(problem, /class="hm-l2" style="color:#f2b84b">Couldn&#39;t run: it failed unexpectedly</, 'a problem reads in the attention colour');
+  assert.match(problem, /class="tl-row problem"><span class="tl-t num">18:41<\/span><span class="tl-rail" aria-hidden="true"><i class="tl-dot"><\/i><\/span><div class="tl-b" style="color:#f2b84b"><b class="tl-s">[^<]*<\/b>[^<]*Couldn&#39;t run|couldn&#39;t run: it failed unexpectedly/, 'a problem: attention dot and text');
+  assert.match(P.STYLE, /\.tl-row\.problem \.tl-dot\{[^}]*background:#f2b84b/);
+});
+
+ok('timeline CSS: 52px time, 20px rail, 12px dots, 10px gap, 14/12 padding, 2px rail line from the first dot to the last', () => {
+  const row = rule('.tl-row').body;
+  assert.equal(decl(row, 'grid-template-columns'), '52px 20px minmax(0,1fr)');
+  assert.equal(px(decl(row, 'column-gap')), 10);
+  assert.equal(decl(row, 'padding'), '6px 14px 6px 12px');
+  assert.equal(px(decl(rule('.hm-list.tl').body, 'padding').split(' ')[0]), 6, 'the container keeps its 6px vertical padding');
+  const t = rule('.tl-t').body;
+  assert.match(t, /text-align:right/);
+  assert.equal(px(decl(t, 'font-size')), 14);
+  assert.equal(px(decl(t, 'line-height')), px(decl(rule('.tl-b').body, 'line-height')), 'the time shares the first text line');
+  const dot = rule('.tl-dot').body;
+  assert.equal([px(decl(dot, 'width')), px(decl(dot, 'height'))].join('x'), '12x12');
+  const rail = rule('.tl-rail::before').body;
+  assert.equal(px(decl(rail, 'width')), 2);
+  assert.equal(px(decl(rail, 'left')) + 1, 10, 'the line is centred in the 20px column');
+  assert.equal(px(decl(dot, 'left')) + 6, 10, 'and so is the dot');
+  // Line ends sit on the dot centres: the rail cell reaches the row edges, the dot top plus 6 is its centre.
+  assert.equal(px(decl(rule('.tl-rail').body, 'margin').split(' ')[0]), -6);
+  const centre = px(decl(dot, 'top')) + 6;
+  assert.equal(px(decl(rule('.tl-row:first-child .tl-rail::before').body, 'top')), centre);
+  assert.equal(px(decl(rule('.tl-row:last-child .tl-rail::before').body, 'height')), centre);
+  assert.equal(decl(rail, 'background'), '#2f3843');
+  assert.equal(px(decl(rule('.tl-h').body, 'font-size')), 15);
+  assert.match(rule('.tl-h').body, /font-weight:600;color:#a3adba/);
+  assert.match(rule('.tl-b').body, /min-width:0/, 'a long sentence wraps inside its column at 360px');
+});
+
+ok('timeline: day groups, time shown once per minute, subject sharing, hidden decoration', () => {
+  const mins = (m, over) => histEntry(m, over);
+  const day = 24 * 60;
+  const entries = [mins(1), mins(1, { decision: 'turn_on', reason: 'sunset' }), mins(5), mins(day), mins(day + 3), mins(3 * day)];
+  const html = P.render('feed', {}, mk(histSensor('house', entries)), NOW);
+  assert.match(html, /<div class="tl-h">Today<\/div>/);
+  const all = P.render('room-feed', { room: 'kitchen' }, mk(histSensor('kitchen', entries.map((e, i) => ({ ...e, reason: 'r' + i })))), NOW);
+  assert.deepEqual([...all.matchAll(/<div class="tl-h">([^<]*)<\/div>/g)].map((m) => m[1]), ['Today', 'Yesterday', 'Thu 22 Oct']);
+  assert.equal(count(all, /<div class="hm-list tl">/g), 3, 'each day is its own container');
+  const times = [...all.matchAll(/<span class="tl-t num">([^<]*)<\/span>/g)].map((m) => m[1]);
+  assert.deepEqual(times, ['18:41', '', '18:37', '18:42', '18:39', '18:42'], 'a repeated minute in a day group leaves the cell empty');
+  assert.equal(count(all, /<i class="tl-dot"[^>]*><\/i>/g), 6);
+  assert.equal(count(all, /<span class="tl-rail" aria-hidden="true">/g), 6, 'rail and dot are hidden from assistive tech');
+  // The day follows the HA time zone, not the viewer's.
+  const late = [histEntry(1, { ts: '2026-10-25T23:30:00+00:00' })];
+  const nzHass = { ...mk(histSensor('house', late)), config: { time_zone: 'Pacific/Auckland' } };
+  assert.match(P.render('feed', {}, nzHass, Date.parse('2026-10-25T23:45:00Z')), /<div class="tl-h">Today<\/div>[^]*?<span class="tl-t num">12:30<\/span>/);
+  assert.match(P.render('feed', {}, nzHass, Date.parse('2026-10-26T23:45:00Z')), /<div class="tl-h">Yesterday<\/div>/);
+  assert.match(P.render('feed', {}, nzHass, Date.parse('2026-11-05T23:45:00Z')), /<div class="tl-h">Mon 26 Oct<\/div>/);
+});
+
+ok('problem rows never show an entity id: friendly name (case kept), else the room on Home or the noun on a room page', () => {
+  const failed = histEntry(1, { kind: 'action_failed', decision: '', reason: '', outcome: undefined, detail: { failure: 'error', action: 'scene.turn_on', entity: 'scene.kitchen_all' } });
+  const named = (name) => mk({ ...histSensor('house', [failed]), 'scene.kitchen_all': { state: 'unknown', attributes: name ? { friendly_name: name } : {} } });
+  const house = (name) => tlRows(P.render('feed', {}, named(name), NOW))[0];
+  assert.match(house('Kitchen Cabinets'), /<b class="tl-s">Kitchen<\/b> Cabinets couldn&#39;t be controlled \(turn on\)/, 'a capitalised friendly name keeps its case');
+  assert.match(house('hall lamp'), /<b class="tl-s">Kitchen<\/b> hall lamp couldn&#39;t be controlled/, 'a lower-case friendly name is left as it is');
+  assert.match(house(''), /<b class="tl-s">Kitchen<\/b> couldn&#39;t be controlled \(turn on\)/, 'no friendly name: the room');
+  assert.doesNotMatch(house(''), /scene\.kitchen_all/);
+  const roomPage = tlRows(P.render('room-feed', { room: 'kitchen' }, mk({ ...histSensor('kitchen', [failed]) }), NOW))[0];
+  assert.match(roomPage, /<b class="tl-s">Lights<\/b> couldn&#39;t be controlled \(turn on\)/, 'a room page falls back to the subsystem noun');
+  const whole = tlRows(P.render('feed', {}, mk(histSensor('house', [{ ...failed, location: 'house', subsystem: 'energy' }])), NOW))[0];
+  assert.match(whole, /<b class="tl-s">Energy<\/b> couldn&#39;t be controlled/, 'a whole-house entry falls back to the noun');
+  const timeout = histEntry(1, { kind: 'action_failed', decision: '', reason: '', outcome: undefined, detail: { failure: 'ack_timeout', entity: 'light.x' } });
+  assert.match(tlRows(P.render('feed', {}, mk(histSensor('house', [timeout])), NOW))[0], /<b class="tl-s">Kitchen<\/b> didn&#39;t respond/);
+  const guard = histEntry(1, { kind: 'abort', decision: '', reason: 'bed_occupied', outcome: undefined, detail: { abort_kind: 'guard', entity: 'light.unnamed' } });
+  const g = P.render('room-feed', { room: 'kitchen' }, mk(histSensor('kitchen', [guard])), NOW);
+  assert.doesNotMatch(g, /light\.unnamed/, 'a guard leaves out a device it cannot name');
+  const unavailable = histEntry(1, { kind: 'abort', decision: '', reason: '', outcome: undefined, detail: { abort_kind: 'unavailable_input', entity: 'sensor.nameless' } });
+  assert.doesNotMatch(P.render('feed', {}, mk(histSensor('house', [unavailable])), NOW), /sensor\.nameless/);
+});
+
+ok('a subsystem word that only names the room state is dropped after a room subject', () => {
+  assert.deepEqual(P.timelineLead('Parlour', 'Occupancy marked occupied', { noun: 'Occupancy', implied: true }), { lead: 'Parlour', rest: ' marked occupied' });
+  assert.deepEqual(P.timelineLead('Parlour', 'Lights off', { noun: 'Lights' }), { lead: 'Parlour', rest: ' lights off' }, 'a thing (lights) is kept');
+  assert.deepEqual(P.timelineLead('Occupancy', 'Occupancy marked occupied', { noun: 'Occupancy', implied: true }), { lead: 'Occupancy', rest: ' marked occupied' }, 'a subsystem subject is not dropped');
+  const e = histEntry(1, { location: 'parlour', subsystem: 'occupied', decision: 'set_occupied', reason: 'kitchen_motion_detected', outcome: undefined });
+  assert.match(P.render('feed', {}, mk(histSensor('house', [e])), NOW), /<b class="tl-s">Parlour<\/b> marked occupied<span style="color:#a3adba"> · kitchen motion<\/span>/);
+  assert.match(P.render('room-feed', { room: 'parlour' }, mk(histSensor('parlour', [e])), NOW), /<b class="tl-s">Occupancy<\/b> marked occupied/);
+});
+
+ok('sentence split: the first " · " divides the verb part from the reason part; no separator shows it whole', () => {
+  assert.deepEqual(P.splitSentence('Lights off · room empty'), { what: 'Lights off', why: 'room empty' });
+  assert.deepEqual(P.splitSentence('Held back · Hall light · bed occupied'), { what: 'Held back', why: 'Hall light · bed occupied' });
+  assert.deepEqual(P.splitSentence('Stayed off: bright enough (85 lx)'), { what: 'Stayed off: bright enough (85 lx)', why: '' });
+  const lead = (subject, what) => P.timelineLead(subject, what);
+  assert.deepEqual(lead('Parlour', 'Lights off'), { lead: 'Parlour', rest: ' lights off' });
+  assert.deepEqual(lead('Lights', 'Lights off'), { lead: 'Lights', rest: ' off' }, 'the subject is not repeated');
+  assert.deepEqual(lead('House mode', 'House set to away'), { lead: 'House', rest: ' set to away' });
+  assert.deepEqual(lead('Cameras', 'Cameras on'), { lead: 'Cameras', rest: ' on' });
+  assert.deepEqual(lead('Kitchen', 'Halloween animation started'), { lead: 'Kitchen', rest: ' Halloween animation started' }, 'a proper noun keeps its capital');
+  assert.deepEqual(lead('Moments', 'Mo spotted'), { lead: 'Moments', rest: ' Mo spotted' });
+  assert.deepEqual(lead('Mo', 'Moment of truth'), { lead: 'Mo', rest: ' moment of truth' }, 'a word that merely begins with the subject is not the subject');
+  assert.deepEqual(lead('Energy', 'Spun 2 Octopus wheels'), { lead: 'Energy', rest: ' spun 2 Octopus wheels' });
 });
 
 ok('subsystem table: every catalogue subsystem has a noun and an icon that exists; unknown ones fall back', () => {
@@ -4086,11 +4195,11 @@ ok('guard aborts: hidden from the House feed, muted on room pages, never a probl
   const houseGuard = guard(3, { location: 'house', subsystem: 'energy' });
   const house = P.render('feed', {}, mk(histSensor('house', [histEntry(1, { location: 'house', subsystem: 'energy', decision: 'spin', reason: 'wheels_spun' }), houseGuard, guard(4), unhandled, unavailable])), NOW);
   assert.doesNotMatch(house, /Held back/, 'guards never reach the House feed');
-  assert.equal(count(house, /class="hm-row act"/g), 3, 'the other rows stay');
-  assert.match(house, /class="hm-l2" style="color:#f2b84b">Couldn&#39;t run: it failed unexpectedly/, 'real aborts stay in the attention colour');
-  assert.match(house, /class="hm-l2" style="color:#f2b84b">Couldn&#39;t run: .*unavailable/);
+  assert.equal(count(house, /class="tl-row /g), 3, 'the other rows stay');
+  assert.match(house, /class="tl-row problem">[^]*?style="color:#f2b84b"><b class="tl-s">[^<]*<\/b> [Cc]ouldn&#39;t run: it failed unexpectedly/, 'real aborts stay in the attention colour');
+  assert.match(house, /class="tl-row problem">[^]*?style="color:#f2b84b"><b class="tl-s">[^<]*<\/b> [Cc]ouldn&#39;t run: .*unavailable/);
   const room = P.render('room-feed', { room: 'kitchen' }, mk(histSensor('kitchen', [guard(2)])), NOW);
-  assert.match(room, /class="hm-l2" style="color:#a3adba">Held back/);
+  assert.match(room, /class="tl-row declined">[^]*?style="color:#a3adba"><b class="tl-s">[^<]*<\/b> held back/);
   assert.doesNotMatch(room, /color:#f2b84b/);
   assert.equal(P.sentenceFor(guard(1), mk()).tone, 'muted');
   assert.equal(P.sentenceFor(unhandled, mk()).tone, 'warn');
@@ -4104,7 +4213,7 @@ ok('guard aborts: hidden from the House feed, muted on room pages, never a probl
 
 ok('narrow phone (360px): row titles and subtitles ellipsise in their own column; the trailing value and chevron never shrink', () => {
   assert.match(rule('.hm-text').body, /flex:1;min-width:0/);
-  for (const sel of ['.hm-rt', '.hm-rs', '.hm-subj']) assert.match(rule(sel).body, /overflow:hidden;text-overflow:ellipsis/, sel);
+  for (const sel of ['.hm-rt', '.hm-rs']) assert.match(rule(sel).body, /overflow:hidden;text-overflow:ellipsis/, sel);
   assert.match(rule('.hm-rt').body, /white-space:nowrap/);
   assert.match(rule('.hm-val').body, /flex:none/);
   assert.match(rule('.hm-chev').body, /flex:none/);
@@ -4447,6 +4556,14 @@ ok('every theme: tile glyphs read on their fills (3:1), including the declined, 
     assert.notEqual(t.chevron, t.surface);
     assert.ok(ratio(t.chevron, t.surface) >= 1.5, `${name}: the chevron is dim but still there`);
     assert.ok(ratio(t.subEnergy, t.surface) >= 3, `${name}: the Electricity heading on the widget`);
+    // Timeline: the rail is quieter than the dots and text but still visible; every dot reads on the surface (3:1), in its
+    // subsystem colour or, where that would vanish, in secondary text (the attention dot is checked just below).
+    assert.notEqual(t.rail, t.surface);
+    assert.ok(ratio(t.rail, t.surface) >= 1.1 && ratio(t.rail, t.surface) < ratio(t.chevron, t.surface), `${name}: the rail is subtle but there ${ratio(t.rail, t.surface).toFixed(2)}`);
+    for (const [id, s] of Object.entries(Raw.SUBSYSTEMS)) {
+      const dot = ratio(t[s.tile], t.surface) >= 3 ? t[s.tile] : t.textSecondary;
+      assert.ok(ratio(dot, t.surface) >= 3, `${name}: ${id} timeline dot`);
+    }
     assert.ok(ratio(t.attention, t.surface) >= 3, `${name}: the Needs attention header on the page`);
   }
   assert.equal(ratio('#000000', '#ffffff'), 21);
