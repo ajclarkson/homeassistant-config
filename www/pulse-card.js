@@ -256,6 +256,19 @@
       // The short word a presence hold shows beside the Occupied row; a hold with no entry shows its own label.
       holdShort: { 'Bed occupied': 'Bed', 'Doors closed': 'Doors', 'Sonos playing': 'Sonos' },
       holdMore: (n) => ` +${n}`,
+      // Heating mode grid: tile labels by helper option, the line under Auto, and the footnotes.
+      heatingModes: { auto: 'Auto', comfort: 'Comfort', baseline_day: 'Day', baseline_night: 'Night', minimum: 'Minimum' },
+      heatingModeAuto: 'Follows the schedule', heatingModeHolds: 'Holds until the schedule next changes',
+      heatingModeUnavailable: 'The mode helper is unavailable, so a choice cannot be made',
+      heatingLock: {
+        automationOff: 'Heating automation is off for this room, so a choice would change nothing',
+        windowOpen: 'A window or door is open, so the room is held at minimum',
+        houseOff: 'House heating is off, so the room stays at minimum',
+        away: 'The house is away, so heating follows the house',
+        sleep: 'The house is asleep, so heating follows the house',
+        vacation: 'The house is on holiday, so heating follows the house',
+        house: 'Heating follows the house mode, so a choice would change nothing',
+      },
       humidity: 'Humidity', normalTarget: 'Normal target', status: 'Status',
       manual: 'Manual', manualChange: 'Manual change', problem: 'Problem',
       hold: 'Hold', auto: 'Auto', suspended: 'Suspended', pending: 'Pending', heatingAutomationOff: 'Heating automation is off', pendingNote: 'Heating drops to minimum if it stays open',
@@ -773,6 +786,10 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 .hm-scenes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:${HM_GRID_GAP}px}
 .hm-group-row{margin-top:${HM_GROUP_GAP}px}
 .hm-scene{display:flex;flex-direction:column;align-items:flex-start;justify-content:space-between;min-height:76px;padding:12px 14px;border:0;border-radius:16px;font:inherit;font-size:15px;line-height:20px;font-weight:600;text-align:left;cursor:pointer;background:${TOKENS.surface};color:${TOKENS.text};-webkit-tap-highlight-color:transparent}
+.hm-scene.wide{grid-column:1/-1;min-height:64px}
+.hm-scene-t{display:flex;flex-direction:column;gap:2px}
+.hm-scene-s{font-size:13px;line-height:18px;font-weight:500;color:${TOKENS.textSecondary}}
+.hm-scene:disabled{opacity:.5;cursor:default}
 .hm-scene.on{background:${TOKENS.tintFill};box-shadow:inset 0 0 0 1.5px ${TOKENS.tint}}
 .hm-scene.on svg{color:${TOKENS.tint}}
 .hm-scene:focus-visible{outline:2px solid ${TOKENS.link};outline-offset:2px}
@@ -853,6 +870,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       key: 'parlour', kind: 'room', order: 1, area: 'parlour',
       name: 'Parlour', short: 'Parlour', report: true,
       climate: 'climate.parlour_trv', temp: 'sensor.parlour_sensor_climate_temperature', hum: 'sensor.parlour_sensor_climate_humidity', lux: 'sensor.parlour_sensor_motion_illuminance',
+      heatMode: 'input_select.parlour_heating_manual_mode',
       lights: [
         ['light.parlour_light_floor_lamp', 'Floor lamp'], ['light.parlour_light_ceiling_sofa', 'Sofa ceiling'],
         ['light.parlour_light_ceiling_dining', 'Dining ceiling'], ['switch.parlour_plug_table_lamp', 'Table lamp'],
@@ -865,6 +883,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       key: 'kitchen', kind: 'room', order: 2, area: 'kitchen',
       name: 'Kitchen', short: 'Kitchen', report: true,
       climate: 'climate.kitchen_trv', temp: 'sensor.kitchen_sensor_climate_temperature', hum: 'sensor.kitchen_sensor_climate_humidity', lux: 'sensor.kitchen_sensor_motion_illuminance',
+      heatMode: 'input_select.kitchen_heating_manual_mode',
       lights: [['light.kitchen_light_ceiling', 'Ceiling'], ['light.kitchen_light_cooker', 'Cooker'], ['switch.kitchen_light_cabinets', 'Cabinets']],
       media: [['media_player.kitchen', 'Kitchen speaker', 'player']],
       settings: indoor('kitchen', sonosGroup('kitchen')),
@@ -873,6 +892,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       key: 'hallway_downstairs', kind: 'room', order: 3, area: 'hallway_downstairs',
       name: 'Hallway downstairs', short: 'Hallway down', report: true,
       climate: 'climate.hallway_downstairs_trv', temp: 'sensor.hallway_downstairs_sensor_climate_temperature', hum: 'sensor.hallway_downstairs_sensor_climate_humidity', lux: 'sensor.hallway_downstairs_sensor_motion_illuminance',
+      heatMode: 'input_select.hallway_downstairs_heating_manual_mode',
       lights: [['light.hallway_downstairs_light_ceiling', 'Ceiling']],
       media: [],
       settings: indoor('hallway_downstairs'),
@@ -889,6 +909,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       key: 'bedroom', kind: 'room', order: 5, area: 'bedroom',
       name: 'Bedroom', short: 'Bedroom', report: true,
       climate: 'climate.bedroom_trv', temp: 'sensor.bedroom_sensor_climate_temperature', hum: 'sensor.bedroom_sensor_climate_humidity', lux: 'sensor.bedroom_sensor_motion_illuminance',
+      heatMode: 'input_select.bedroom_heating_manual_mode',
       lights: [['light.bedroom_light_sarah_lamp', "Sarah's lamp"], ['light.bedroom_light_adam_lamp', "Adam's lamp"], ['light.bedroom_light_ceiling', 'Ceiling']],
       media: [],
       settings: indoor('bedroom'),
@@ -897,6 +918,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       key: 'bathroom', kind: 'room', order: 6, area: 'bathroom',
       name: 'Bathroom', short: 'Bathroom', report: true,
       climate: 'climate.bathroom_trv', temp: 'sensor.bathroom_sensor_climate_temperature', hum: 'sensor.bathroom_sensor_climate_humidity', lux: 'sensor.bathroom_sensor_motion_illuminance',
+      heatMode: 'input_select.bathroom_heating_manual_mode',
       lights: [['light.bathroom_light_ceiling', 'Ceiling']],
       media: [],
       settings: [
@@ -915,6 +937,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       key: 'home_office', kind: 'room', order: 7, area: 'home_office',
       name: 'Home office', short: 'Home office', report: true,
       climate: 'climate.home_office_trv', temp: 'sensor.home_office_sensor_climate_temperature', hum: 'sensor.home_office_sensor_climate_humidity', lux: 'sensor.home_office_sensor_motion_illuminance',
+      heatMode: 'input_select.home_office_heating_manual_mode',
       lights: [['light.home_office_light_desk_lamp', 'Desk lamp'], ['light.home_office_light_floor_lamp', 'Floor lamp'], ['light.home_office_light_ceiling', 'Ceiling']],
       media: [['media_player.home_office', 'Office speaker', 'player']],
       settings: indoor('home_office', sonosGroup('home_office')),
@@ -923,6 +946,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       key: 'foreign_office', kind: 'room', order: 8, area: 'foreign_office',
       name: 'Foreign office', short: 'Foreign office', report: true,
       climate: 'climate.foreign_office', temp: 'sensor.foreign_office_sensor_climate_temperature', hum: 'sensor.foreign_office_sensor_climate_humidity', lux: 'sensor.foreign_office_sensor_motion_illuminance',
+      heatMode: 'input_select.foreign_office_heating_manual_mode',
       lights: [['light.dig_uno_v3', 'Lights']],
       media: [],
       settings: [
@@ -960,8 +984,22 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   const GARDEN_ORDER = byOrder('garden');
   const isGarden = (key) => Object.prototype.hasOwnProperty.call(ROOMS, key) && ROOMS[key].kind === 'garden';
   // What the shared room code may read from a garden: nothing it would otherwise mistake for a room feature.
-  const GARDEN_ROOM_DEFAULTS = { report: false, climate: '', temp: '', hum: '', lux: '', lights: [], media: [] };
+  const GARDEN_ROOM_DEFAULTS = { report: false, climate: '', temp: '', hum: '', lux: '', lights: [], media: [], heatMode: undefined };
   const ALL_ROOM_KEYS = ROOM_TABLE.map((r) => r.key);
+  // Every room with a climate entity must name its heating-mode helper, and no other room may: a missing name
+  // would silently drop the grid, a stray one would offer a write to nothing.
+  for (const r of ROOM_TABLE) {
+    const want = r.climate ? `input_select.${r.key}_heating_manual_mode` : undefined;
+    if (r.heatMode !== want) throw new Error(`pulse-card: room "${r.key}" heatMode must be ${want === undefined ? 'unset (no climate)' : `"${want}"`}, got ${r.heatMode === undefined ? 'nothing' : `"${r.heatMode}"`}`);
+  }
+  // The helper's options, in tile order. `temp` is the HOUSE_NUMBERS key whose value the tile shows; auto has none.
+  const HEATING_MODES = [
+    { option: 'auto', icon: 'clock', temp: '' },
+    { option: 'comfort', icon: 'flame', temp: 'comfort' },
+    { option: 'baseline_day', icon: 'sun', temp: 'baseline_day' },
+    { option: 'baseline_night', icon: 'moon', temp: 'baseline_night' },
+    { option: 'minimum', icon: 'snow', temp: 'minimum' },
+  ];
 
   // Where the dashboard is registered (url_path in configuration.yaml). Defined once: an unknown
   // path silently falls back to the default dashboard, which is exactly the bug this avoids.
@@ -1398,6 +1436,8 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     gear: 'M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h0a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v0a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z',
     camera: 'M3 7h11a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1zM15 10.5l6-3v9l-6-3',
     play: 'M8 5v14l11-7z',
+    clock: 'M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16zM12 8v4l3 2',
+    snow: 'M12 3v18M4.2 7.5l15.6 9M19.8 7.5l-15.6 9',
     home: 'M3 11l9-8 9 8M5 10v10h14V10',
     bolt: 'M13 2L4 14h7l-1 8 9-12h-7z',
     hand: 'M8 13V5a1.5 1.5 0 0 1 3 0v6M11 10V4a1.5 1.5 0 0 1 3 0v6M14 10V6a1.5 1.5 0 0 1 3 0v8a6 6 0 0 1-6 6h-1a6 6 0 0 1-5-3l-2-4a1.5 1.5 0 0 1 2.5-1.5L8 14',
@@ -2614,17 +2654,69 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     if (m.heat_labels.length > 0) return COPY.room.pending;
     return m.heating_enabled === false ? COPY.room.heatingAutomationOff : '';
   }
-  function sectionHeating(hass, key) {
-    const m = roomModel(hass, key);
-    if (!m.hasReport || !m.cfg.climate) return '';
-    // One row: why the target is what it is, the target trailing. Whether the room is heating now is in the
-    // Temperature widget's sub line, not repeated here.
-    const rows = [hmRow({ title: heatingReason(m), value: m.target === null ? '–' : `${fmt1(m.target)}°` })];
+  // Why a choice of mode would have no effect, as the footnote that replaces "holds until": the first of the
+  // controller's stages 1 to 3 that wins (automation off, safety, house mode), or '' when the choice is live.
+  function heatingLock(hass, m) {
+    const L = COPY.room.heatingLock;
+    if (m.heating_enabled === false) return L.automationOff;
+    if (m.heating_source === 'safety' || m.house_heating_off) return m.house_heating_off ? L.houseOff : L.windowOpen;
+    if (!m.heating_source.startsWith('house_mode')) return '';
+    const houseMode = state(hass, 'sensor.house_active_mode');
+    return own({ away: L.away, sleep: L.sleep, vacation: L.vacation }, houseMode) || L.house;
+  }
+  // What the Auto tile says: the schedule's current mode and temperature while the schedule is in charge, which
+  // is the only time the report describes it. Otherwise the report describes something else (a manual choice).
+  function heatingAutoLine(m, chosen) {
+    if (chosen !== 'auto' || m.heating_source !== 'schedule' && m.heating_source !== 'schedule_occupied') return COPY.room.heatingModeAuto;
+    const label = own(COPY.room.heatingModes, m.heating_active);
+    if (!label) return COPY.room.heatingModeAuto;
+    return m.mode_target !== null ? `${label} ${fmt1(m.mode_target)}°` : label;
+  }
+  function modeTile({ room, mode, sub, on, locked }) {
+    const label = COPY.room.heatingModes[mode.option];
+    const cls = `hm-scene${on ? ' on' : ''}${mode.option === 'auto' ? ' wide' : ''}`;
+    return `<button type="button" class="${cls}" data-act="heating-mode" data-room="${esc(room)}" data-option="${mode.option}" aria-pressed="${on}"${locked ? ' disabled' : ''}>${svg(ICON[mode.icon], 22)}<span class="hm-scene-t"><span>${esc(label)}</span>${sub ? `<span class="hm-scene-s num">${esc(sub)}</span>` : ''}</span></button>`;
+  }
+  // The grid: Auto across the top, the four fixed modes under it, each with its global temperature. The selected
+  // tile is the helper's state; a locked grid is disabled and its footnote says why.
+  function heatingGrid(hass, m, key) {
+    const chosen = state(hass, m.cfg.heatMode);
+    const known = HEATING_MODES.some((x) => x.option === chosen);
+    const lock = known ? heatingLock(hass, m) : COPY.room.heatingModeUnavailable;
+    const tiles = HEATING_MODES.map((mode) => {
+      const t = mode.temp ? num(state(hass, HOUSE_NUMBERS[mode.temp].id)) : null;
+      const sub = mode.option === 'auto' ? heatingAutoLine(m, chosen) : t !== null ? `${fmt1(t)}°` : '';
+      return modeTile({ room: key, mode, sub, on: mode.option === chosen, locked: lock !== '' });
+    }).join('');
+    return { html: `<div class="hm-scenes">${tiles}</div>`, note: lock || COPY.room.heatingModeHolds };
+  }
+  // Writes the helper, refusing what the grid would have disabled: a stale tap must not look like it worked.
+  function setHeatingMode(hass, key, option) {
+    const cfg = own(ROOMS, key);
+    if (!cfg || !cfg.heatMode) throw new Error(`pulse-card: room "${key}" has no heating mode helper`);
+    if (!HEATING_MODES.some((x) => x.option === option)) throw new Error(`pulse-card: unknown heating mode "${option}"`);
+    const lock = heatingLock(hass, roomModel(hass, key));
+    if (lock) throw new Error(`pulse-card: heating mode for "${key}" is locked: ${lock}`);
+    return callService(hass, 'input_select', 'select_option', { entity_id: cfg.heatMode, option });
+  }
+  // The rows the grid does not repeat: why the target differs from the mode, the safety hold, humidity, and the
+  // automation's pending / suspended state.
+  function heatingRows(m) {
+    const rows = [];
+    if (m.target_reason || m.heating_source === 'safety' || m.heat_labels.length) rows.push(hmRow({ title: heatingReason(m), value: m.target === null ? '–' : `${fmt1(m.target)}°` }));
     if (m.target_reason && m.mode_name && m.mode_target !== null) rows.push(hmRow({ title: COPY.room.normalTarget, sub: upperFirst(m.mode_name), value: `${fmt1(m.mode_target)}°` }));
     if (m.humidity !== null) rows.push(hmRow({ title: COPY.room.humidity, value: `${Math.round(m.humidity)}%` }));
     const stateText = heatingStateText(m);
-    if (stateText) rows.push(hmRow({ title: COPY.room.status, sub: stateText === COPY.room.pending ? COPY.room.pendingNote : undefined, value: stateText }));
-    return `<div class="hm">${hmSection(COPY.room.heating, rows.join(''), { plain: true })}</div>`;
+    // "Heating automation is off" is already the grid's footnote.
+    if (stateText && stateText !== COPY.room.heatingAutomationOff) rows.push(hmRow({ title: COPY.room.status, sub: stateText === COPY.room.pending ? COPY.room.pendingNote : undefined, value: stateText }));
+    return rows.join('');
+  }
+  function sectionHeating(hass, key) {
+    const m = roomModel(hass, key);
+    if (!m.hasReport || !m.cfg.climate) return '';
+    const grid = heatingGrid(hass, m, key);
+    const rows = heatingRows(m);
+    return `<div class="hm">${hmSection(COPY.room.heating, grid.html + hmFeet([grid.note]), { bare: true, after: rows ? `<div class="hm-group-row">${hmList(rows, true)}</div>` : '' })}</div>`;
   }
 
   // Presence: occupied or empty, what holds the room occupied and what ends it, and "Keep room occupied" (acts now,
@@ -3309,7 +3401,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   // Every data-act the card dispatches -> a HAPTICS kind, or null for "deliberately silent" (navigation and
   // disclosure). A new control must be added here, so it cannot ship without a haptic decision.
   const ACT_HAPTIC = {
-    'scene': 'scene',
+    'scene': 'scene', 'heating-mode': 'segmented',
     'energy-day': 'segmented', 'cost-fuel': 'segmented', 'house-modifier': 'segmented', 'garden-theme': 'segmented',
     'house-threshold': 'stepper', 'house-number': 'stepper', 'setting-number': 'stepper',
     'toggle': 'toggle', 'setting-toggle': 'toggle', 'mo-toggle': 'toggle', 'camera-toggle': 'toggle', 'cameras-all': 'toggle',
@@ -3341,6 +3433,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       case 'camera-ptz': return CAMERAS.some((c) => c.k === ds.camera) ? [`button.${ds.camera}_move_${ds.dir}`] : [];
       case 'cameras-all': return CAMERAS.map((c) => cameraSwitch(c.k));
       case 'house-modifier': return [HOUSE_MODIFIER];
+      case 'heating-mode': return own(ROOMS, ds.room) && ROOMS[ds.room].heatMode ? [ROOMS[ds.room].heatMode] : [];
       case 'house-threshold': return [HOUSE_VACATION_HOURS];
       case 'house-number': return table(HOUSE_NUMBERS, ds.key);
       case 'mo-toggle': return table(MO_TOGGLES, ds.key);
@@ -3601,7 +3694,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   const SCENE_PATTERN = new RegExp(`^scene\\.(${ALL_ROOM_KEYS.join('|')})_[a-z0-9_]+$`);
   const BOOLEAN_PATTERN = /^input_boolean\.(\w+_automation_(lights|heating|sonos|fan)_enabled|\w+_automation_presence_override|\w+_sensor_motion_enabled|\w+_light_theme_calendar_enabled|wfh_(adam|sarah)|house_heating_enabled|mo_notifications_(spotted|eating)_enabled)$/;
   const NUMBER_PATTERN = /^input_number\.(\w+_automation_(lux_threshold_dark|fan_(min_run|max_run|humidity_margin)|door_\w+|vacation_threshold_hours)|global_temperature_(minimum|baseline_night|baseline_day|comfort)|global_heating_window_open_grace_minutes)$/;
-  const SELECT_PATTERN = /^input_select\.(house_active_mode_modifier|\w+_light_theme)$/;
+  const SELECT_PATTERN = new RegExp(`^input_select\\.(house_active_mode_modifier|\\w+_light_theme|(${ROOM_TABLE.filter((r) => r.heatMode).map((r) => r.key).join('|')})_heating_manual_mode)$`);
   const lightIds = exact(roomIds('light', 'lights'));
   const mediaIds = exact(roomIds('media_player', 'media'));
   const ALLOWED = {
@@ -3684,6 +3777,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         if (!Object.prototype.hasOwnProperty.call(MODIFIERS, option)) throw new Error(`pulse-card: unknown modifier "${option}"`);
         return callService(hass, 'input_select', 'select_option', { entity_id: HOUSE_MODIFIER, option });
       }
+      case 'heating-mode': return setHeatingMode(hass, el.dataset.room, el.dataset.option);
       case 'house-threshold': {
         const cur = num(state(hass, HOUSE_VACATION_HOURS));
         const dir = Number(el.dataset.delta) < 0 ? -1 : 1;
@@ -3743,7 +3837,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return disclosureStore[id] === true;
   }
 
-  const api = { parsedAttr, disclosureStore, toggleDisclosure, setOptimise, trackHass, depsUnchanged, makeRenderGate, RENDER_MAX_AGE_MS, deriveScenes, sceneRegistry, ROOM_TABLE, lightsStory, lightsState, verdictFor, houseActivity, parseHistory, readHistory, sentenceFor, roomActivity, splitSentence, timelineLead, unexplainedReasons, REASON_TEXT, UNDECLARED, SUPPRESS_SOURCES, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, SETTINGS_PATH, takesTaps, invisibleControl, disarm, rearm, coverNeed, topGuard, HEAD_MODES, TOP_GUARD_MAX, CAMERAS_PATH, PENDING_MS, cameraParts, cameraToggle, cameraPending, perform, pendingStart, pendingFor, pendingKey, markPending, ERROR_MS, haptic, tapHaptic, HAPTIC_TYPES, HAPTICS, ACT_HAPTIC, parseClips, frigateClipsId, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, GARDEN_ORDER, ALL_ROOM_KEYS, THEME_LABELS, THEME_ICON, ICON, SUBSYSTEMS, subsystemOf, placed, gardenModel, gardenSub, themeSource, shortDate, ALLOWED, writeAllowed, HOUSE_NUMBERS, HOUSE_MODIFIER, HOUSE_VACATION_HOURS, CAMERAS, PTZ_DIRS, DEVICE_REASONS, ROOM_SETTINGS, MO_TOGGLES, settingFor, render, priceColour, PRICE_AT, PRICE_EXTREME_P, THEMES, COLOUR_KEYS, DEFAULT_THEME, TOKENS, COPY, checkThemes, themeOf, useTheme, colour, resolveVars, styleFor, roomModel, attentionItems, handleAction, callService, num, parseList };
+  const api = { parsedAttr, disclosureStore, toggleDisclosure, setOptimise, trackHass, depsUnchanged, makeRenderGate, RENDER_MAX_AGE_MS, deriveScenes, sceneRegistry, ROOM_TABLE, lightsStory, lightsState, verdictFor, houseActivity, parseHistory, readHistory, sentenceFor, roomActivity, splitSentence, timelineLead, unexplainedReasons, REASON_TEXT, UNDECLARED, SUPPRESS_SOURCES, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, SETTINGS_PATH, takesTaps, invisibleControl, disarm, rearm, coverNeed, topGuard, HEAD_MODES, TOP_GUARD_MAX, CAMERAS_PATH, PENDING_MS, cameraParts, cameraToggle, cameraPending, perform, pendingStart, pendingFor, pendingKey, markPending, ERROR_MS, haptic, tapHaptic, HAPTIC_TYPES, HAPTICS, ACT_HAPTIC, parseClips, frigateClipsId, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, GARDEN_ORDER, ALL_ROOM_KEYS, THEME_LABELS, THEME_ICON, ICON, SUBSYSTEMS, subsystemOf, placed, gardenModel, gardenSub, themeSource, shortDate, ALLOWED, writeAllowed, HOUSE_NUMBERS, HOUSE_MODIFIER, HOUSE_VACATION_HOURS, CAMERAS, PTZ_DIRS, DEVICE_REASONS, ROOM_SETTINGS, MO_TOGGLES, settingFor, render, priceColour, PRICE_AT, PRICE_EXTREME_P, THEMES, COLOUR_KEYS, DEFAULT_THEME, TOKENS, COPY, checkThemes, themeOf, useTheme, colour, resolveVars, styleFor, roomModel, attentionItems, handleAction, HEATING_MODES, heatingLock, setHeatingMode, callService, num, parseList };
   root.PulseLib = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 
@@ -4186,6 +4280,8 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       _click(ev) {
         const el = ev.target && ev.target.closest ? ev.target.closest('[data-act]') : null;
         if (!el || !this._hass) return;
+        // A disabled control (a heating mode the controller would override) does nothing, and says nothing by buzzing.
+        if (el.disabled === true) return;
         // Sliders buzz on commit (_change), not on the click that ends a drag.
         if (el.type !== 'range') tapHaptic(this, el.dataset.act);
         if (el.dataset.act === 'nav') {
