@@ -1235,13 +1235,15 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return attentionPath(next);
   }
 
-  // One status card: dot + verdict (amber with the attention summary when there are items), people and Mo chips, and the price strip.
+  // One status card: people and Mo chips first; a head (amber attention summary, or dim "No attention report") only when there is something to say, then the price strip.
   function sectionStatus(hass, at) {
     const items = attentionItems(hass);
     const hasData = !!stateObj(hass, 'sensor.info_attention');
-    let head;
+    // A calm house says nothing: no head, the card opens on the people chips. Only a missing report
+    // or real items earn a head.
+    let head = '';
     if (items.length === 0) {
-      head = `<div style="display:flex;align-items:center;gap:10px"><span class="dot${hasData ? '' : ' dim'}"></span><div style="font-size:15px;font-weight:700">${hasData ? 'Nothing needs attention' : 'No attention report'}</div></div>`;
+      if (!hasData) head = `<div style="display:flex;align-items:center;gap:10px"><span class="dot dim"></span><div style="font-size:15px;font-weight:700">No attention report</div></div>`;
     } else {
       const shownItems = items.slice(0, STATUS_ROWS);
       // Each row opens its own room; an item with no room (an unexplained reason) opens House.
@@ -1250,7 +1252,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       const more = items.length > STATUS_ROWS ? `<a class="tap" data-act="nav" data-path="${esc(moreAttentionPath(items))}" style="display:block;font-size:12px;color:${TOKENS.text2};margin-top:4px">+${items.length - STATUS_ROWS} more</a>` : '';
       head = `<div style="display:flex;align-items:center;gap:10px"><span class="dot warn"></span><span style="font-size:15px;font-weight:700;color:${TOKENS.amber}">${items.length} ${plural(items.length, 'needs', 'need')} attention</span></div>${shown}${more}`;
     }
-    return `<div class="card pad${items.length ? ' warn' : ''}">${head}<div style="margin-top:10px">${peopleChips(hass, at)}</div><div style="margin-top:12px;padding-top:4px;border-top:1px solid ${TOKENS.divider}">${statusPriceLink(hass, at)}</div></div>`;
+    return `<div class="card pad${items.length ? ' warn' : ''}">${head}<div${head ? ' style="margin-top:10px"' : ''}>${peopleChips(hass, at)}</div><div style="margin-top:12px;padding-top:4px;border-top:1px solid ${TOKENS.divider}">${statusPriceLink(hass, at)}</div></div>`;
   }
 
   // ── Rooms: three groups, quiet by default ───────────────────────────────────────────────────
