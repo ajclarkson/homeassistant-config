@@ -277,11 +277,16 @@
       },
     },
     energy: {
-      now: 'Now', next: 'Next', usage: 'Usage', perKwh: ' p/kWh', cheapestHeading: 'Cheapest 2 hours', nextCheapest: 'Next cheapest 2 hours',
-      runningNowTag: 'Running now', bestTag: 'Best', windows: 'Windows',
+      title: 'Energy', prices: 'Prices', now: 'Now', next: 'Next', perKwh: 'per kWh', penceUnit: 'p/kWh',
+      cheapestHeading: 'Cheapest 2 hours', nextCheapest: 'Next cheapest 2 hours', windows: 'Windows',
+      cheapest: 'Cheapest', dearest: 'Dearest', average: 'Average', freePower: 'Free power', cheap: 'Cheap',
+      none: 'None', noneUpcoming: 'None upcoming', today: 'Today', tomorrow: 'Tomorrow', thisMonth: 'This month',
+      latestCompleteDay: 'Latest complete day',
+      // The subtitle under the title: the smart meter's live draw. The tiles' second line: the half hour they cover.
+      using: (usage) => `Using ${usage}`, until: (t) => `Until ${t}`, from: (t) => `From ${t}`, at: (t) => `at ${t}`,
       noPriceToday: 'No price data for today', ratesNotInYet: "Tomorrow's rates are not in yet",
       ratesPublishedLate: "Tomorrow's rates are published late afternoon", ratesEmpty: 'The rates list is empty or unavailable',
-      dragChart: 'Drag across the chart to read any half hour', dragBars: 'Drag across the bars to read a day · Published about 1-2 days late',
+      dragChart: 'Drag across the chart to read any half hour', dragBars: 'Drag across the bars to read a day', publishedLate: 'Published about 1-2 days late',
       costLatest: 'Cost (latest published day)', octopusLate: 'Octopus publishes about 1-2 days late, so these cover an earlier day, not today',
       loadingHistory: 'Loading history…', historyUnavailable: 'History unavailable',
       historyUnavailableBody: 'The recorded cost history could not be read; the latest published day is shown above',
@@ -292,7 +297,7 @@
       nextHalfHour: (price, usage) => [price ? `Next ${price}` : '', usage ? `using ${usage}` : ''].filter(Boolean).join(' · '),
       // The cheapest window: "09:00 – 11:00" today, "Tomorrow 09:00 – 11:00" (or the weekday) on another day.
       windowOn: (day, from, to) => `${day === 'Today' ? '' : `${day} `}${from} – ${to}`,
-      avg: (price) => ` · avg ${price}`,
+      avg: (price) => `avg ${price}`,
       dailyCostDays: (n) => `Daily cost, ${n} ${plural(n, 'day', 'days')}`,
     },
     cameras: {
@@ -682,17 +687,6 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 .clip img{width:72px;height:48px;object-fit:cover;border-radius:8px;background:${TOKENS.control};flex:none}
 .clip .t{font-size:14px;font-weight:600}
 .clip .w{font-size:12px;color:${TOKENS.textSecondary};margin-top:2px}
-.stat{flex:1;padding:12px;min-width:0}
-.stat .k{font-size:11px;color:${TOKENS.textTertiary};font-weight:600;letter-spacing:.4px;text-transform:uppercase}
-.stat .v{font-size:19px;font-weight:700;letter-spacing:-.3px;margin-top:4px}
-.stat .s{font-size:11.5px;color:${TOKENS.textSecondary};margin-top:2px}
-.wrow{display:flex;justify-content:space-between;align-items:center;gap:10px;min-height:48px;padding:6px 14px;border-top:1px solid ${TOKENS.separator};font-size:14px}
-.wrow:first-child{border-top:0}
-.wrow .r{font-size:13px;font-weight:600}
-.wrow .m{font-size:12px;color:${TOKENS.textSecondary}}
-.u{padding:14px;flex:1;min-width:0}
-.u .v{font-size:22px;font-weight:700;letter-spacing:-.4px;margin-top:4px}
-.u .v span{font-size:12px;font-weight:500;color:${TOKENS.textSecondary}}
 .hm{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;color:${TOKENS.text};display:flex;flex-direction:column;margin-top:max(0px,calc(${HM_SECTION_GAP}px - var(--row-gap,8px)))}
 .hm>*+*{margin-top:${HM_SECTION_GAP}px}
 .hm.hm-first{margin-top:0}
@@ -771,6 +765,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 .hm-wgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:${HM_GRID_GAP}px}
 .hm-w{background:${TOKENS.surface};border-radius:20px;padding:14px 16px;min-width:0}
 .hm-w:only-child{grid-column:1/-1}
+.hm-wgrid .hm-w:last-child:nth-child(odd){grid-column:1/-1}
 .hm-wl{font-size:13px;line-height:18px;font-weight:600}
 .hm-wv{font-family:ui-rounded,"SF Pro Rounded",-apple-system,system-ui,sans-serif;font-size:34px;line-height:41px;font-weight:700}
 .hm-wv small{font-size:17px;line-height:0;font-weight:600;margin-left:3px;color:${TOKENS.textSecondary}}
@@ -1552,7 +1547,13 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   const hmDisclosureList = (html) => `<div class="hm"><section class="hm-sec">${hmList(html, true)}</section></div>`;
 
   // A two-up grid of widget cards; a lone widget spans the row.
-  const hmWidget = (label, colour, valueHtml, sub) => `<div class="hm-w"><div class="hm-wl" style="color:${colour}">${esc(label)}</div><div class="hm-wv num">${valueHtml}</div><div class="hm-ws">${esc(sub)}</div></div>`;
+  // `sub` is a line or a list of lines (a second line reads better than a middle dot).
+  const hmWidget = (label, colour, valueHtml, sub) => `<div class="hm-w"><div class="hm-wl" style="color:${colour}">${esc(label)}</div><div class="hm-wv num">${valueHtml}</div>${[].concat(sub).map((line) => `<div class="hm-ws">${esc(line)}</div>`).join('')}</div>`;
+  // A section header on its own, for pages that build the body themselves (a control and a card under it).
+  const hmHead = (title) => `<div class="hm-h"><h2>${esc(title)}</h2></div>`;
+  // The heading of a tab page (Energy, Cameras, Settings): the large title and a one-line subtitle, no back link
+  // because a tab root has nowhere to go back to. Same markup as the room page's title; `line` '' leaves it out.
+  const pageHead = (title, line) => `<div class="hm-head"><div class="hm-hd"><h1 class="hm-big">${esc(title)}</h1>${line ? `<span class="hm-line">${esc(line)}</span>` : ''}</div></div>`;
 
   // Header: the large title, the house mode and occupancy, and who is home.
   function avatar(hass, id, name) {
@@ -1614,15 +1615,6 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const stale = wAge !== null && at - wAge > 600000;
     const usageText = stale ? '–' : formatPower(state(hass, 'sensor.glow_electricity_power'), attr(hass, 'sensor.glow_electricity_power', 'unit_of_measurement'));
     return { nowP, nextP, usageText };
-  }
-
-  // Energy page head: Now / Next / Usage (a reading that has not updated for 10 minutes shows a dash).
-  function priceStrip(hass, at) {
-    const { nowP, nextP, usageText } = priceFigures(hass, at);
-    return `<div style="display:flex;gap:16px;align-items:flex-end">
-<div><div class="lbl">${COPY.energy.now}</div><div style="font-size:26px;font-weight:700;letter-spacing:-.5px;line-height:1.15;color:${priceColour(nowP, { text: true })}">${nowP === null ? '–' : fmt1(nowP)}<span style="font-size:12px;font-weight:500;color:${TOKENS.textSecondary}">${COPY.energy.perKwh}</span></div></div>
-<div><div class="lbl">${COPY.energy.next}</div><div style="font-size:18px;font-weight:600;color:${priceColour(nextP, { text: true })};line-height:1.5">${nextP === null ? '–' : fmt1(nextP) + 'p'}</div></div>
-<div style="flex:1"></div><div style="text-align:right"><div class="lbl">${COPY.energy.usage}</div><div style="font-size:18px;font-weight:600;line-height:1.5">${usageText}</div></div></div>`;
   }
 
   // Electricity widget: the current price, what is next, a mini chart of the coming slots, and the cheapest
@@ -1831,6 +1823,9 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   // a zero baseline. Drawn here (not apexcharts-card) so the whole energy block is one surface and
   // every pixel decision is testable in node.
   const PLOT_H = 96;
+  // Room above the plot for the scrub tooltip (it sits 36px above the plot): the card's own 16px padding covers
+  // the rest, so the tooltip never leaves the card.
+  const CHART_TOP = 20;
   const SLOT_W = 6;
   function rateBands(rates, now) {
     const out = [];
@@ -1879,7 +1874,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 
   function priceChart(rates, now, day) {
     const slots = rateBands(rates, now);
-    if (slots.length === 0) return `<div style="font-size:12px;color:${TOKENS.textSecondary};margin-top:12px">${COPY.energy.noPriceToday}</div>`;
+    if (slots.length === 0) return `<div style="font-size:14px;line-height:19px;color:${TOKENS.textSecondary}">${COPY.energy.noPriceToday}</div>`;
     const n = slots.length;
     const lo = Math.min(0, ...slots.map((x) => x.v));
     let hi = Math.max(0, ...slots.map((x) => x.v));
@@ -1905,12 +1900,12 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const at = (x) => hhmm(new Date(x.start).toISOString());
     const label = `Half-hourly electricity price, ${n} slots. Cheapest ${fmt1(cheapest.v)}p at ${at(cheapest)}, dearest ${fmt1(dearest.v)}p at ${at(dearest)}.${cur >= 0 ? ` Now ${fmt1(slots[cur].v)}p.` : ''}`;
     const grad = [0, 15, 25, 35, 44.9].map((pp, i) => `${priceColour(pp)} ${(i / 4) * 100}%`).join(',');
-    const key = `<div style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:10px;color:${TOKENS.textTertiary}" aria-hidden="true"><span style="display:inline-flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:3px;background:${colour('priceNegative')}"></span>≤0p</span><span style="flex:1;display:flex;flex-direction:column;gap:2px"><span style="height:6px;border-radius:3px;background:linear-gradient(to right,${grad})"></span><span style="display:flex;justify-content:space-between"><span>${PRICE_KEY_P[0]}</span><span>${PRICE_KEY_P[1]}</span><span>${PRICE_KEY_P[2]}</span><span>${PRICE_KEY_P[3]}p+</span></span></span><span style="width:10px;height:10px;border-radius:3px;background:${colour('priceExtreme')}"></span></div>`;
+    const key = `<div style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:11px;color:${TOKENS.textSecondary}" aria-hidden="true"><span style="display:inline-flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:3px;background:${colour('priceNegative')}"></span>≤0p</span><span style="flex:1;display:flex;flex-direction:column;gap:2px"><span style="height:6px;border-radius:3px;background:linear-gradient(to right,${grad})"></span><span style="display:flex;justify-content:space-between"><span>${PRICE_KEY_P[0]}</span><span>${PRICE_KEY_P[1]}</span><span>${PRICE_KEY_P[2]}</span><span>${PRICE_KEY_P[3]}p+</span></span></span><span style="width:10px;height:10px;border-radius:3px;background:${colour('priceExtreme')}"></span></div>`;
     // The wrapper is the focusable, scrubbable chart (touch-action: pan-y keeps vertical page scroll;
     // horizontal drags scrub). Guide and tooltip are positioned by the element, not re-rendered.
-    return `<div class="chart" data-chart data-day="${day === 'tomorrow' ? 'tomorrow' : 'today'}" data-n="${n}" tabindex="0" role="img" aria-label="${esc(label)}" style="position:relative;margin-top:36px;touch-action:pan-y;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none"><svg viewBox="0 0 ${n * SLOT_W} ${PLOT_H}" preserveAspectRatio="none" width="100%" height="${PLOT_H}" aria-hidden="true" style="display:block">${bars}<line x1="0" x2="${n * SLOT_W}" y1="${y0.toFixed(1)}" y2="${y0.toFixed(1)}" stroke="${colour('textTertiary')}" stroke-width=".8" vector-effect="non-scaling-stroke"/>${marker}</svg>
-<span style="position:absolute;left:0;top:${Math.max(0, y0 - 14).toFixed(0)}px;font-size:10px;color:${TOKENS.textTertiary};pointer-events:none">0</span><div data-guide style="display:none;position:absolute;top:0;bottom:0;width:1px;margin-left:-.5px;background:${TOKENS.text};opacity:.7;pointer-events:none"></div><div data-tip class="tip" style="display:none"></div></div><span class="sr" aria-live="polite" data-live></span>
-<div style="position:relative;height:14px;font-size:10px;color:${TOKENS.textTertiary};margin-top:4px">${ticks}</div>${key}`;
+    return `<div class="chart" data-chart data-day="${day === 'tomorrow' ? 'tomorrow' : 'today'}" data-n="${n}" tabindex="0" role="img" aria-label="${esc(label)}" style="position:relative;margin-top:${CHART_TOP}px;touch-action:pan-y;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none"><svg viewBox="0 0 ${n * SLOT_W} ${PLOT_H}" preserveAspectRatio="none" width="100%" height="${PLOT_H}" aria-hidden="true" style="display:block">${bars}<line x1="0" x2="${n * SLOT_W}" y1="${y0.toFixed(1)}" y2="${y0.toFixed(1)}" stroke="${colour('textTertiary')}" stroke-width=".8" vector-effect="non-scaling-stroke"/>${marker}</svg>
+<span style="position:absolute;left:0;top:${Math.max(0, y0 - 14).toFixed(0)}px;font-size:10px;color:${TOKENS.textSecondary};pointer-events:none">0</span><div data-guide style="display:none;position:absolute;top:0;bottom:0;width:1px;margin-left:-.5px;background:${TOKENS.text};opacity:.7;pointer-events:none"></div><div data-tip class="tip" style="display:none"></div></div><span class="sr" aria-live="polite" data-live></span>
+<div style="position:relative;height:14px;font-size:10px;color:${TOKENS.textSecondary};margin-top:4px">${ticks}</div>${key}`;
   }
 
   // The energy block is ONE card: numbers, bars, cheapest-2h and the tomorrow note.
@@ -2025,13 +2020,16 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return '';
   }
 
-  function costTile(hass, label, costId, kwhId) {
+  // A published-cost tile: the fuel, the cost in large type, then the day it covers, the energy used and, when the
+  // attributes prove it, what the cost includes, one fact per line.
+  function costTile(hass, label, colourToken, costId, kwhId) {
     const a = isObj(stateObj(hass, costId) && stateObj(hass, costId).attributes) ? stateObj(hass, costId).attributes : {};
     const total = usable(state(hass, costId)) ? num(state(hass, costId)) : null;
-    const day = coveredDay(a) || 'latest complete day';
+    const day = coveredDay(a) || COPY.energy.latestCompleteDay;
     const note = standingNote(total, a);
     const kwh = usable(state(hass, kwhId)) ? energyText(state(hass, kwhId), attr(hass, kwhId, 'unit_of_measurement') || 'kWh') : '–';
-    return `<div class="card u"><div class="lbl" style="margin:0">${esc(label)}</div><div class="v">${usable(state(hass, costId)) ? money(state(hass, costId), a.unit_of_measurement) : '–'}</div><div style="font-size:11.5px;color:${TOKENS.textSecondary};margin-top:2px">${esc(day)} · ${esc(kwh)}${note ? ' · ' + esc(note) : ''}</div></div>`;
+    const cost = usable(state(hass, costId)) ? money(state(hass, costId), a.unit_of_measurement) : '–';
+    return hmWidget(label, colourToken, esc(cost), [day, kwh, note].filter(Boolean));
   }
 
   // The heading of a tab page (Energy, Settings, Cameras). Those pages are normal views, so HA's header shows
@@ -2041,9 +2039,14 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return `<div style="min-height:44px;display:flex;align-items:center;font-size:28px;font-weight:700;letter-spacing:-.4px">${esc(name)}</div>`;
   }
 
+  // Title, today's live usage as the subtitle (the smart meter, dash when stale so it is left out), then the price
+  // now and next as two tiles. Each tile says which half hour it is for.
   function sectionEnergyHead(hass, at) {
-    return `${pageTitle('Energy')}
-<div class="card pad">${priceStrip(hass, at, true)}</div>`;
+    const { nowP, nextP, usageText } = priceFigures(hass, at);
+    const current = rateBands(ratesOf(hass, 'today'), at).find((x) => x.state === 'current');
+    const tile = (label, p, sub) => hmWidget(label, TOKENS.subEnergy, p === null ? '–' : `<span style="color:${priceColour(p, { text: true })}">${fmt1(p)}</span><small>${COPY.energy.penceUnit}</small>`, sub);
+    const tiles = `<div class="hm-wgrid hm-tight">${tile(COPY.energy.now, nowP, current ? COPY.energy.until(localHm(current.end)) : '')}${tile(COPY.energy.next, nextP, current ? COPY.energy.from(localHm(current.end)) : '')}</div>`;
+    return `<div class="hm hm-first">${pageHead(COPY.energy.title, usageText === '–' ? '' : COPY.energy.using(usageText))}${tiles}</div>`;
   }
 
   // Day segmented control, chart, stats and windows for the selected day. They share one element so
@@ -2053,41 +2056,42 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const seg = (id, label) => `<button class="seg${day === id ? ' on' : ''}" data-act="energy-day" data-day="${id}" aria-pressed="${day === id}">${label}</button>`;
     const rates = ratesOf(hass, day);
     const slots = rateBands(rates, at);
-    const control = `<div class="segs">${seg('today', 'Today')}${seg('tomorrow', 'Tomorrow')}</div>`;
+    const control = `<div class="segs">${seg('today', COPY.energy.today)}${seg('tomorrow', COPY.energy.tomorrow)}</div>`;
     if (slots.length === 0) {
       const late = day === 'tomorrow';
-      return `${control}<div class="card pad"><div style="font-size:14px;font-weight:600">${late ? COPY.energy.ratesNotInYet : COPY.energy.noPriceToday}</div><div style="font-size:12.5px;color:${TOKENS.textSecondary};margin-top:4px;line-height:1.4">${late ? COPY.energy.ratesPublishedLate : COPY.energy.ratesEmpty}</div></div>${windowsCard(hass, [], at)}`;
+      const empty = hmList(hmRow({ title: late ? COPY.energy.ratesNotInYet : COPY.energy.noPriceToday, sub: late ? COPY.energy.ratesPublishedLate : COPY.energy.ratesEmpty }), true);
+      return `<div class="hm"><section class="hm-sec">${hmHead(COPY.energy.prices)}${control}${empty}</section>${windowsCard(hass, [], at)}</div>`;
     }
     const st = energyStats(slots);
-    const stat = (k, v, sub, col) => `<div class="card stat"><div class="k">${k}</div><div class="v" style="${col ? 'color:' + col : ''}">${v}</div><div class="s">${sub}</div></div>`;
-    const stats = `<div style="display:flex;gap:8px">${stat('Cheapest', penceText(st.cheapest.v), 'at ' + st.cheapest.time, priceColour(st.cheapest.v, { text: true }))}${stat('Dearest', penceText(st.dearest.v), 'at ' + st.dearest.time, priceColour(st.dearest.v, { text: true }))}${stat('Average', penceText(st.avg), 'per kWh', priceColour(st.avg, { text: true }))}</div>`;
-    return `${control}<div class="card pad">${priceChart(rates, at, day)}<div style="font-size:11.5px;color:${TOKENS.textTertiary};margin-top:8px">${COPY.energy.dragChart}</div></div>${stats}${windowsCard(hass, slots, at)}`;
+    const stat = (label, p, sub) => hmWidget(label, TOKENS.textSecondary, `<span style="color:${priceColour(p, { text: true })}">${esc(penceText(p))}</span>`, sub);
+    const stats = `<div class="hm-wgrid hm-group-row">${stat(COPY.energy.cheapest, st.cheapest.v, COPY.energy.at(st.cheapest.time))}${stat(COPY.energy.dearest, st.dearest.v, COPY.energy.at(st.dearest.time))}${stat(COPY.energy.average, st.avg, COPY.energy.perKwh)}</div>`;
+    return `<div class="hm"><section class="hm-sec">${hmHead(COPY.energy.prices)}${control}<div class="hm-card">${priceChart(rates, at, day)}</div>${hmFeet([COPY.energy.dragChart])}${stats}</section>${windowsCard(hass, slots, at)}</div>`;
   }
 
+  // The windows list (no wrapper of its own: it is a section of the Day card). Each row is a name, its range and an
+  // average price; "next cheapest" says whether it is running now in its own sub-line.
   function windowsCard(hass, slots, at) {
     const rows = [];
     const cw = cheapestWindow(hass, at);
-    const row = (title, sub, right) => `<div class="wrow"><div><div style="font-weight:600">${title}</div><div class="m">${sub}</div></div>${right}</div>`;
-    if (cw.status === 'running') rows.push(row(COPY.energy.nextCheapest, COPY.energy.runningNow(cw.endText ? esc(cw.endText) : ''), `<span class="tag ok">${COPY.energy.runningNowTag}</span>`));
-    else if (cw.status === 'upcoming') rows.push(row(COPY.energy.nextCheapest, `${esc(cw.text)}${cw.avg !== null ? COPY.energy.avg(esc(penceText(cw.avg))) : ''}`, `<span class="tag ok">${COPY.energy.bestTag}</span>`));
-    else rows.push(row('Next cheapest 2 hours', 'none upcoming', ''));
+    if (cw.status === 'running') rows.push(hmRow({ title: COPY.energy.nextCheapest, sub: COPY.energy.runningNow(cw.endText || '') }));
+    else if (cw.status === 'upcoming') rows.push(hmRow({ title: COPY.energy.nextCheapest, sub: cw.text, value: cw.avg !== null ? COPY.energy.avg(penceText(cw.avg)) : '' }));
+    else rows.push(hmRow({ title: COPY.energy.nextCheapest, sub: COPY.energy.noneUpcoming }));
     if (Array.isArray(slots) && slots.length) {
-      for (const [kind, label] of [['negative', 'Free power'], ['cheap', 'Cheap']]) {
+      for (const [kind, label] of [['negative', COPY.energy.freePower], ['cheap', COPY.energy.cheap]]) {
         const ws = slotWindows(slots, kind);
-        if (ws.length === 0) rows.push(row(label, 'none', ''));
-        else for (const w of ws) rows.push(row(label, esc(windowRange(w)), `<div class="r" style="color:${priceColour(w.avg, { text: true })}">avg ${esc(penceText(w.avg))}</div>`));
+        if (ws.length === 0) rows.push(hmRow({ title: label, sub: COPY.energy.none }));
+        else for (const w of ws) rows.push(hmRow({ title: label, sub: windowRange(w), value: COPY.energy.avg(penceText(w.avg)) }));
       }
     }
-    return `<div class="lbl" style="margin:4px 4px -10px">${COPY.energy.windows}</div><div class="card">${rows.join('')}</div>`;
+    return hmSection(COPY.energy.windows, rows.join(''), { plain: true });
   }
 
   // Real published data only, always labelled with the day it covers. Octopus publishes a day or two late.
   function sectionEnergyCost(hass) {
     const e = 'sensor.octopus_energy_electricity_24e8140196_1012483035417_previous_accumulative';
     const g = 'sensor.octopus_energy_gas_e6s15257822462_2986733608_previous_accumulative';
-    return `<div class="lbl" style="margin:4px 4px -10px">${COPY.energy.costLatest}</div>
-<div style="display:flex;gap:8px">${costTile(hass, 'Electricity', `${e}_cost`, `${e}_consumption`)}${costTile(hass, 'Gas', `${g}_cost`, `${g}_consumption_kwh`)}</div>
-<div style="font-size:11.5px;color:${TOKENS.textTertiary};margin:-6px 4px 0">${COPY.energy.octopusLate}</div>`;
+    const tiles = `<div class="hm-wgrid">${costTile(hass, COPY.energy.electricity, TOKENS.subEnergy, `${e}_cost`, `${e}_consumption`)}${costTile(hass, COPY.energy.gas, TOKENS.heat, `${g}_cost`, `${g}_consumption_kwh`)}</div>`;
+    return `<div class="hm">${hmSection(COPY.energy.costLatest, tiles, { bare: true, notes: [COPY.energy.octopusLate] })}</div>`;
   }
 
   // ── Daily cost history (recorder long-term statistics) ────────────────────────────────────────
@@ -2201,9 +2205,9 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const loDay = days.reduce((a, d) => (d.cost < a.cost ? d : a), days[0]);
     const lbl = (d) => `${money(d.cost, 'GBP')} on ${isoDayLabel(d.date)}`;
     const label = `${COPY.energy.dailyCostDays(n)}. Highest ${lbl(hiDay)}, lowest ${lbl(loDay)}, latest ${lbl(days[n - 1])}.`;
-    return `<div class="chart" data-chart data-kind="cost" data-n="${n}" tabindex="0" role="img" aria-label="${esc(label)}" style="position:relative;margin-top:36px;touch-action:pan-y;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none"><svg viewBox="0 0 ${n * COL_W} ${PLOT_H}" preserveAspectRatio="none" width="100%" height="${PLOT_H}" aria-hidden="true" style="display:block">${bars}<line x1="0" x2="${n * COL_W}" y1="${y0.toFixed(1)}" y2="${y0.toFixed(1)}" stroke="${colour('textTertiary')}" stroke-width=".8" vector-effect="non-scaling-stroke"/></svg>
-<span style="position:absolute;left:0;top:${Math.max(0, y0 - 14).toFixed(0)}px;font-size:10px;color:${TOKENS.textTertiary};pointer-events:none">£0</span><div data-guide style="display:none;position:absolute;top:0;bottom:0;width:1px;margin-left:-.5px;background:${TOKENS.text};opacity:.7;pointer-events:none"></div><div data-tip class="tip" style="display:none"></div></div><span class="sr" aria-live="polite" data-live></span>
-<div style="position:relative;height:14px;font-size:9.5px;color:${TOKENS.textTertiary};margin-top:4px">${ticks}</div>`;
+    return `<div class="chart" data-chart data-kind="cost" data-n="${n}" tabindex="0" role="img" aria-label="${esc(label)}" style="position:relative;margin-top:${CHART_TOP}px;touch-action:pan-y;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none"><svg viewBox="0 0 ${n * COL_W} ${PLOT_H}" preserveAspectRatio="none" width="100%" height="${PLOT_H}" aria-hidden="true" style="display:block">${bars}<line x1="0" x2="${n * COL_W}" y1="${y0.toFixed(1)}" y2="${y0.toFixed(1)}" stroke="${colour('textTertiary')}" stroke-width=".8" vector-effect="non-scaling-stroke"/></svg>
+<span style="position:absolute;left:0;top:${Math.max(0, y0 - 14).toFixed(0)}px;font-size:10px;color:${TOKENS.textSecondary};pointer-events:none">£0</span><div data-guide style="display:none;position:absolute;top:0;bottom:0;width:1px;margin-left:-.5px;background:${TOKENS.text};opacity:.7;pointer-events:none"></div><div data-tip class="tip" style="display:none"></div></div><span class="sr" aria-live="polite" data-live></span>
+<div style="position:relative;height:14px;font-size:10px;color:${TOKENS.textSecondary};margin-top:4px">${ticks}</div>`;
   }
 
   // Electricity | Gas toggle, bars for up to 14 covered days, readout on scrub, honest loading/unavailable states.
@@ -2212,28 +2216,30 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     const seg = (id, label) => `<button class="seg${fuel === id ? ' on' : ''}" data-act="cost-fuel" data-fuel="${id}" aria-pressed="${fuel === id}">${label}</button>`;
     const h = ui && isObj(ui.hist) && isObj(ui.hist[fuel]) ? ui.hist[fuel] : { status: 'loading', days: [] };
     const days = Array.isArray(h.days) ? h.days : [];
+    const line = (text, strong) => `<div style="font-size:${strong ? 17 : 14}px;line-height:${strong ? 22 : 19}px;${strong ? '' : `color:${TOKENS.textSecondary}`}">${text}</div>`;
     let body;
-    if (h.status === 'loading') body = `<div style="font-size:13px;color:${TOKENS.textSecondary}">${COPY.energy.loadingHistory}</div>`;
-    else if (h.status !== 'ok' || days.length === 0) body = `<div style="font-size:14px;font-weight:600">${COPY.energy.historyUnavailable}</div><div style="font-size:12.5px;color:${TOKENS.textSecondary};margin-top:4px;line-height:1.4">${COPY.energy.historyUnavailableBody}</div>`;
+    let notes = [];
+    if (h.status === 'loading') body = line(COPY.energy.loadingHistory);
+    else if (h.status !== 'ok' || days.length === 0) body = line(COPY.energy.historyUnavailable, true) + line(COPY.energy.historyUnavailableBody);
     else {
       const id = COST_STAT[fuel];
       const total = usable(state(hass, id)) ? num(state(hass, id)) : null;
       const summary = dailySummary(days, standingNote(total, isObj(stateObj(hass, id)) ? stateObj(hass, id).attributes : {}));
-      body = `${costChart(days)}<div style="font-size:12.5px;margin-top:8px">${esc(summary)}</div><div style="font-size:11.5px;color:${TOKENS.textTertiary};margin-top:4px">${COPY.energy.dragBars}</div>`;
+      body = `${costChart(days)}<div style="font-size:14px;line-height:19px;margin-top:8px">${esc(summary)}</div>`;
+      notes = [COPY.energy.dragBars, COPY.energy.publishedLate];
     }
-    return `<div class="lbl" style="margin:4px 4px -10px">${COPY.energy.dailyCost}</div><div class="segs">${seg('electricity', COPY.energy.electricity)}${seg('gas', COPY.energy.gas)}</div><div class="card pad">${body}</div>`;
+    return `<div class="hm"><section class="hm-sec">${hmHead(COPY.energy.dailyCost)}<div class="segs">${seg('electricity', COPY.energy.electricity)}${seg('gas', COPY.energy.gas)}</div><div class="hm-card">${body}</div>${hmFeet(notes)}</section></div>`;
   }
 
+  // Live smart-meter usage: a tile per fuel for today, then for the month (the period is the tile's second line).
   function sectionEnergyUsage(hass) {
-    const tile = (label, id) => {
+    const tile = (label, colourToken, period, id) => {
       const text = usable(state(hass, id)) ? energyText(state(hass, id), attr(hass, id, 'unit_of_measurement')) : '–';
       const [v, u] = text === '–' ? ['–', ''] : text.split(' ');
-      return `<div class="card u"><div class="lbl" style="margin:0">${label}</div><div class="v">${esc(v)}${u ? ` <span>${u}</span>` : ''}</div></div>`;
+      return hmWidget(label, colourToken, `${esc(v)}${u ? `<small>${esc(u)}</small>` : ''}`, period);
     };
-    return `<div class="lbl" style="margin:4px 4px -10px">${COPY.energy.usageLive}</div>
-<div style="display:flex;gap:8px">${tile('Electricity today', 'sensor.glow_electricity_today')}${tile('Gas today', 'sensor.glow_gas_today')}</div>
-<div style="display:flex;gap:8px">${tile('Electricity this month', 'sensor.glow_electricity_month')}${tile('Gas this month', 'sensor.glow_gas_month')}</div>
-<div style="font-size:11.5px;color:${TOKENS.textTertiary};margin:-6px 4px 0">${COPY.energy.meterNote}</div>`;
+    const tiles = `<div class="hm-wgrid">${tile(COPY.energy.electricity, TOKENS.subEnergy, COPY.energy.today, 'sensor.glow_electricity_today')}${tile(COPY.energy.gas, TOKENS.heat, COPY.energy.today, 'sensor.glow_gas_today')}${tile(COPY.energy.electricity, TOKENS.subEnergy, COPY.energy.thisMonth, 'sensor.glow_electricity_month')}${tile(COPY.energy.gas, TOKENS.heat, COPY.energy.thisMonth, 'sensor.glow_gas_month')}</div>`;
+    return `<div class="hm">${hmSection(COPY.energy.usageLive, tiles, { bare: true, notes: [COPY.energy.meterNote] })}</div>`;
   }
 
   // House list: Heating, Cameras and Bins as rows. Heating opens Settings, Cameras the Cameras page; Bins has no

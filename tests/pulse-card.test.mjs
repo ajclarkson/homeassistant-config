@@ -608,7 +608,7 @@ ok('cheapest 2h: dated window from the binary sensor (Today / Tomorrow), past hi
   assert.deepEqual(P.cheapestWindow(mk(), NOW).text, 'Tomorrow 20:00 → 22:00');
   assert.ok(Math.abs(P.cheapestWindow(mk(), NOW).avg - 25.9) < 1e-9);
   const energy = P.render('energy-day', {}, mk(), NOW, {});
-  assert.match(energy, /Next cheapest 2 hours<\/div><div class="m">Tomorrow 20:00 → 22:00 · avg 25\.9p/);
+  assert.match(energy, /Next cheapest 2 hours<\/div><div class="hm-rs">Tomorrow 20:00 → 22:00<\/div><\/div><span class="hm-val num">avg 25\.9p</);
   assert.match(P.render('status', {}, mk(), NOW), /Cheapest 2 hours<\/span><span class="num">Tomorrow 20:00 – 22:00</);
   assert.doesNotMatch(energy + P.render('status', {}, mk(), NOW), /02:00 → 04:00|avg 9\.8p/, 'the template sensors are no longer read');
   // later today
@@ -623,12 +623,12 @@ ok('cheapest 2h: dated window from the binary sensor (Today / Tomorrow), past hi
   const late = Date.parse('2026-10-25T22:07:00Z');
   assert.equal(P.cheapestWindow(past, late).status, 'none');
   assert.doesNotMatch(P.render('status', {}, past, late), /Cheapest 2 hours/);
-  assert.match(P.render('energy-day', {}, past, late, {}), /Next cheapest 2 hours<\/div><div class="m">none upcoming/);
+  assert.match(P.render('energy-day', {}, past, late, {}), /Next cheapest 2 hours<\/div><div class="hm-rs">None upcoming/);
   // running now: from current_end, or current_start + duration; state on without an end still says running
   const run = mk(cw({ current_start: '2026-10-25T18:00:00+00:00', current_end: '2026-10-25T20:00:00+00:00' }, 'on'));
   assert.equal(P.cheapestWindow(run, NOW).endText, '20:00');
   assert.match(P.render('status', {}, run, NOW), /Cheapest 2 hours<\/span><span class="num">Now, until 20:00</);
-  assert.match(P.render('energy-day', {}, run, NOW, {}), /Running now/);
+  assert.match(P.render('energy-day', {}, run, NOW, {}), /Next cheapest 2 hours<\/div><div class="hm-rs">Now, until 20:00</, 'running now is said in the sub-line, with no pill');
   assert.equal(P.cheapestWindow(mk(cw({ current_start: '2026-10-25T18:00:00+00:00', current_duration_in_hours: 2 }, 'on')), NOW).endText, '20:00');
   assert.match(P.render('status', {}, mk(cw({}, 'on')), NOW), /Cheapest 2 hours<\/span><span class="num">Now</);
   // unknown / garbage / missing -> hidden, never throws
@@ -1187,17 +1187,17 @@ ok('windows card renders them for the selected day with graded colour; none / em
   const hass = energyHass();
   const t = P.render('energy-day', {}, hass, NOW, {});
   assert.equal(count(t, />Free power</g), 1, 'one negative run, not a scrambled list');
-  assert.match(t, /Free power<\/div><div class="m">23:00 → 14:30<\/div>[\s\S]*?avg −\d/); // TZ=UTC here; London shows 00:00 → 14:30 (child-process test)
-  assert.match(t, /Cheap<\/div><div class="m">/);
+  assert.match(t, /Free power<\/div><div class="hm-rs">23:00 → 14:30<\/div><\/div><span class="hm-val num">avg −\d/); // TZ=UTC here; London shows 00:00 → 14:30 (child-process test)
+  assert.match(t, /Cheap<\/div><div class="hm-rs">/);
   assert.equal(count(t, /→ 01:00/g), 0);
   const m = P.render('energy-day', {}, hass, NOW, { day: 'tomorrow' });
-  assert.ok(/Free power<\/div><div class="m">none/.test(m) || /Free power<\/div><div class="m">\d\d:\d\d → \d\d:\d\d/.test(m));
+  assert.ok(/Free power<\/div><div class="hm-rs">None/.test(m) || /Free power<\/div><div class="hm-rs">\d\d:\d\d → \d\d:\d\d/.test(m));
   const e = P.render('energy-day', {}, energyHass({}, real, []), NOW, { day: 'tomorrow' });
   assert.doesNotMatch(e, />Free power<|>Cheap</);
   const quiet = day('2026-03-02T00:00:00Z', 48);
   const q = P.render('energy-day', {}, energyHass({}, quiet, quiet), Date.parse('2026-03-02T12:00:00Z'), {});
-  assert.match(q, /Free power<\/div><div class="m">none/);
-  assert.match(q, /Cheap<\/div><div class="m">none/);
+  assert.match(q, /Free power<\/div><div class="hm-rs">None/);
+  assert.match(q, /Cheap<\/div><div class="hm-rs">None/);
 });
 
 ok('window labels in Europe/London on the real clock-change day (child process, TZ set before Date is used)', () => {
@@ -1224,12 +1224,19 @@ ok('windowRange: a window spanning the repeated hour is never printed zero-lengt
   assert.notEqual(out.split(' → ')[0], out.split(' → ')[1]);
 });
 
-ok('energy page: head has the title (no back link), Now/Next/Usage', () => {
+ok('energy page: head has the title (no back link), the live usage as its subtitle, and Now/Next as two tiles', () => {
   const html = P.render('energy-head', {}, energyHass({ 'sensor.glow_electricity_power': { state: '0.44', attributes: { unit_of_measurement: 'kW' }, last_updated: '2026-10-25T18:41:50+00:00' } }), NOW);
   assert.doesNotMatch(html, /Back to House/);
-  assert.match(html, />Energy</);
+  assert.match(html, /^<div class="p"><div class="hm hm-first"><div class="hm-head"><div class="hm-hd"><h1 class="hm-big">Energy<\/h1><span class="hm-line">Using 440 W<\/span><\/div><\/div><div class="hm-wgrid hm-tight">/);
   assert.ok(html.includes(`color:${P.priceColour(34.8, { text: true })}`));
-  assert.match(html, />Usage<\/div><div[^>]*>440 W/);
+  assert.equal(count(html, /class="hm-w"/g), 2, 'Now and Next');
+  assert.match(html, />Now<\/div><div class="hm-wv num"><span[^>]*>34\.8<\/span><small>p\/kWh<\/small><\/div><div class="hm-ws">Until 19:00/, 'Now says which half hour it covers');
+  assert.match(html, /From 19:00/);
+  assert.match(html, />Next<\/div>/);
+  assert.doesNotMatch(html, /class="lbl"|text-transform/, 'no uppercase label');
+  // A meter reading that has not moved for 10 minutes is no live fact: the subtitle is left out, not shown as a dash.
+  const stale = P.render('energy-head', {}, energyHass({ 'sensor.glow_electricity_power': { state: '0.44', attributes: { unit_of_measurement: 'kW' }, last_updated: '2026-10-25T17:00:00+00:00' } }), NOW);
+  assert.doesNotMatch(stale, /hm-line|Using/);
 });
 
 ok('energy page day toggle: Today (50 slots) <-> Tomorrow (46 slots), pressed state, no now marker tomorrow', () => {
@@ -1254,9 +1261,10 @@ ok('energy page day toggle: Today (50 slots) <-> Tomorrow (46 slots), pressed st
 ok('energy page stats tiles follow the selected day', () => {
   const hass = energyHass();
   const t = P.render('energy-day', {}, hass, NOW, {});
-  assert.match(t, /Cheapest<\/div><div class="v" style="color:#[0-9a-f]{6}">−7\.5p<\/div><div class="s">at \d\d:\d\d/);
-  assert.match(t, /Dearest<\/div><div class="v"[^>]*>33\.4p<\/div><div class="s">at 17:00/);
-  assert.match(t, /Average<\/div><div class="v"[^>]*>[−\d.]+p<\/div><div class="s">per kWh/);
+  assert.match(t, /Cheapest<\/div><div class="hm-wv num"><span style="color:#[0-9a-f]{6}">−7\.5p<\/span><\/div><div class="hm-ws">at \d\d:\d\d/);
+  assert.match(t, /Dearest<\/div><div class="hm-wv num"><span[^>]*>33\.4p<\/span><\/div><div class="hm-ws">at 17:00/);
+  assert.match(t, /Average<\/div><div class="hm-wv num"><span[^>]*>[−\d.]+p<\/span><\/div><div class="hm-ws">per kWh/);
+  assert.match(t, /<div class="hm-wgrid hm-group-row">/, 'the stat tiles share the two-column grid; the odd one out spans the row');
   const m = P.render('energy-day', {}, hass, NOW, { day: 'tomorrow' });
   const st = P.energyStats(P.rateBands(tomorrow, NOW));
   assert.ok(m.includes(`>${P.penceText(st.dearest.v)}<`));
@@ -1266,9 +1274,10 @@ ok('energy page stats tiles follow the selected day', () => {
 ok('energy page: tomorrow missing / empty / unavailable shows the honest empty state', () => {
   for (const rates of [[], undefined, 'unavailable', [null], 'x']) {
     const html = P.render('energy-day', {}, energyHass(rates === undefined ? { 'event.octopus_energy_electricity_24e8140196_1012483035417_next_day_rates': null } : {}, real, rates), NOW, { day: 'tomorrow' });
-    assert.match(html, /Tomorrow's rates are not in yet/);
+    assert.match(html, /Tomorrow&#39;s rates are not in yet/);
     assert.match(html, /published late afternoon/);
     assert.doesNotMatch(html, /<rect|data-chart|Cheapest<\/div>/);
+    assert.match(html, /<h2>Prices<\/h2>/, 'the section keeps its header and the day control');
     assert.match(html, /class="seg on" data-act="energy-day" data-day="tomorrow"/);
     noNoise({ html }, 'tomorrow empty');
   }
@@ -1311,21 +1320,21 @@ ok('covered day on a 25-hour clock-change day: 50 charges from 2026-10-25T00:00:
   assert.equal(P.coveredDay({ charges: c }), 'Sun 25 Oct');
   assert.equal(P.coveredDay({ charges: c.slice(0, 40) }), null, 'a partial list is still refused');
   const r = P.render('energy-cost', {}, mk({ [`${EID}_cost`]: { state: '3.58', attributes: { unit_of_measurement: 'GBP', charges: c, total_without_standing_charge: 3.11, standing_charge: 0.46 } } }), NOW);
-  assert.match(r, /£3\.58<\/div><div[^>]*>Sun 25 Oct · – · incl\. standing charge</);
+  assert.match(r, /£3\.58<\/div><div class="hm-ws">Sun 25 Oct<\/div><div class="hm-ws">–<\/div><div class="hm-ws">incl\. standing charge</);
 });
 
 ok('cost card: published values labelled with their day, unavailable dashes, missing date says latest complete day', () => {
   const e = { unit_of_measurement: 'GBP', charges: charges('2026-10-22T23:00:00Z').map((c, i) => (i === 0 ? { ...c, start: '2026-10-23T00:00:00+01:00' } : c)), total_without_standing_charge: 2.9, standing_charge: 0.52 };
   const hass = mk({ [`${EID}_cost`]: { state: '3.42', attributes: e }, [`${EID}_consumption`]: { state: '9.4', attributes: { unit_of_measurement: 'kWh' } }, [`${GID}_cost`]: { state: '1.2', attributes: { unit_of_measurement: 'GBP' } }, [`${GID}_consumption_kwh`]: { state: '10.04', attributes: { unit_of_measurement: 'kWh' } } });
   const html = P.render('energy-cost', {}, hass, NOW);
-  assert.match(html, /Electricity<\/div><div class="v">£3\.42<\/div><div[^>]*>Fri 23 Oct · 9\.4 kWh · incl\. standing charge</);
-  assert.match(html, /Gas<\/div><div class="v">£1\.20<\/div><div[^>]*>latest complete day · 10\.0 kWh</);
+  assert.match(html, /Electricity<\/div><div class="hm-wv num">£3\.42<\/div><div class="hm-ws">Fri 23 Oct<\/div><div class="hm-ws">9\.4 kWh<\/div><div class="hm-ws">incl\. standing charge</);
+  assert.match(html, /Gas<\/div><div class="hm-wv num">£1\.20<\/div><div class="hm-ws">Latest complete day<\/div><div class="hm-ws">10\.0 kWh</);
   assert.doesNotMatch(html, /Gas[\s\S]*standing/);
   assert.match(html, /Octopus publishes about 1-2 days late/);
   const dash = P.render('energy-cost', {}, mk({ [`${EID}_cost`]: { state: 'unavailable', attributes: {} } }), NOW);
-  assert.equal(count(dash, /class="v">–</g), 2);
-  assert.match(dash, /latest complete day · –/);
-  assert.match(P.render('energy-cost', {}, mk({ [`${EID}_cost`]: { state: '3.42', attributes: { unit_of_measurement: 'USD' } } }), NOW), /class="v">–</);
+  assert.equal(count(dash, /class="hm-wv num">–</g), 2);
+  assert.match(dash, /Latest complete day<\/div><div class="hm-ws">–/);
+  assert.match(P.render('energy-cost', {}, mk({ [`${EID}_cost`]: { state: '3.42', attributes: { unit_of_measurement: 'USD' } } }), NOW), /class="hm-wv num">–</);
   noNoise({ html, dash }, 'cost');
   assert.equal(P.money(-1.5, 'GBP'), '−£1.50');
 });
@@ -1333,13 +1342,14 @@ ok('cost card: published values labelled with their day, unavailable dashes, mis
 ok('usage card: unit-aware kWh, dashes for unavailable / unknown units, labelled as live meter', () => {
   const g = (v, u) => ({ state: v, attributes: u ? { unit_of_measurement: u } : {} });
   const html = P.render('energy-usage', {}, mk({ 'sensor.glow_electricity_today': g('17.9', 'kWh'), 'sensor.glow_electricity_month': g('142.33', 'kWh'), 'sensor.glow_gas_today': g('3100', 'Wh'), 'sensor.glow_gas_month': g('unavailable', 'kWh') }), NOW);
-  assert.match(html, /Electricity today<\/div><div class="v">17\.9 <span>kWh<\/span>/);
-  assert.match(html, /Electricity this month<\/div><div class="v">142 <span>kWh<\/span>/);
-  assert.match(html, /Gas today<\/div><div class="v">3\.1 <span>kWh<\/span>/);
-  assert.match(html, /Gas this month<\/div><div class="v">–</);
+  assert.match(html, /Electricity<\/div><div class="hm-wv num">17\.9<small>kWh<\/small><\/div><div class="hm-ws">Today</);
+  assert.match(html, /Electricity<\/div><div class="hm-wv num">142<small>kWh<\/small><\/div><div class="hm-ws">This month</);
+  assert.match(html, /Gas<\/div><div class="hm-wv num">3\.1<small>kWh<\/small><\/div><div class="hm-ws">Today</);
+  assert.match(html, /Gas<\/div><div class="hm-wv num">–<\/div><div class="hm-ws">This month</);
+  assert.equal(count(html, /class="hm-w"/g), 4, 'two fuels by two periods, in the two-column grid');
   assert.match(html, /smart meter, live/);
   const nounit = P.render('energy-usage', {}, mk({ 'sensor.glow_electricity_today': g('17.9') }), NOW);
-  assert.match(nounit, /Electricity today<\/div><div class="v">–</);
+  assert.match(nounit, /Electricity<\/div><div class="hm-wv num">–<\/div><div class="hm-ws">Today</);
   assert.equal(P.energyText('1', 'MWh'), '1000 kWh');
   assert.equal(P.energyText(null, 'kWh'), '–');
   noNoise({ html, nounit }, 'usage');
@@ -1883,7 +1893,7 @@ ok('tab pages render a title and no back link; the heading is the only title (HA
   for (const [mode, name] of [['energy-head', 'Energy'], ['house-head', 'Settings'], ['cameras-head', 'Cameras']]) {
     const html = P.render(mode, {}, mk(), NOW, {});
     assert.doesNotMatch(html, /Back to House|data-act="nav"/, mode);
-    assert.equal(html.split(`>${name}</div>`).length - 1, 1, `${mode}: exactly one visible title`);
+    assert.equal(html.split(`>${name}</div>`).length - 1 + html.split(`<h1 class="hm-big">${name}</h1>`).length - 1, 1, `${mode}: exactly one visible title`);
   }
 });
 
@@ -2106,12 +2116,64 @@ ok('every fixed height or clipping rule is accounted for (a new one needs its ar
   const clip = cssRules().filter((r) => /overflow:hidden/.test(r.body)).map((r) => r.sel).sort();
   assert.deepEqual(clip, ['.card', '.hm-list', '.hm-rs', '.hm-rt', '.sr'].sort()); // .hm-rt/.hm-rs: single lines that ellipsise; .hm-list clips the row corners to its 12px radius
   for (const r of cssRules().filter((x) => /overflow:hidden/.test(x.body) && x.sel !== '.sr')) assert.equal(px(decl(r.body, 'height')), null, r.sel);
-  for (const sel of ['.hm-row', '.tog', '.link', '.seg', '.wrow', '.row']) assert.ok(px(decl(rule(sel).body, 'min-height')) > 0 && px(decl(rule(sel).body, 'height')) === null, sel);
+  for (const sel of ['.hm-row', '.tog', '.link', '.seg', '.row']) assert.ok(px(decl(rule(sel).body, 'min-height')) > 0 && px(decl(rule(sel).body, 'height')) === null, sel);
   // The bar chart: the tallest bar fits its 44px box and a zero or negative price keeps a 4px stub.
   assert.equal(px(decl(rule('.hm-bars').body, 'height')), 44);
   const barHeights = [...P.render('status', {}, mk({ 'event.octopus_energy_electricity_24e8140196_1012483035417_current_day_rates': { state: 'x', attributes: { rates: mkSlots(9, '2026-10-25T18:00:00Z', (i) => i * 5 - 5) } } }), Date.parse('2026-10-25T18:00:00Z')).matchAll(/class="hm-bar[^"]*" style="height:(\d+)px/g)].map((m) => +m[1]);
   assert.equal(Math.min(...barHeights), 4);
   assert.equal(Math.max(...barHeights), 44);
+});
+
+// The native rhythm of the Energy page: the same header, group and tile parts as Home and the rooms.
+const energyPages = () => {
+  const hass = energyHass();
+  const ui = { hist: { electricity: { status: 'ok', days: [{ date: '2026-10-22', cost: 3.1 }, { date: '2026-10-23', cost: 3.4 }, { date: '2026-10-24', cost: 2.9 }] } } };
+  return { head: P.render('energy-head', {}, hass, NOW, {}), day: P.render('energy-day', {}, hass, NOW, {}), cost: P.render('energy-cost', {}, hass, NOW), history: P.render('energy-history', {}, hass, NOW, ui), usage: P.render('energy-usage', {}, hass, NOW) };
+};
+ok('energy page: sentence-case section headers, no uppercase labels, pills or middle-dot strings, one root block per card', () => {
+  const pages = energyPages();
+  for (const [k, html] of Object.entries(pages)) {
+    assert.doesNotMatch(html, /class="lbl"|text-transform|class="tag|class="card|class="wrow|class="stat/, `${k}: only the shared parts`);
+    assert.doesNotMatch(html, / · /, `${k}: a second line instead of a middle dot`);
+    assert.match(html, k === 'head' ? /^<div class="p"><div class="hm hm-first">/ : /^<div class="p"><div class="hm">/, `${k}: one block, spaced by the shared section gap`);
+    for (const h of html.matchAll(/<h2>([^<]+)<\/h2>/g)) assert.equal(h[1], h[1].charAt(0) + h[1].slice(1).toLowerCase().replace(/\b(octopus)\b/, '$1'), `${k}: "${h[1]}" is sentence case`);
+  }
+  assert.deepEqual([...(pages.day + pages.cost + pages.history + pages.usage).matchAll(/<h2>([^<]+)<\/h2>/g)].map((m) => m[1]), ['Prices', 'Windows', 'Cost (latest published day)', 'Daily cost', 'Usage (smart meter, live)']);
+  assert.equal(count(pages.head, /<h1 /g), 1);
+});
+
+ok('energy page: charts sit in a card of the room chart\'s radius and padding, with the legend in the room chart\'s style', () => {
+  const pages = energyPages();
+  assert.equal(count(pages.day, /<div class="hm-card"><div class="chart"/g), 1, 'price chart in a card');
+  assert.equal(count(pages.history, /<div class="hm-card"><div class="chart"/g), 1, 'cost chart in a card');
+  const card = rule('.hm-card').body;
+  assert.equal(px(decl(card, 'border-radius')), 20, 'the room chart card radius');
+  assert.equal(px(decl(card, 'padding')), 16);
+  // The legend: 11px, secondary text, left aligned under the plot (apex: fontSize 11px, textSecondary, horizontalAlign left).
+  assert.match(pages.day, /margin-top:8px;font-size:11px;color:#a3adba" aria-hidden="true"><span style="display:inline-flex/);
+  assert.doesNotMatch(pages.day + pages.history, /color:#8f9aa8/, 'axis and legend text is readable, not tertiary');
+  // The scrub tooltip sits 36px above the plot: the chart's top margin plus the card padding keeps it inside the card.
+  assert.ok(20 + px(decl(card, 'padding')) >= 36);
+  assert.match(pages.day, /data-chart data-day="today"[^>]*style="position:relative;margin-top:20px;/);
+});
+
+ok('energy page: headline numbers are tiles in the shared two-column grid, an odd last tile spans the row', () => {
+  const pages = energyPages();
+  assert.equal(count(pages.head, /class="hm-w"/g), 2);
+  assert.equal(count(pages.day, /class="hm-w"/g), 3);
+  assert.equal(count(pages.cost, /class="hm-w"/g), 2);
+  assert.equal(count(pages.usage, /class="hm-w"/g), 4);
+  assert.match(P.STYLE, /\.hm-wgrid\{display:grid;grid-template-columns:repeat\(2,minmax\(0,1fr\)\);gap:10px\}/);
+  assert.equal(decl(rule('.hm-wgrid .hm-w:last-child:nth-child(odd)').body, 'grid-column'), '1/-1');
+  assert.equal(decl(rule('.hm-scenes').body, 'gap'), decl(rule('.hm-wgrid').body, 'gap'), 'one gutter token for every two-column grid');
+});
+
+ok('energy page: the top gap fix applies: the title card has no top margin, every other card is spaced by the section gap', () => {
+  const pages = energyPages();
+  assert.match(P.STYLE, /\.hm\.hm-first\{margin-top:0\}/);
+  assert.equal(count(pages.head, /class="hm hm-first"/g), 1);
+  for (const k of ['day', 'cost', 'history', 'usage']) assert.equal(count(pages[k], /hm-first/g), 0, k);
+  assert.match(P.STYLE, /\.hm\{[^}]*margin-top:max\(0px,calc\(36px - var\(--row-gap,8px\)\)\)/);
 });
 
 ok('tab bar fixed height has its arithmetic: 83px with a home indicator, bar content area (49px) holds the 44px tab, its 26px icon and 10px label; spacer matches', () => {
@@ -4815,6 +4877,12 @@ const over = (fg, bg) => {
   return '#' + [r, g, b].map((c, i) => Math.round(c * a + base[i] * (1 - a)).toString(16).padStart(2, '0')).join('');
 };
 const long = (c) => (c.length === 4 ? `#${[...c.slice(1)].map((x) => x + x).join('')}` : c); // classic writes its white knob as #fff
+ok('energy tokens: the tile labels read on a tile, in both themes', () => {
+  for (const [name, t] of Object.entries(Raw.THEMES)) {
+    for (const k of ['subEnergy', 'heat', 'textSecondary']) assert.ok(ratio(t[k], t.surface) >= 4.5, `${name}: ${k} label on a tile ${ratio(t[k], t.surface).toFixed(2)}`);
+  }
+});
+
 ok('the new tokens: a slider track that shows on the surface and under the tint fill; the switch knob reads on both tracks; labels read on cards', () => {
   for (const [name, t] of Object.entries(Raw.THEMES)) {
     assert.ok(ratio(t.sliderTrack, t.surface) >= 1.3, `${name}: sliderTrack on surface ${ratio(t.sliderTrack, t.surface).toFixed(2)}`);
@@ -4880,7 +4948,7 @@ ok('price colours follow the theme: same algorithm, the theme\'s stops, and read
   assert.equal(fills('rose-pine'), fills(undefined), 'no theme means the default');
   assert.notEqual(fills('classic'), fills(undefined));
   const roseNow = (cents) => Raw.render('energy-head', { theme: 'rose-pine' }, mk({ [`${BASE}_current_rate`]: { state: String(cents / 100), attributes: {} } }), NOW);
-  const colourOf = (html) => html.match(/line-height:1.15;color:(#[0-9a-f]{6})/)[1];
+  const colourOf = (html) => html.match(/<div class="hm-wv num"><span style="color:(#[0-9a-f]{6})">/)[1];
   assert.equal(colourOf(roseNow(-2)), Raw.THEMES['rose-pine'].priceNegative);
   assert.notEqual(colourOf(roseNow(60)), colourOf(roseNow(-2)), 'the extreme price is its own colour (lightened for text until readable)');
   for (const v of [-5, 0, 5, 15, 25, 35, 44, 50]) assert.ok(ratio(colourOf(roseNow(v)), Raw.THEMES['rose-pine'].surface) >= 4.5, `${v}p`);
