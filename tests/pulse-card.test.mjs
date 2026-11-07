@@ -132,7 +132,7 @@ ok('calm state: no attention, All good', () => {
   const rooms = P.ROOM_ORDER.map((k) => ({ ...FULL(k), target_reason: '', labels: [], pres_labels: [], heat_labels: [], ext_open: false, }));
   const out = renderAll(withRooms(rooms, []));
   noNoise(out, 'calm');
-  assert.match(out.status, /Nothing needs attention/);
+  assert.doesNotMatch(out.status, /Nothing needs attention|font-size:15px;font-weight:700/);
   assert.doesNotMatch(out.rooms, /details ›/);
   assert.match(out['room-head:parlour'], /All good/);
   assert.match(out['heating:parlour'], /class="lbl">Target<\/div>/);
@@ -821,7 +821,7 @@ ok('Now v2 all calm: status card not amber, no attention/occupied groups, 8 comp
   const hass = withRooms(calmRooms(), []);
   const status = P.render('status', {}, hass, NOW);
   const rooms = P.render('rooms', {}, hass, NOW);
-  assert.match(status, /Nothing needs attention/);
+  assert.doesNotMatch(status, /Nothing needs attention|font-size:15px;font-weight:700/);
   assert.doesNotMatch(status, /occupied|heating idle/, 'the Occupied now section and Heating card already say it');
   assert.doesNotMatch(status, /card pad warn/);
   assert.doesNotMatch(status, /\d home/);
@@ -847,7 +847,7 @@ ok('Now v2 one occupied: Occupied now card with filled icon, lights badge, reaso
   assert.match(card, /20\.4°/);
   assert.match(card, />Sofa occupied</);
   assert.doesNotMatch(card, /Manual|%|humidity/);
-  assert.match(P.render('status', {}, hass, NOW), /Nothing needs attention/);
+  assert.doesNotMatch(P.render('status', {}, hass, NOW), /Nothing needs attention/);
   assert.doesNotMatch(rooms.replace(card, ''), /Parlour/);
 });
 
@@ -856,7 +856,7 @@ ok('Now v2 all rooms occupied: no Other rooms group', () => {
   const rooms = P.render('rooms', {}, hass, NOW);
   assert.equal(count(rooms, /class="card oc tap"/g), 8);
   assert.doesNotMatch(rooms, /Other rooms|class="rt tap[" ]/);
-  assert.match(P.render('status', {}, hass, NOW), /Nothing needs attention/);
+  assert.doesNotMatch(P.render('status', {}, hass, NOW), /Nothing needs attention/);
 });
 
 ok('Now v2 attention: Bathroom (steamy) and Bedroom (window open) sit in Needs attention, once, and nowhere else; status is amber', () => {
@@ -1585,10 +1585,11 @@ ok('Now v3 header is the title and mode pill only; no "Updated" text anywhere on
   assert.deepEqual(view.sections[0].cards.map((c) => c.mode), ['now-header', 'status', 'rooms', 'bins-heating', 'cameras-card', 'feed', 'tabbar']);
 });
 
-ok('Now v3 status card: verdict row with the sentence right-aligned, ONE chip row (nowrap, 30px), price strip link, cheapest line', () => {
+ok('Now v3 status card: no verdict head, ONE chip row (nowrap, 30px), price strip link, cheapest line', () => {
   const hass = withRooms(calmRooms({ parlour: { occupied: true }, kitchen: { occupied: true }, bedroom: { occupied: true }, bathroom: { occupied: true } }), []);
   const st = P.render('status', {}, hass, NOW);
-  assert.match(st, /<div style="font-size:15px;font-weight:700">Nothing needs attention<\/div><\/div><div style="margin-top:10px"><div class="chips">/);
+  assert.doesNotMatch(st, /Nothing needs attention|font-size:15px;font-weight:700/);
+  assert.match(st, /<div class="card pad"><div><div class="chips">/, 'no head, no stray top margin');
   const chips = st.match(/<div class="chips">[\s\S]*?<\/div><\/div>/)[0];
   assert.equal(count(chips, /class="chip[" ]/g), 3, 'Adam, Sarah, Mo in one row');
   assert.doesNotMatch(chips, /flex-wrap:wrap/);
@@ -1612,7 +1613,7 @@ ok('Now v3 status card: verdict row with the sentence right-aligned, ONE chip ro
   assert.ok(strip.includes(`color:${P.priceColour(41.2, { text: true })}`));
   assert.match(strip, /M9 5l7 7-7 7/);
   assert.match(st, /<\/a><div style="font-size:12px;color:#a3adba;margin-top:2px">Cheapest 2h · <b[^>]*>Tomorrow 20:00 → 22:00<\/b><\/div>/);
-  assert.ok(st.indexOf('class="chips"') > st.indexOf('Nothing needs attention') && st.indexOf('pstrip') > st.indexOf('class="chips"'), 'verdict, chips, strip in that order');
+  assert.ok(st.indexOf('pstrip') > st.indexOf('class="chips"'), 'chips, then strip');
 });
 
 ok('Now v3 calm / 4 occupied / attention: partition rules and the amber state', () => {
@@ -1640,7 +1641,8 @@ ok('Now v3 calm / 4 occupied / attention: partition rules and the amber state', 
   assert.equal(count(r, /class="rt tap[" ]/g), 6);
   const heating = withRooms(calmRooms({ kitchen: { hvac_action: 'heating' }, parlour: { hvac_action: 'heating' } }), []);
   assert.doesNotMatch(P.render('status', {}, heating, NOW), /heating in/, 'the Heating card carries the room count');
-  assert.match(P.render('status', {}, withRooms(calmRooms(), []), NOW), /Nothing needs attention/);
+  assert.doesNotMatch(P.render('status', {}, withRooms(calmRooms(), []), NOW), /Nothing needs attention|font-size:15px;font-weight:700/, 'a calm house shows no verdict');
+  assert.match(P.render('status', {}, { states: {} }, NOW), /dot dim[^>]*><\/span><div[^>]*>No attention report/, 'missing data keeps the dim head');
   assert.match(P.render('status', {}, { states: {} }, NOW), /No attention report/, 'missing data keeps its own wording');
 });
 
