@@ -5,7 +5,7 @@ title: Energy
 path: energy
 type: sections
 max_columns: 1
-background: '#12151a'
+background: '#191724'
 sections:
   - type: grid
     cards:

@@ -2,7 +2,7 @@ title: Cameras
 path: cameras
 type: sections
 max_columns: 1
-background: '#12151a'
+background: '#191724'
 sections:
   - type: grid
     cards:

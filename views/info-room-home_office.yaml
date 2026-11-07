@@ -3,7 +3,7 @@ path: room-home_office
 visible: false
 type: sections
 max_columns: 1
-background: '#12151a'
+background: '#191724'
 sections:
   - type: grid
     cards:
