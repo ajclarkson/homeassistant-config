@@ -11,8 +11,6 @@ sections:
         template: pulse_room
         variables:
           room: bathroom
-          climate: climate.bathroom_trv
-          temp: sensor.bathroom_sensor_climate_temperature
           fan: switch.bathroom_fan_extractor
           fan_decision: sensor.bathroom_fan_decision
           fan_label: Extractor fan

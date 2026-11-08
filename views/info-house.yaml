@@ -2,8 +2,8 @@
 # (only when there is something), an Electricity widget, Rooms and Outside lists, a House list (heating, cameras,
 # bins) and the latest Activity. The electricity widget opens the Energy page (chart, windows, cost and usage
 # live there). Every section is `custom:pulse-card` (www/pulse-card.js, loaded via packages/frontend.yaml).
-# `background` is the pulse-card theme's `bg` token (rose-pine by default); a view cannot read the card's
-# theme, so a card on `theme: classic` needs '#12151a' here (a test holds this value to the default theme).
+# `background` is the pulse-card theme's `bg` token (rose-pine); a view cannot read the card's theme, so a
+# test holds this value to the default theme.
 title: House
 path: house
 icon: mdi:home-heart

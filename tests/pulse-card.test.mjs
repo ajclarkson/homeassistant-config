@@ -12,33 +12,31 @@ import * as yaml from 'js-yaml';
 
 const require = createRequire(import.meta.url);
 const Raw = require('../www/pulse-card.js');
-// Pages carry var(--pulse-token) rather than hex. Most tests assert on the classic look, so P resolves the
-// variables against the theme the config names (classic by default); Raw is the card as shipped.
-// The shipped default is rose-pine; these tests name classic unless a config names a theme, so they keep reading
-// the original colours. Tests of the default itself call Raw.render with no theme.
-const themeName = (config) => (config && config.theme) || 'classic';
+// Pages carry var(--pulse-token) rather than hex. P resolves the variables against the theme the config names
+// (the shipped default, rose-pine, when it names none); Raw is the card as shipped.
+const themeName = (config) => (config && config.theme) || 'rose-pine';
 // One themed copy per config object: the render gate skips a repaint only when it is handed the same config.
 const themed = new WeakMap();
 const asTheme = (config) => {
-  if (config === null || typeof config !== 'object') return { theme: 'classic' };
+  if (config === null || typeof config !== 'object') return { theme: 'rose-pine' };
   if (!themed.has(config)) themed.set(config, { ...config, theme: themeName(config) });
   return themed.get(config);
 };
 const P = {
   ...Raw,
   render: (mode, config, ...rest) => Raw.resolveVars(Raw.render(mode, asTheme(config), ...rest), themeName(config)),
-  STYLE: Raw.resolveVars(Raw.STYLE, 'classic'),
+  STYLE: Raw.resolveVars(Raw.STYLE, 'rose-pine'),
   makeRenderGate: (...a) => {
     const gate = Raw.makeRenderGate(...a);
     const run = (mode, config, ...rest) => { const out = gate.run(mode, asTheme(config), ...rest); return { ...out, html: Raw.resolveVars(out.html, themeName(config)) }; };
     return Object.create(gate, { run: { value: run } });
   },
 };
-// Tests that call colour helpers directly (outside a render) read the classic palette too.
-Raw.useTheme({ theme: 'classic' });
+// Tests that call colour helpers directly (outside a render) read the default palette too.
+Raw.useTheme({ theme: 'rose-pine' });
 const root = new URL('..', import.meta.url).pathname;
 let n = 0;
-// PULSE_GOLDEN_WRITE=1 only defines the helpers and rewrites the golden file (see the end of this file).
+// PULSE_GOLDEN_WRITE=1 only defines the helpers and rewrites the golden file (see the golden block).
 const WRITING_GOLDEN = !!process.env.PULSE_GOLDEN_WRITE;
 const ok = (name, fn) => { if (WRITING_GOLDEN) return; fn(); n += 1; console.log('ok', name); };
 const okAsync = async (name, fn) => { if (WRITING_GOLDEN) return; await fn(); n += 1; console.log('ok', name); };
@@ -346,13 +344,13 @@ ok('Recent activity rows by kind: acted plain, declined muted, guard muted, fail
   const html = P.render('room-feed', { room: 'kitchen' }, mk(histSensor('kitchen', entries, {})), NOW);
   // A row: the time, the dot (kind in the class), then the subject in bold, the verb part and the reason part.
   const line = (time, kind, text) => new RegExp(`<div class="tl-row ${kind}"><span class="tl-t num">${time}</span><span class="tl-rail" aria-hidden="true"><i class="tl-dot"[^>]*></i></span><div class="tl-b" style="color:[^"]*"><div class="tl-l1">${text}`);
-  assert.match(html, line('18:41', 'acted', '<b class="tl-s">Lights</b> off <span class="tl-n">x2</span></div><div class="tl-l2" style="color:#a3adba">Room empty</div>'));
-  assert.match(html, line('18:39', 'declined', '<b class="tl-s">Lights</b> stayed off</div><div class="tl-l2" style="color:#a3adba">Bright enough, 85 lx \\(on at 40 or below\\)</div>'));
+  assert.match(html, line('18:41', 'acted', '<b class="tl-s">Lights</b> off <span class="tl-n">x2</span></div><div class="tl-l2" style="color:#908caa">Room empty</div>'));
+  assert.match(html, line('18:39', 'declined', '<b class="tl-s">Lights</b> stayed off</div><div class="tl-l2" style="color:#908caa">Bright enough, 85 lx \\(on at 40 or below\\)</div>'));
   assert.match(html, line('18:38', 'declined', '<b class="tl-s">Lights</b> held back</div></div>'), 'a guard is routine: a quiet row on a room page, not amber');
   assert.match(html, line('18:37', 'problem', '<b class="tl-s">Lights</b> couldn&#39;t be controlled \\(turn on\\)'));
-  assert.match(html, /class="tl-row acted">[^]*?class="tl-b" style="color:#e8ebef"/);
-  assert.match(html, /class="tl-row declined">[^]*?class="tl-b" style="color:#a3adba"/);
-  assert.match(html, /class="tl-row problem">[^]*?class="tl-b" style="color:#f2b84b"/);
+  assert.match(html, /class="tl-row acted">[^]*?class="tl-b" style="color:#e0def4"/);
+  assert.match(html, /class="tl-row declined">[^]*?class="tl-b" style="color:#908caa"/);
+  assert.match(html, /class="tl-row problem">[^]*?class="tl-b" style="color:#eb6f92"/);
   assert.equal((html.match(/class="tl-row /g) || []).length, 4, 'one row per distinct entry; homerun stores no plumbing, so the card has nothing to hide');
   assert.match(html, /<h2>Activity<\/h2>/);
   assert.doesNotMatch(html, /⊘/);
@@ -524,7 +522,7 @@ ok('media only for rooms with players', () => {
 
 ok('House list: what is due next and when; boiler and inside/outside', () => {
   const html = P.render('house-list', {}, mk({ 'sensor.house_average_temperature': { state: '19.9', attributes: {} }, 'weather.forecast_home': { state: 'cloudy', attributes: { temperature: 10 } } }), NOW);
-  assert.match(html, /<div class="hm-rt">Refuse<\/div><div class="hm-rs" style="color:#f2b84b">Collected tomorrow</);
+  assert.match(html, /<div class="hm-rt">Refuse<\/div><div class="hm-rs" style="color:#eb6f92">Collected tomorrow</);
   assert.match(html, /Boiler firing/);
   assert.match(html, /19\.9° in, 10\.0° out/);
   const tie = P.render('house-list', {}, mk({ 'sensor.st_albans_collect_domestic_refuse_days_until_collection': { state: '4', attributes: {} }, 'sensor.st_albans_collect_domestic_food_days_until_collection': { state: '4', attributes: {} }, 'binary_sensor.house_heating_boiler_firing': { state: 'off', attributes: {} } }), NOW);
@@ -549,7 +547,7 @@ ok('House feed reads sensor.house_history, says where, and a stored info_decisio
   const stale = { 'sensor.info_decision_feed': { state: 'x', attributes: { entries: JSON.stringify([{ loc: 'kitchen', ts: '2026-10-25T18:20:00+00:00', sentence: 'OLD FEED SENTENCE' }]) } } };
   const hass = mk({ ...histSensor('house', [histEntry(1, { location: 'kitchen' }), histEntry(5, { location: 'house', subsystem: 'energy', decision: 'spin', reason: 'wheels_spun', automation_id: 'house:wheel' })]), ...stale });
   const feed = P.render('feed', {}, hass, NOW);
-  assert.match(feed, /<span class="tl-t num">18:41<\/span>[^]*?<b class="tl-s">Kitchen<\/b> lights off<\/div><div class="tl-l2" style="color:#a3adba">Room empty<\/div>/);
+  assert.match(feed, /<span class="tl-t num">18:41<\/span>[^]*?<b class="tl-s">Kitchen<\/b> lights off<\/div><div class="tl-l2" style="color:#908caa">Room empty<\/div>/);
   assert.match(feed, /<span class="tl-t num">18:37<\/span>[^]*?<b class="tl-s">Energy<\/b> spun the Octopus wheels/, 'whole-house entries carry their subsystem noun');
   assert.doesNotMatch(feed, /OLD FEED SENTENCE/, 'the old feed sensor is no longer read');
   assert.match(P.render('feed', {}, house([]), NOW), /Nothing recorded yet/);
@@ -557,7 +555,7 @@ ok('House feed reads sensor.house_history, says where, and a stored info_decisio
   assert.match(P.render('feed', {}, house([], { schema: 'nope' }), NOW), /History unreadable/);
   const declined = P.render('feed', {}, house([luxHigh(2)]), NOW);
   assert.match(declined, /<b class="tl-s">Kitchen<\/b> stayed off<\/div><div class="tl-l2"[^>]*>Bright enough/, 'a rule that chose not to act reads muted, as on the room page');
-  assert.match(P.render('room-feed', { room: 'kitchen' }, mk({ ...histSensor('kitchen', [histEntry(1)]) }), NOW), /<b class="tl-s">Lights<\/b> off<\/div><div class="tl-l2" style="color:#a3adba">Room empty/);
+  assert.match(P.render('room-feed', { room: 'kitchen' }, mk({ ...histSensor('kitchen', [histEntry(1)]) }), NOW), /<b class="tl-s">Lights<\/b> off<\/div><div class="tl-l2" style="color:#908caa">Room empty/);
 });
 
 ok('unknown room and unknown mode fail loudly', () => {
@@ -674,7 +672,7 @@ ok('real data at 18:29Z: slots 0-37 past (dimmed, visible), slot 38 now, 39-49 f
   const bars = rect(html);
   const base = Number(html.match(/<line x1="0" x2="300" y1="([\d.]+)"/)[1]);
   assert.deepEqual(bars.slice(0, 38).map((b) => b.op), Array(38).fill(0.45));
-  assert.equal(bars[38].fill, '#e8ebef');
+  assert.equal(bars[38].fill, '#e0def4');
   assert.equal(bars[38].op, 1);
   assert.deepEqual(bars.slice(39).map((b) => b.op), Array(11).fill(1));
   // 16:00-18:30Z (slots 34-37) are 29-33p: mid band, drawn above the baseline, clearly tall
@@ -682,7 +680,7 @@ ok('real data at 18:29Z: slots 0-37 past (dimmed, visible), slot 38 now, 39-49 f
   // overnight slots are negative: green, hanging from the baseline
   const neg = bars.slice(0, 34).filter((b) => Math.abs(b.y - base) < 0.6);
   assert.ok(neg.length >= 20, 'negative slots start at the baseline and extend down');
-  assert.ok(real.slice(0, 34).every((r, i) => (r.value_inc_vat <= 0 ? bars[i].fill === '#2ee6c8' : bars[i].fill === P.priceColour(r.value_inc_vat * 100))));
+  assert.ok(real.slice(0, 34).every((r, i) => (r.value_inc_vat <= 0 ? bars[i].fill === '#7dcfff' : bars[i].fill === P.priceColour(r.value_inc_vat * 100))));
   assert.ok(bars.every((b) => b.h >= 1.5));
   const nowX = Number(html.match(/<line x1="([\d.]+)" x2="[\d.]+" y1="0"/)[1]);
   assert.equal(nowX, 38 * 6 + 2.5, 'now marker sits on the current slot');
@@ -723,9 +721,9 @@ const cr = (a, b) => (Math.max(lum(a), lum(b)) + 0.05) / (Math.min(lum(a), lum(b
 
 ok('priceColour: negative special case, boundaries, never throws', () => {
   const C = P.priceColour;
-  for (const bad of [NaN, undefined, null, 'x', '', Infinity, -Infinity, {}, []]) assert.equal(C(bad), '#6b7684', String(bad));
-  assert.equal(C(-7.54), '#2ee6c8');
-  assert.equal(C(0), '#2ee6c8');
+  for (const bad of [NaN, undefined, null, 'x', '', Infinity, -Infinity, {}, []]) assert.equal(C(bad), '#6e6a86', String(bad));
+  assert.equal(C(-7.54), '#7dcfff');
+  assert.equal(C(0), '#7dcfff');
   assert.equal(C(-0.01), C(-100));
   for (const v of [0.01, 15, 25, 35, 44.9, 45, 100, -7.54]) assert.match(C(v), /^#[0-9a-f]{6}$/, String(v));
   assert.equal(C(45), C(100));
@@ -746,7 +744,8 @@ ok('priceColour: continuous green -> red hue, monotonic, lightness varies, green
   let last = null;
   for (let v = 0.5; v < 45; v += 0.5) {
     const c = P.priceColour(v);
-    const h = hue(c);
+    let h = hue(c);
+    if (h > 300) h -= 360; // the last stop's hue runs below 0 (through orange to red), which reads back as ~343
     assert.ok(h <= prev + 0.6, `hue should fall (${v}p: ${h} after ${prev})`);
     prev = h;
     lights.add(Math.round(lum(c) * 20));
@@ -759,7 +758,7 @@ ok('priceColour: continuous green -> red hue, monotonic, lightness varies, green
 });
 
 ok('priceColour: text variant reads on the card (>= 4.5:1) for every price', () => {
-  for (const v of [-20, -7.5, 0, 0.5, 5, 10, 15, 20, 25, 30, 35, 40, 44.9, 45, 80, 200, NaN]) assert.ok(cr(P.priceColour(v, { text: true }), '#1a1f26') >= 4.5, `${v}`);
+  for (const v of [-20, -7.5, 0, 0.5, 5, 10, 15, 20, 25, 30, 35, 40, 44.9, 45, 80, 200, NaN]) assert.ok(cr(P.priceColour(v, { text: true }), '#1f1d2e') >= 4.5, `${v}`);
 });
 
 ok('Now and Next figures use the price colour (text variant)', () => {
@@ -776,7 +775,7 @@ ok('chart: per-slot colours from the real rates at 18:29Z; key and aria summary 
   assert.equal(bars.length, 50);
   real.forEach((r, i) => {
     const p = r.value_inc_vat * 100;
-    if (i === 38) assert.equal(bars[i].fill, '#e8ebef');
+    if (i === 38) assert.equal(bars[i].fill, '#e0def4');
     else assert.equal(bars[i].fill, P.priceColour(p), `slot ${i} ${p.toFixed(2)}p`);
     assert.equal(bars[i].op, i < 38 ? 0.45 : 1);
   });
@@ -792,7 +791,7 @@ ok('chart: per-slot colours from the real rates at 18:29Z; key and aria summary 
 ok('extreme prices (>= 45p) render in the extreme colour; zero and negative in teal', () => {
   const slots = [-3, 0, 20, 44.9, 45, 60].map((p, i) => { const s = Date.parse('2026-10-25T00:00:00Z') + i * 1800000; return { start: new Date(s).toISOString(), end: new Date(s + 1800000).toISOString(), value_inc_vat: p / 100 }; });
   const bars = rect(energyAt(slots, Date.parse('2026-10-25T23:00:00Z')));
-  assert.deepEqual(bars.map((b) => b.fill), ['#2ee6c8', '#2ee6c8', P.priceColour(20), P.priceColour(44.9), '#c2003b', '#c2003b']);
+  assert.deepEqual(bars.map((b) => b.fill), ['#7dcfff', '#7dcfff', P.priceColour(20), P.priceColour(44.9), '#b4637a', '#b4637a']);
 });
 
 function mkSlots(n, startIso, f) { return Array.from({ length: n }, (_, i) => { const t = Date.parse(startIso) + i * 1800000; return { start: new Date(t).toISOString(), end: new Date(t + 1800000).toISOString(), value_inc_vat: f(i) / 100 }; }); }
@@ -896,8 +895,8 @@ ok('House calm: no attention section, no occupied rooms; Rooms lists all 8 in or
   assert.match(rooms, /<h2>Rooms<\/h2><span class="hm-tr">0 occupied<\/span>/);
   assert.doesNotMatch(rooms, /Occupied now|Other rooms/);
   assert.deepEqual(roomPaths(rooms), P.ROOM_ORDER);
-  assert.equal(count(rooms, /style="background:#ff9f0a/g), 0, 'no occupied tile');
-  assert.equal(count(rooms, /style="background:#2c2c2e;color:#a3adba"/g), 8, 'eight idle tiles');
+  assert.equal(count(rooms, /style="background:#9ccfd8/g), 0, 'no occupied tile');
+  assert.equal(count(rooms, /style="background:#2a2740;color:#908caa"/g), 8, 'eight idle tiles');
   assert.doesNotMatch(rooms, /%|humidity|automatic/);
   noNoise({ status, rooms }, 'calm house');
 });
@@ -909,7 +908,7 @@ ok('House rooms: an occupied room leads the list with the occupied tile, lights 
   assert.deepEqual(roomPaths(rooms), ['bedroom', ...P.ROOM_ORDER.filter((k) => k !== 'bedroom')]);
   const row = rowOf(rooms, '/pulse-dashboard/room-bedroom');
   assert.equal(rowTitle(row), 'Bedroom');
-  assert.equal(tileStyle(row), 'background:#ff9f0a;color:#000000');
+  assert.equal(tileStyle(row), 'background:#9ccfd8;color:#191724');
   assert.match(row, /<svg[^>]*fill="currentColor"/, 'occupied is a solid person glyph');
   assert.equal(rowSub(row), 'Lamps · sofa occupied');
   assert.equal(rowValue(row), '20.4°');
@@ -927,7 +926,7 @@ ok('House rooms: the bed hold reads "Someone in bed"', () => {
 ok('House rooms: all occupied gives eight occupied tiles and "8 occupied"', () => {
   const rooms = P.render('rooms', {}, withRooms(P.ROOM_ORDER.map((k) => quietRoom(k, { occupied: true })), []), NOW);
   assert.match(rooms, /<span class="hm-tr">8 occupied<\/span>/);
-  assert.equal(count(rooms, /style="background:#ff9f0a;color:#000000"/g), 8);
+  assert.equal(count(rooms, /style="background:#9ccfd8;color:#191724"/g), 8);
 });
 
 ok('House attention: one row per item with the room as title, the detail as subtitle and a glyph for the kind; rooms stay listed too', () => {
@@ -938,13 +937,13 @@ ok('House attention: one row per item with the room as title, the detail as subt
   const items = [attn('Bathroom', 'bathroom', 'warm_heating', '23.1° vs 18° target, heating on'), attn('Bedroom', 'bedroom', 'window_open_heating_on', 'Open window while heating is on')];
   const hass = withRooms(rooms, items);
   const status = P.render('status', {}, hass, NOW);
-  assert.match(status, /<h2 style="color:#f2b84b">Needs attention<\/h2>/);
+  assert.match(status, /<h2 style="color:#eb6f92">Needs attention<\/h2>/);
   const bath = rowOf(status, '/pulse-dashboard/room-bathroom');
   const bed = rowOf(status, '/pulse-dashboard/room-bedroom');
   assert.equal(rowTitle(bath), 'Bathroom');
   assert.match(rowSub(bath), /23\.1° vs 18° target, heating on · 88% humidity, probably a shower/);
   assert.equal(rowSub(bed), 'Open window while heating is on');
-  assert.equal(tileStyle(bed), 'background:#f2b84b;color:#000000');
+  assert.equal(tileStyle(bed), 'background:#eb6f92;color:#191724');
   assert.ok(bed.includes(P.ICON.window), 'a window item gets the window glyph');
   assert.ok(bath.includes(P.ICON.flame), 'a temperature item gets the flame glyph');
   assert.ok(rowOf(status, '/pulse-dashboard/room-bedroom').includes('class="hm-chev"'));
@@ -1027,7 +1026,7 @@ ok('House rooms: one lights state, at most one reason in priority order, never "
 
 ok('House rooms: unavailable occupancy shows an attention glyph; rooms with no report say so; rows are 60px links', () => {
   const html = P.render('rooms', {}, withRooms(calmRooms({ bedroom: { occupancy_unavailable: true } }), []), NOW);
-  assert.equal(tileStyle(rowOf(html, '/pulse-dashboard/room-bedroom')), 'background:#2c2c2e;color:#f2b84b');
+  assert.equal(tileStyle(rowOf(html, '/pulse-dashboard/room-bedroom')), 'background:#2a2740;color:#eb6f92');
   const missing = P.render('rooms', {}, mk(), NOW);
   const roomsOnly = missing.slice(0, missing.indexOf('<h2>Outside'));
   assert.equal(count(roomsOnly, /class="hm-rs">No report/g), 8);
@@ -1481,7 +1480,7 @@ ok('history section: bars, scaling, latest highlighted, ticks, summary, readout 
   assert.match(html, />Daily cost</);
   assert.match(html, /class="seg on" data-act="cost-fuel" data-fuel="electricity" aria-pressed="true"/);
   assert.match(html, /data-fuel="gas" aria-pressed="false"/);
-  const bars = [...html.matchAll(/<rect x="(\d+)" y="([\d.]+)" width="(\d+)" height="([\d.]+)" rx="2" fill="#7aa7ff" opacity="([\d.]+)"\/>/g)].map((m) => ({ y: +m[2], h: +m[4], op: +m[5] }));
+  const bars = [...html.matchAll(/<rect x="(\d+)" y="([\d.]+)" width="(\d+)" height="([\d.]+)" rx="2" fill="#7aa2f7" opacity="([\d.]+)"\/>/g)].map((m) => ({ y: +m[2], h: +m[4], op: +m[5] }));
   assert.equal(bars.length, 10);
   assert.equal(bars[9].op, 1);
   assert.ok(bars.slice(0, 9).every((b) => b.op === 0.55));
@@ -1660,7 +1659,7 @@ ok('undeclared decisions are worded from one table by sentenceFor, with a pretti
   assert.equal(say(und('constructor', 'toString')), 'Heating constructor · toString', 'slugs cannot reach into object prototypes');
   assert.equal(P.sentenceFor(und('turn_on', 'x'), mk()).tone, 'ok');
   const feed = P.render('feed', {}, mk(histSensor('house', [histEntry(1, { location: 'bedroom', subsystem: 'heating', decision: 'set_mode', reason: 'safety_window_open', outcome: undefined })])), NOW);
-  assert.match(feed, /<b class="tl-s">Bedroom<\/b> heating mode changed<\/div><div class="tl-l2" style="color:#a3adba">Window open<\/div>/);
+  assert.match(feed, /<b class="tl-s">Bedroom<\/b> heating mode changed<\/div><div class="tl-l2" style="color:#908caa">Window open<\/div>/);
 });
 
 ok('media players are labelled by device role from the room config, not the entity name', () => {
@@ -1704,7 +1703,7 @@ ok('House header: large title, mode and occupancy line, two avatars with presenc
   assert.equal(count(hdr, /<a /g), 1, 'the mode line is the only link in the header');
   assert.match(hdr, /data-path="\/pulse-dashboard\/settings" aria-label="Open settings"/);
   const avatars = [...hdr.matchAll(/<span class="hm-av" role="img" aria-label="([^"]*)">(\w)<span class="hm-pd" style="background:(#[0-9a-f]{6})"><\/span><\/span>/g)].map((m) => m.slice(1));
-  assert.deepEqual(avatars, [['Adam, home', 'A', '#30d158'], ['Sarah, away', 'S', '#48484a']], 'initials, label and dot colour per presence');
+  assert.deepEqual(avatars, [['Adam, home', 'A', '#9ccfd8'], ['Sarah, away', 'S', '#524f67']], 'initials, label and dot colour per presence');
   assert.match(hdr, /<div class="hm-mo">Mo<\/div>/);
   const away = P.render('now-header', {}, mk({ 'person.adam': { state: 'unknown', attributes: {} } }), NOW);
   assert.match(away, /aria-label="Adam, unknown"/);
@@ -1714,8 +1713,8 @@ ok('House header: large title, mode and occupancy line, two avatars with presenc
   assert.match(P.STYLE, /\.hm-avs\{[^}]*gap:6px/);
   assert.doesNotMatch(P.STYLE, /\.hm-av\+\.hm-av/, 'no overlap');
   assert.match(P.STYLE, /\.hm-av\{[^}]*position:relative/);
-  assert.match(P.STYLE, /\.hm-pd\{[^}]*position:absolute;right:-2px;bottom:-2px;[^}]*box-shadow:0 0 0 2px #12151a/);
-  assert.match(P.STYLE, /\.hm-av\{[^}]*width:36px;height:36px;border-radius:50%;background:#232a33;border:2px solid #12151a/);
+  assert.match(P.STYLE, /\.hm-pd\{[^}]*position:absolute;right:-2px;bottom:-2px;[^}]*box-shadow:0 0 0 2px #191724/);
+  assert.match(P.STYLE, /\.hm-av\{[^}]*width:36px;height:36px;border-radius:50%;background:#26233a;border:2px solid #191724/);
   assert.match(P.STYLE, /\.hm-pd\{[^}]*width:10px;height:10px/);
   for (const hass of [mk(), withRooms(calmRooms(), []), withRooms(P.ROOM_ORDER.map((k) => quietRoom(k, { occupied: true })), [attn('Bedroom', 'bedroom', 'automation_disabled', 't')]), { states: {} }]) assert.doesNotMatch(nowPage(hass), /Updated/);
   assert.equal(count(nowPage(mk()), /data-path="\/mobile-dashboard"/g), 0);
@@ -1726,7 +1725,7 @@ ok('House header: the Mo line keeps its content (last meal, shortened), unchange
   const worst = P.render('now-header', {}, mk({ 'sensor.mo_timeline': { state: 'x', attributes: { eating: [{ ts: Date.parse('2026-10-24T18:05:00Z') }] } } }), NOW);
   assert.match(worst, /<div class="hm-mo">Mo · ate yest 18:05<\/div>/);
   assert.doesNotMatch(worst, /yesterday/);
-  assert.match(P.STYLE, /\.hm-mo\{[^}]*color:#a3adba/);
+  assert.match(P.STYLE, /\.hm-mo\{[^}]*color:#908caa/);
 });
 
 ok('House type scale: 34/41 title, 20 bold sentence-case section headers, 17 row titles, 14 subtitles, 13 footnote; rounded tabular numerals; no uppercase labels', () => {
@@ -1734,7 +1733,7 @@ ok('House type scale: 34/41 title, 20 bold sentence-case section headers, 17 row
   assert.match(css, /\.hm-big\{[^}]*font-size:34px;line-height:41px;font-weight:700/);
   assert.match(css, /\.hm-h h2\{[^}]*font-size:20px[^}]*font-weight:700/);
   assert.match(css, /\.hm-rt\{font-size:17px/);
-  assert.match(css, /\.hm-rs\{font-size:14px;line-height:19px;color:#a3adba/);
+  assert.match(css, /\.hm-rs\{font-size:14px;line-height:19px;color:#908caa/);
   assert.match(css, /\.hm-foot\{[^}]*font-size:13px/);
   assert.match(css, /\.hm \.num,\.hm-price,\.hm-val\{font-family:ui-rounded,"SF Pro Rounded",-apple-system,system-ui,sans-serif;font-variant-numeric:tabular-nums\}/);
   assert.match(css, /\.hm\{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif/);
@@ -1742,7 +1741,7 @@ ok('House type scale: 34/41 title, 20 bold sentence-case section headers, 17 row
   assert.doesNotMatch(hm, /uppercase|letter-spacing:\.[4-9]/);
   const page = nowPage(withRooms(calmRooms(), [attn('Bedroom', 'bedroom', 'automation_disabled', 'x')]));
   assert.doesNotMatch(page, /class="lbl"|text-transform/, 'the House page uses no uppercase label');
-  assert.doesNotMatch(css.split('\n').filter((l) => /^\.hm/.test(l)).join('\n'), /textTertiary|#8f9aa8/);
+  assert.doesNotMatch(css.split('\n').filter((l) => /^\.hm/.test(l)).join('\n'), /textTertiary|#6e6a86/);
   const sections = [...page.matchAll(/<h2[^>]*>([^<]*)<\/h2>/g)].map((m) => m[1]);
   assert.deepEqual(sections, ['Needs attention', 'Rooms', 'Outside', 'House', 'Activity']);
 });
@@ -1769,10 +1768,10 @@ ok('House list: inset grouped list, rows 60px with a 30px tile, hairline startin
   assert.match(css, /\.hm-h\{[^}]*padding:0 4px/, 'headers sit 4px in from the list edge');
   assert.match(css, /\.hm-top\{[^}]*padding:0 4px/);
   assert.match(css, /\.hm-mo\{padding:0 4px/);
-  assert.match(css, /\.hm-list\{background:#1a1f26;border-radius:12px/);
+  assert.match(css, /\.hm-list\{background:#1f1d2e;border-radius:12px/);
   assert.match(css, /\.hm-row\{[^}]*gap:12px;min-height:60px;padding:0 14px/);
-  assert.match(css, /\.hm-row\+\.hm-row::before\{[^}]*left:56px[^}]*height:\.5px;background:#232a33/, '14 + 30 + 12: the hairline starts at the text column');
-  assert.match(css, /\.hm-chev\{[^}]*width:14px;color:#5a626d/);
+  assert.match(css, /\.hm-row\+\.hm-row::before\{[^}]*left:56px[^}]*height:\.5px;background:rgba\(110,106,134,\.35\)/, '14 + 30 + 12: the hairline starts at the text column');
+  assert.match(css, /\.hm-chev\{[^}]*width:14px;color:#524f67/);
   const page = nowPage(withRooms(calmRooms(), []));
   for (const row of page.match(/<a class="hm-row tap"[^>]*>/g)) assert.match(row, /data-act="nav" data-path="\/pulse-dashboard\//);
   assert.equal(count(page, /<a class="hm-row tap"/g) > 10, true);
@@ -1786,7 +1785,7 @@ ok('House attention: no section when calm, a footnote when the report is missing
   assert.doesNotMatch(calm, /Needs attention|card pad warn|All good/);
   assert.match(P.render('status', {}, { states: {} }, NOW), /<p class="hm-foot">No attention report<\/p>/);
   assert.doesNotMatch(P.render('status', {}, withRooms(calmRooms(), []), NOW), /No attention report/);
-  assert.match(P.STYLE, /\.hm-foot\{[^}]*color:#a3adba/);
+  assert.match(P.STYLE, /\.hm-foot\{[^}]*color:#908caa/);
 });
 
 ok('attention rows say which way a temperature is off: the detail is the subtitle, steamy adds the humidity', () => {
@@ -1869,9 +1868,9 @@ ok('tab bar renders four tabs, one per id, with aria-current on the active one o
   assert.equal(count(bar, /width="26" height="26"/g), 4, '26px icons');
   assert.equal(count(bar, /<svg [^>]*fill="currentColor"/g), 1, 'only the selected tab is a filled icon');
   assert.match(bar, /aria-current="page"><svg [^>]*fill="currentColor"/);
-  assert.equal(Raw.THEMES.classic.tint, '#f2c46b');
-  assert.equal(Raw.THEMES.classic.textTertiary, '#8f9aa8');
-  assert.equal(Raw.THEMES.classic.tabBar, 'rgba(18,21,26,.82)');
+  assert.equal(Raw.THEMES['rose-pine'].tint, '#c4a7e7');
+  assert.equal(Raw.THEMES['rose-pine'].textTertiary, '#6e6a86');
+  assert.equal(Raw.THEMES['rose-pine'].tabBar, 'rgba(25,23,36,.82)');
 });
 
 ok('tab bar nav paths use the DASH constant and match real views', () => {
@@ -2163,8 +2162,8 @@ ok('energy page: charts sit in a card of the room chart\'s radius and padding, w
   assert.equal(px(decl(card, 'border-radius')), 20, 'the room chart card radius');
   assert.equal(px(decl(card, 'padding')), 16);
   // The legend: 11px, secondary text, left aligned under the plot (apex: fontSize 11px, textSecondary, horizontalAlign left).
-  assert.match(pages.day, /margin-top:8px;font-size:11px;color:#a3adba" aria-hidden="true"><span style="display:inline-flex/);
-  assert.doesNotMatch(pages.day + pages.history, /color:#8f9aa8/, 'axis and legend text is readable, not tertiary');
+  assert.match(pages.day, /margin-top:8px;font-size:11px;color:#908caa" aria-hidden="true"><span style="display:inline-flex/);
+  assert.doesNotMatch(pages.day + pages.history, /color:#6e6a86/, 'axis and legend text is readable, not tertiary');
   // The scrub tooltip sits 36px above the plot: the chart's top margin plus the card padding keeps it inside the card.
   assert.ok(20 + px(decl(card, 'padding')) >= 36);
   assert.match(pages.day, /data-chart data-day="today"[^>]*style="position:relative;margin-top:20px;/);
@@ -2662,7 +2661,7 @@ ok('cameras: per-camera status from the privacy switch, master state ignores the
   const offline = mk({ ...base, 'switch.home_office_privacy': b('unavailable', { last_changed: '2026-10-26T12:00:00+00:00' }), 'sensor.house_active_mode': b('normal') });
   const oh = P.render('cameras-head', {}, offline, NOW);
   assert.match(oh, /Home office offline/);
-  assert.match(oh, /class="hm-rt" style="color:#f2b84b;font-weight:600">Home office offline</, 'offline is said in the attention colour, not a banner');
+  assert.match(oh, /class="hm-rt" style="color:#eb6f92;font-weight:600">Home office offline</, 'offline is said in the attention colour, not a banner');
   const oc = P.render('camera', { camera: 'home_office' }, offline, NOW);
   assert.match(oc, /Offline/);
   assert.doesNotMatch(oc, /data-act="camera-toggle"/, 'no switch for an offline camera');
@@ -2777,7 +2776,7 @@ ok('cameras page: recordings open in the same list, each clip a row with a thumb
   assert.match(open, /<div class="hm-dp"><button type="button" class="hm-row hm-btn tap" data-act="camera-clip" data-camera="kitchen" data-clip="a1"><img class="hm-thumb"[^>]*><div class="hm-text"><div class="hm-rt">10 min ago<\/div><div class="hm-rs">Person, patio<\/div><\/div><span class="hm-chev"/);
   assert.equal(px(decl(rule('.hm-thumb').body, 'width')), 72);
   assert.equal(px(decl(rule('.hm-thumb').body, 'height')), 48);
-  assert.match(P.render('camera', { camera: 'kitchen' }, hass, NOW, { cam: { pending: {}, rec: { kitchen: { open: true, status: 'error', items: [] } } } }), /<div class="hm-dp"><div class="hm-row"><div class="hm-text"><div class="hm-rs">Couldn&#39;t load recordings<\/div><\/div><\/div><button[^>]*data-act="camera-rec-refresh"[^>]*><div class="hm-text"><div class="hm-rt" style="color:#7aa7ff;font-weight:600">Try again/);
+  assert.match(P.render('camera', { camera: 'kitchen' }, hass, NOW, { cam: { pending: {}, rec: { kitchen: { open: true, status: 'error', items: [] } } } }), /<div class="hm-dp"><div class="hm-row"><div class="hm-text"><div class="hm-rs">Couldn&#39;t load recordings<\/div><\/div><\/div><button[^>]*data-act="camera-rec-refresh"[^>]*><div class="hm-text"><div class="hm-rt" style="color:#7aa2f7;font-weight:600">Try again/);
 });
 
 ok('cameras page: cards are spaced by the shared section gap and only the title card is flush at the top', () => {
@@ -2952,13 +2951,12 @@ ok('garden theme tiles come from the helper options, with the helper state activ
   assert.equal(gr(mk(), 'garden-theme'), '', 'no helper data renders nothing');
 });
 
-ok('every theme option in helpers.yaml has an icon and a label', () => {
+ok('every theme option in helpers.yaml has a label', () => {
   const helpers = yaml.load(readFileSync(root + 'packages/helpers.yaml', 'utf8'));
   const themes = Object.entries(helpers.input_select).filter(([id]) => id.endsWith('_light_theme'));
   assert.ok(themes.length > 0);
   for (const [id, h] of themes) {
     for (const o of h.options) {
-      assert.ok(P.THEME_ICON[o] && P.ICON[P.THEME_ICON[o]], `${id}: option "${o}" has no icon`);
       assert.ok(P.THEME_LABELS[o], `${id}: option "${o}" has no label`);
     }
   }
@@ -3074,7 +3072,7 @@ ok('House page: an Outside list with both gardens linking to their Pulse pages, 
   assert.equal(rowTitle(front), 'Front garden');
   assert.equal(rowSub(front), 'On at sunset · 16:30');
   assert.equal(rowValue(front), 'Off');
-  assert.equal(tileStyle(front), 'background:#30d158;color:#000000');
+  assert.equal(tileStyle(front), 'background:#31748f;color:#e0def4');
   assert.ok(front.includes(P.ICON.sunset), 'sunset glyph');
   rowOf(rooms, '/pulse-dashboard/room-back_garden');
   assert.deepEqual(roomPaths(rooms), P.ROOM_ORDER, 'gardens are not in the indoor list');
@@ -3091,7 +3089,7 @@ ok('a theme switch reads in words (the daily calendar publish is declared ignore
   const entries = [histEntry(1, { ...cal, decision: 'switch_theme', reason: 'calendar_boundary', facts: { theme: 'halloween' } })];
   const html = gr(frontGarden(histSensor(FG, entries)), 'room-feed');
   assert.doesNotMatch(html, /publish|calendar publish|not a calendar boundary/i);
-  assert.match(html, /<b class="tl-s">Lights<\/b> theme switched to Halloween<\/div><div class="tl-l2" style="color:#a3adba">Calendar/);
+  assert.match(html, /<b class="tl-s">Lights<\/b> theme switched to Halloween<\/div><div class="tl-l2" style="color:#908caa">Calendar/);
   assert.equal((html.match(/class="tl-row /g) || []).length, 1);
 });
 
@@ -3619,17 +3617,17 @@ ok('Automation: one disclosure row on every room and garden page, rows explain t
   assert.match(bath, /<div class="hm-rt">Fan automation<\/div><div class="hm-rs">Runs the extractor fan after a shower until the steam clears<\/div>/);
   assert.match(bath, /<div class="hm-rt">Minimum run<span class="hm-tv num">[^<]*<\/span><\/div><div class="hm-rs">After the last shower ends<\/div>/);
   assert.equal(count(bath, /class="hm-rs"/g), count(bath, /data-act="setting-toggle"/g) + count(bath, /data-act="setting-number"/g) / 2, 'one subtitle per row (a stepper has two buttons)');
-  assert.match(rule('.hm-rs').body, /font-size:14px[^}]*color:#a3adba/);
+  assert.match(rule('.hm-rs').body, /font-size:14px[^}]*color:#908caa/);
   assert.match(P.render('room-head', { room: 'bedroom' }, sheetHass(), NOW), /<h1 class="hm-big">Bedroom<\/h1>/);
 });
 
 ok('Automation summary: "All on", or what is off in the attention colour (one by name, several by count)', () => {
   const sum = (room, over) => closedSheet(room, sheetHass(over)).match(/<span class="hm-val hm-ds"([^>]*)>([^<]*)</).slice(1);
   assert.deepEqual(sum('bathroom', {}), ['', 'All on']);
-  assert.deepEqual(sum('bathroom', { 'input_boolean.bathroom_automation_fan_enabled': b('off') }), [' style="color:#f2b84b"', 'Fan automation off']);
-  assert.deepEqual(sum('kitchen', { 'input_boolean.kitchen_automation_lights_enabled': b('off') }), [' style="color:#f2b84b"', 'Lights automation off']);
-  assert.deepEqual(sum('kitchen', { 'input_boolean.kitchen_automation_lights_enabled': b('off'), 'input_boolean.kitchen_automation_heating_enabled': b('off') }), [' style="color:#f2b84b"', '2 off']);
-  assert.deepEqual(sum('kitchen', { 'input_boolean.kitchen_automation_lights_enabled': b('off'), 'input_boolean.kitchen_automation_heating_enabled': b('off'), 'input_boolean.kitchen_sensor_motion_enabled': b('off') }), [' style="color:#f2b84b"', '3 off']);
+  assert.deepEqual(sum('bathroom', { 'input_boolean.bathroom_automation_fan_enabled': b('off') }), [' style="color:#eb6f92"', 'Fan automation off']);
+  assert.deepEqual(sum('kitchen', { 'input_boolean.kitchen_automation_lights_enabled': b('off') }), [' style="color:#eb6f92"', 'Lights automation off']);
+  assert.deepEqual(sum('kitchen', { 'input_boolean.kitchen_automation_lights_enabled': b('off'), 'input_boolean.kitchen_automation_heating_enabled': b('off') }), [' style="color:#eb6f92"', '2 off']);
+  assert.deepEqual(sum('kitchen', { 'input_boolean.kitchen_automation_lights_enabled': b('off'), 'input_boolean.kitchen_automation_heating_enabled': b('off'), 'input_boolean.kitchen_sensor_motion_enabled': b('off') }), [' style="color:#eb6f92"', '3 off']);
   assert.equal(sum('front_garden', { 'input_boolean.front_garden_automation_lights_enabled': b('off') })[1], 'Lights automation off');
 });
 
@@ -3644,7 +3642,7 @@ ok('disclosure row: a real button, aria-expanded and aria-controls, a chevron th
   assert.match(P.STYLE, /\.hm-btn\[aria-expanded="true"\] \.hm-chev\{transform:rotate\(90deg\)\}/);
   assert.doesNotMatch(P.STYLE, /transition|animation/, 'nothing animates, so a repaint cannot replay anything');
   assert.match(rule('.hm-ds').body, /min-width:0/);
-  assert.match(rule('.hm-val').body, /color:#a3adba/, 'the summary is textSecondary');
+  assert.match(rule('.hm-val').body, /color:#908caa/, 'the summary is textSecondary');
 });
 
 ok('native controls: a switch row is a button with aria-pressed; a stepper has two labelled buttons, its value in the row title', () => {
@@ -3659,11 +3657,11 @@ ok('native controls: a switch row is a button with aria-pressed; a stepper has t
   for (const name of ['hmSwitch', 'hmStepper', 'hmSliderRow']) assert.equal((src.match(new RegExp(`const ${name} =|function ${name}\\(`, 'g')) || []).length, 1, `${name} is defined once`);
   assert.doesNotMatch(src.slice(src.indexOf('// ── Room page sections'), src.indexOf('// ── Settings page')), /class="sw|class="tog|class="round quiet" data-act="setting/, 'the room pages use no older switch or row');
   // Colours come from tokens: on / off / knob for the switch, control for the pill, tint over sliderTrack for a slider.
-  assert.match(rule('.hm-sw').body, /background:#3a8f63/);
-  assert.match(rule('.hm-sw.off').body, /background:#3a424d/);
-  assert.match(rule('.hm-sw::after').body, /background:#fff/);
-  assert.match(rule('.hm-step').body, /background:#232a33/);
-  assert.match(rule('.hm-slider::-webkit-slider-runnable-track').body, /linear-gradient\(to right,#f2c46b var\(--p,0%\),#3a424d var\(--p,0%\)\)/);
+  assert.match(rule('.hm-sw').body, /background:#31748f/);
+  assert.match(rule('.hm-sw.off').body, /background:#403d52/);
+  assert.match(rule('.hm-sw::after').body, /background:#e0def4/);
+  assert.match(rule('.hm-step').body, /background:#26233a/);
+  assert.match(rule('.hm-slider::-webkit-slider-runnable-track').body, /linear-gradient\(to right,#c4a7e7 var\(--p,0%\),#403d52 var\(--p,0%\)\)/);
 });
 
 ok('room head: a tint back link, the large title, a plain-words subtitle; attention items sit right under it', () => {
@@ -3674,9 +3672,9 @@ ok('room head: a tint back link, the large title, a plain-words subtitle; attent
     assert.match(html, new RegExp(`<h1 class="hm-big">${P.ROOMS[k].name}</h1><span class="hm-line">[^<]+</span>`), k);
     assert.equal((html.match(/Back to House/g) || []).length, 1, k);
   }
-  assert.match(rule('.hm-back').body, /color:#f2c46b/, 'the back link is in the tint colour');
+  assert.match(rule('.hm-back').body, /color:#c4a7e7/, 'the back link is in the tint colour');
   assert.match(rule('.hm-big').body, /font-size:34px;line-height:41px;font-weight:700/);
-  assert.match(rule('.hm-line').body, /font-size:15px[^}]*color:#a3adba/);
+  assert.match(rule('.hm-line').body, /font-size:15px[^}]*color:#908caa/);
   // Subtitles in plain words.
   const sub = (over, extra) => P.render('room-head', { room: 'parlour' }, withRooms([quietRoom('parlour', { temp: null, ...over })], [], extra), NOW).match(/<span class="hm-line">([^<]*)</)[1];
   assert.equal(sub({ occupied: true, lights_on: 2 }), 'Occupied · lamps on');
@@ -3685,8 +3683,8 @@ ok('room head: a tint back link, the large title, a plain-words subtitle; attent
   // Attention: one row each, filled tile with the attention ink glyph, short label in the attention colour, the detail beneath.
   const bed = P.render('room-head', { room: 'bedroom' }, full, NOW, {});
   assert.equal((bed.match(/<div class="hm-row">/g) || []).length, 2);
-  assert.match(bed, /<section class="hm-sec hm-tight"><div class="hm-list"><div class="hm-row"><span class="hm-tile" style="background:#f2b84b;color:#000000"><svg[^>]*><path d="M4 4h16v16H4zM12 4v16M4 12h16"\/><\/svg><\/span><div class="hm-text"><div class="hm-rt" style="color:#f2b84b;font-weight:600">Window open, heating on<\/div><div class="hm-rs">Open window while heating<\/div>/);
-  assert.match(bed, new RegExp(`<path d="${P.ICON.flame.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"/></svg></span><div class="hm-text"><div class="hm-rt" style="color:#f2b84b;font-weight:600">Too cold, heating off`));
+  assert.match(bed, /<section class="hm-sec hm-tight"><div class="hm-list"><div class="hm-row"><span class="hm-tile" style="background:#eb6f92;color:#191724"><svg[^>]*><path d="M4 4h16v16H4zM12 4v16M4 12h16"\/><\/svg><\/span><div class="hm-text"><div class="hm-rt" style="color:#eb6f92;font-weight:600">Window open, heating on<\/div><div class="hm-rs">Open window while heating<\/div>/);
+  assert.match(bed, new RegExp(`<path d="${P.ICON.flame.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"/></svg></span><div class="hm-text"><div class="hm-rt" style="color:#eb6f92;font-weight:600">Too cold, heating off`));
   assert.doesNotMatch(P.render('room-head', { room: 'kitchen' }, full, NOW, {}), /hm-tight/, 'a room with nothing to flag has no list');
   assert.match(rule('.hm .hm-tight').body, /margin-top:16px/);
 });
@@ -3722,7 +3720,7 @@ ok('light level lives in the lighting footnote: "Dark (6 lx)" or "Bright (87 lx)
   for (const g of GARDENS) assert.equal(P.ROOMS[g].lux, undefined);
   assert.match(rule('.hm-wgrid').body, /grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
   assert.match(rule('.hm-w:only-child').body, /grid-column:1\/-1/);
-  assert.match(rule('.hm-w').body, /background:#1a1f26;border-radius:20px;padding:14px 16px/);
+  assert.match(rule('.hm-w').body, /background:#1f1d2e;border-radius:20px;padding:14px 16px/);
   assert.match(rule('.hm-wv').body, /font-size:34px/);
   assert.throws(() => P.render('readings', { room: 'parlour' }, mk(), NOW), /unknown mode/);
 });
@@ -3745,9 +3743,9 @@ ok('Scenes: a two-column grid of real buttons, the active one a tinted fill with
   assert.match(rule('.hm-scenes').body, /grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
   assert.match(rule('.hm-scene').body, /min-height:76px;padding:12px 14px;border:0;border-radius:16px/);
   assert.match(rule('.hm-scene').body, /font-size:15px[^}]*font-weight:600/);
-  assert.match(rule('.hm-scene').body, /background:#1a1f26/);
-  assert.equal(rule('.hm-scene.on').body, 'background:rgba(242,196,107,.16);box-shadow:inset 0 0 0 1.5px #f2c46b', 'tintFill and a tint ring; no colour override, so the label stays primary text');
-  assert.equal(rule('.hm-scene.on svg').body, 'color:#f2c46b', 'the icon is the tint');
+  assert.match(rule('.hm-scene').body, /background:#1f1d2e/);
+  assert.equal(rule('.hm-scene.on').body, 'background:rgba(196,167,231,.16);box-shadow:inset 0 0 0 1.5px #c4a7e7', 'tintFill and a tint ring; no colour override, so the label stays primary text');
+  assert.equal(rule('.hm-scene.on svg').body, 'color:#c4a7e7', 'the icon is the tint');
   assert.doesNotMatch(rule('.hm-scene.on').body, /tintInk|1d1708/, 'no dark ink on a quiet fill');
 });
 
@@ -4294,18 +4292,18 @@ ok('House list tiles and trailing links: heating tile, cameras tile, bins tile; 
   const cams = mk({ 'switch.parlour_privacy': { state: 'on', attributes: {} }, 'switch.kitchen_privacy': { state: 'on', attributes: {} }, 'switch.home_office_privacy': { state: 'on', attributes: {} } });
   const html = P.render('house-list', {}, cams, NOW);
   const heat = rowOf(html, P.SETTINGS_PATH);
-  assert.equal(tileStyle(heat), 'background:#ff6b35;color:#000000');
+  assert.equal(tileStyle(heat), 'background:#ebbcba;color:#191724');
   assert.ok(heat.includes(P.ICON.flameFull), 'the heating tile uses the full-size flame, not the small inline one');
   assert.doesNotMatch(heat, /d="M12 3c1 3 4/);
   assert.match(heat, /<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"/, 'an 18px solid glyph like the other tiles');
   assert.match(P.ICON.flameFull, /^M12 2\.5c/, 'spans nearly the full 24 box (top at 2.5)');
   const camRow = rowOf(html, P.CAMERAS_PATH);
-  assert.equal(tileStyle(camRow), 'background:#636366;color:#ffffff');
+  assert.equal(tileStyle(camRow), 'background:#403d52;color:#e0def4');
   const bins = html.match(/<div class="hm-row"><span class="hm-tile"[^>]*>[\s\S]*?<\/div><\/div>/)[0];
-  assert.match(bins, /background:#32ade6;color:#000000/);
+  assert.match(bins, /background:#7aa2f7;color:#191724/);
   assert.doesNotMatch(bins, /hm-chev|data-path/, 'bins has no page to open');
   const offline = P.render('house-list', {}, mk({ 'switch.parlour_privacy': { state: 'unavailable', attributes: {}, last_changed: '2026-10-26T12:00:00+00:00' }, 'switch.kitchen_privacy': { state: 'on', attributes: {} }, 'switch.home_office_privacy': { state: 'on', attributes: {} } }), NOW);
-  assert.equal(tileStyle(rowOf(offline, P.CAMERAS_PATH)), 'background:#f2b84b;color:#000000', 'an offline camera takes the attention tile');
+  assert.equal(tileStyle(rowOf(offline, P.CAMERAS_PATH)), 'background:#eb6f92;color:#191724', 'an offline camera takes the attention tile');
   assert.match(rowSub(rowOf(offline, P.CAMERAS_PATH)), /offline$/);
   const today = P.render('house-list', {}, mk({ 'sensor.st_albans_collect_domestic_refuse_days_until_collection': { state: '0', attributes: {} } }), NOW);
   assert.match(today, /Collected today/);
@@ -4351,7 +4349,7 @@ ok('room feed rows: the timeline, led by the subsystem the entry is about', () =
   const rows = tlRows(html);
   assert.equal(rows.length, 3);
   assert.deepEqual(rows.map((r) => r.match(/<b class="tl-s">([^<]+)</)[1]), ['Lights', 'Lights', 'Weird'], 'the subsystem noun, not the room the page is about');
-  assert.match(rows[1], /class="tl-b" style="color:#a3adba"/, 'a declined decision reads in secondary text');
+  assert.match(rows[1], /class="tl-b" style="color:#908caa"/, 'a declined decision reads in secondary text');
   assert.match(html, /<b class="tl-s">Weird<\/b> new occupancy off/, 'an unknown subsystem: its prettified id leads');
   assert.doesNotMatch(html, /hm-tile|<svg/, 'no subsystem tiles on activity rows');
   const quiet = P.render('room-feed', { room: 'kitchen' }, mk(), NOW);
@@ -4364,22 +4362,22 @@ ok('House activity rows: subject, verb part, reason part; dot in the subsystem c
   const html = P.render('feed', {}, mk(histSensor('house', house)), NOW);
   const rows = tlRows(html);
   assert.equal(rows.length, 3);
-  assert.match(rows[0], /<b class="tl-s">Hallway up<\/b> lights off<\/div><div class="tl-l2" style="color:#a3adba">Room empty<\/div>/);
+  assert.match(rows[0], /<b class="tl-s">Hallway up<\/b> lights off<\/div><div class="tl-l2" style="color:#908caa">Room empty<\/div>/);
   assert.match(rows[2], /<b class="tl-s">Weird<\/b> new occupancy off/);
-  assert.equal(dotOf(rows[0]), ' style="background:#ffd60a"', 'acted: filled with the subsystem colour');
-  assert.equal(dotOf(rows[1]), ' style="border-color:#ffd60a"', 'declined: a ring in the subsystem colour');
+  assert.equal(dotOf(rows[0]), ' style="background:#f6c177"', 'acted: filled with the subsystem colour');
+  assert.equal(dotOf(rows[1]), ' style="border-color:#f6c177"', 'declined: a ring in the subsystem colour');
   assert.match(rows[1], /class="tl-row declined">/);
-  assert.match(rows[1], /class="tl-b" style="color:#a3adba"><div class="tl-l1"><b class="tl-s">Kitchen<\/b> stayed off/, 'declined sentence is secondary text');
-  assert.equal(dotOf(rows[2]), ' style="background:#a3adba"', 'no subsystem colour: secondary text');
+  assert.match(rows[1], /class="tl-b" style="color:#908caa"><div class="tl-l1"><b class="tl-s">Kitchen<\/b> stayed off/, 'declined sentence is secondary text');
+  assert.equal(dotOf(rows[2]), ' style="background:#908caa"', 'no subsystem colour: secondary text');
   const quiet = P.render('feed', {}, mk(), NOW);
   assert.match(quiet, /Nothing recorded yet/);
   assert.match(quiet, /<h2>Activity<\/h2>/);
   // A subsystem colour that would vanish on the surface falls back to secondary text.
   const cams = P.render('feed', {}, mk(histSensor('house', [histEntry(1, { location: 'house', subsystem: 'cameras', decision: 'no_action', reason: 'x', outcome: 'declined' })])), NOW);
-  assert.equal(dotOf(tlRows(cams)[0]), ' style="border-color:#a3adba"');
+  assert.equal(dotOf(tlRows(cams)[0]), ' style="border-color:#908caa"');
   const problem = P.render('feed', {}, mk(histSensor('house', [histEntry(1, { kind: 'abort', decision: '', reason: '', outcome: undefined, detail: { abort_kind: 'unhandled_error' }, location: 'house' })])), NOW);
-  assert.match(problem, /class="tl-row problem"><span class="tl-t num">18:41<\/span><span class="tl-rail" aria-hidden="true"><i class="tl-dot"><\/i><\/span><div class="tl-b" style="color:#f2b84b"><div class="tl-l1"><b class="tl-s">[^<]*<\/b>[^<]*Couldn&#39;t run|couldn&#39;t run: it failed unexpectedly/, 'a problem: attention dot and text');
-  assert.match(P.STYLE, /\.tl-row\.problem \.tl-dot\{[^}]*background:#f2b84b/);
+  assert.match(problem, /class="tl-row problem"><span class="tl-t num">18:41<\/span><span class="tl-rail" aria-hidden="true"><i class="tl-dot"><\/i><\/span><div class="tl-b" style="color:#eb6f92"><div class="tl-l1"><b class="tl-s">[^<]*<\/b>[^<]*Couldn&#39;t run|couldn&#39;t run: it failed unexpectedly/, 'a problem: attention dot and text');
+  assert.match(P.STYLE, /\.tl-row\.problem \.tl-dot\{[^}]*background:#eb6f92/);
 });
 
 ok('timeline CSS: 40px time, 20px rail, 12px dots, 10px gap, the 14px card inset on both sides, 2px rail line from the first dot to the last', () => {
@@ -4404,9 +4402,9 @@ ok('timeline CSS: 40px time, 20px rail, 12px dots, 10px gap, the 14px card inset
   const centre = px(decl(dot, 'top')) + 6;
   assert.equal(px(decl(rule('.tl-row:first-child .tl-rail::before').body, 'top')), centre);
   assert.equal(px(decl(rule('.tl-row:last-child .tl-rail::before').body, 'height')), centre);
-  assert.equal(decl(rail, 'background'), '#2f3843');
+  assert.equal(decl(rail, 'background'), '#403d52');
   assert.equal(px(decl(rule('.tl-h').body, 'font-size')), 15);
-  assert.match(rule('.tl-h').body, /font-weight:600;color:#a3adba/);
+  assert.match(rule('.tl-h').body, /font-weight:600;color:#908caa/);
   assert.match(rule('.tl-b').body, /min-width:0/, 'a long sentence wraps inside its column at 360px');
 });
 
@@ -4457,7 +4455,7 @@ ok('a subsystem word that only names the room state is dropped after a room subj
   assert.deepEqual(P.timelineLead('Parlour', 'Lights off', { noun: 'Lights' }), { lead: 'Parlour', rest: ' lights off' }, 'a thing (lights) is kept');
   assert.deepEqual(P.timelineLead('Occupancy', 'Occupancy marked occupied', { noun: 'Occupancy', implied: true }), { lead: 'Occupancy', rest: ' marked occupied' }, 'a subsystem subject is not dropped');
   const e = histEntry(1, { location: 'parlour', subsystem: 'occupied', decision: 'set_occupied', reason: 'kitchen_motion_detected', outcome: undefined });
-  assert.match(P.render('feed', {}, mk(histSensor('house', [e])), NOW), /<b class="tl-s">Parlour<\/b> marked occupied<\/div><div class="tl-l2" style="color:#a3adba">Kitchen motion<\/div>/);
+  assert.match(P.render('feed', {}, mk(histSensor('house', [e])), NOW), /<b class="tl-s">Parlour<\/b> marked occupied<\/div><div class="tl-l2" style="color:#908caa">Kitchen motion<\/div>/);
   assert.match(P.render('room-feed', { room: 'parlour' }, mk(histSensor('parlour', [e])), NOW), /<b class="tl-s">Occupancy<\/b> marked occupied/);
 });
 
@@ -4527,11 +4525,11 @@ ok('guard aborts: hidden from the House feed, muted on room pages, never a probl
   const house = P.render('feed', {}, mk(histSensor('house', [histEntry(1, { location: 'house', subsystem: 'energy', decision: 'spin', reason: 'wheels_spun' }), houseGuard, guard(4), unhandled, unavailable])), NOW);
   assert.doesNotMatch(house, /Held back/, 'guards never reach the House feed');
   assert.equal(count(house, /class="tl-row /g), 3, 'the other rows stay');
-  assert.match(house, /class="tl-row problem">[^]*?style="color:#f2b84b"><div class="tl-l1"><b class="tl-s">[^<]*<\/b> [Cc]ouldn&#39;t run: it failed unexpectedly/, 'real aborts stay in the attention colour');
-  assert.match(house, /class="tl-row problem">[^]*?style="color:#f2b84b"><div class="tl-l1"><b class="tl-s">[^<]*<\/b> [Cc]ouldn&#39;t run: .*unavailable/);
+  assert.match(house, /class="tl-row problem">[^]*?style="color:#eb6f92"><div class="tl-l1"><b class="tl-s">[^<]*<\/b> [Cc]ouldn&#39;t run: it failed unexpectedly/, 'real aborts stay in the attention colour');
+  assert.match(house, /class="tl-row problem">[^]*?style="color:#eb6f92"><div class="tl-l1"><b class="tl-s">[^<]*<\/b> [Cc]ouldn&#39;t run: .*unavailable/);
   const room = P.render('room-feed', { room: 'kitchen' }, mk(histSensor('kitchen', [guard(2)])), NOW);
-  assert.match(room, /class="tl-row declined">[^]*?style="color:#a3adba"><div class="tl-l1"><b class="tl-s">[^<]*<\/b> held back/);
-  assert.doesNotMatch(room, /color:#f2b84b/);
+  assert.match(room, /class="tl-row declined">[^]*?style="color:#908caa"><div class="tl-l1"><b class="tl-s">[^<]*<\/b> held back/);
+  assert.doesNotMatch(room, /color:#eb6f92/);
   assert.equal(P.sentenceFor(guard(1), mk()).tone, 'muted');
   assert.equal(P.sentenceFor(unhandled, mk()).tone, 'warn');
   // The lights story and tag must not call a guard a problem.
@@ -4888,7 +4886,7 @@ ok('timeline: colon-form declined sentences split into subject line and capitali
   const hass = mk(histSensor('kitchen', [luxHigh(1), histEntry(2, { decision: 'turn_off', reason: 'occupancy_off' })]));
   const feed = P.render('room-feed', { room: 'kitchen' }, hass, NOW);
   assert.equal((feed.match(/ · /g) || []).length, 0, 'no middle dot anywhere in the rows');
-  assert.match(feed, /<div class="tl-l2" style="color:#a3adba">Bright enough, 85 lx/);
+  assert.match(feed, /<div class="tl-l2" style="color:#908caa">Bright enough, 85 lx/);
   assert.equal((feed.match(/class="tl-l2"/g) || []).length, 2);
   assert.match(rule('.tl-l2').body, /font-size:13\.5px/);
   assert.equal(px(decl(rule('.tl-l1').body, 'line-height')), 20, 'the dot stays on line 1');
@@ -5064,12 +5062,12 @@ ok('day plan: the schedule draws areas by warmth, the target step line, the dimm
   const html = planHtml('schedule', { heatData: heatData() });
   sane(html);
   assert.match(html, /<svg class="plan" viewBox="0 0 326 134"[^>]*role="img" aria-label="Today(?:'|&#39;)s heating plan\. Now Day 18\.0 degrees until 16:15\./);
-  const ops = [...html.matchAll(/<rect x="[\d.]+" y="[\d.]+" width="[\d.]+" height="[\d.]+" fill="#f08a4b" opacity="([\d.]+)"/g)].map((m) => m[1]);
+  const ops = [...html.matchAll(/<rect x="[\d.]+" y="[\d.]+" width="[\d.]+" height="[\d.]+" fill="#ebbcba" opacity="([\d.]+)"/g)].map((m) => m[1]);
   assert.deepEqual(ops, ['0.22', '0.42', '0.75', '0.22'], 'night, day, comfort, night in time order');
   assert.equal(countOf(html, /class="plan-future"/g), 1);
   const future = html.match(/class="plan-future" x="([\d.]+)"/)[1];
   assert.equal(Number(future), Number((10 * 60 / 1440 * 326).toFixed(1)), 'the future starts at now');
-  assert.match(html, /<path d="M0\.0 [\d.]+H81\.5V[\d.]+H220\.7V[\d.]+H298\.8V[\d.]+H326\.0" fill="none" stroke="#f08a4b" stroke-width="2"\/>/, 'one step line across the day');
+  assert.match(html, /<path d="M0\.0 [\d.]+H81\.5V[\d.]+H220\.7V[\d.]+H298\.8V[\d.]+H326\.0" fill="none" stroke="#ebbcba" stroke-width="2"\/>/, 'one step line across the day');
   assert.doesNotMatch(html, /plan-override|plan-replaced/);
   assert.match(html, /<text[^>]*>now<\/text>/);
   for (const h of ['00', '06', '12', '18']) assert.match(html, new RegExp(`>${h}</text>`));
@@ -5115,14 +5113,14 @@ ok('day plan: an override is drawn in the tint over its span with the replaced p
   const html = planHtml('manual', { heatData: heatData(`${DAY0}17:00:00Z`) });
   sane(html);
   const x = (min) => (min / 1440 * 326).toFixed(1);
-  assert.match(html, new RegExp(`<path class="plan-override" d="M${x(1020)} [\\d.]+H${x(1140)}" fill="none" stroke="#f2c46b" stroke-width="2"/>`));
+  assert.match(html, new RegExp(`<path class="plan-override" d="M${x(1020)} [\\d.]+H${x(1140)}" fill="none" stroke="#c4a7e7" stroke-width="2"/>`));
   assert.match(html, /class="plan-replaced"[^>]*stroke-dasharray="3 3"/);
-  assert.equal(countOf(html, /fill="#f2c46b" opacity="0\.4"/g), 1, 'the override area');
+  assert.equal(countOf(html, /fill="#c4a7e7" opacity="0\.4"/g), 1, 'the override area');
   // The comfort area stops where the override starts and the plan resumes after it.
-  const comfort = [...html.matchAll(/<rect x="([\d.]+)" y="[\d.]+" width="([\d.]+)" height="[\d.]+" fill="#f08a4b" opacity="0\.75"/g)].map((m) => [m[1], Math.round(Number(m[1]) + Number(m[2]))]);
+  const comfort = [...html.matchAll(/<rect x="([\d.]+)" y="[\d.]+" width="([\d.]+)" height="[\d.]+" fill="#ebbcba" opacity="0\.75"/g)].map((m) => [m[1], Math.round(Number(m[1]) + Number(m[2]))]);
   assert.deepEqual(comfort, [[x(975), x(1020)], [x(1140), x(1320)]].map(([a, b]) => [a, Math.round(Number(b))]));
   assert.match(html, />by hand until 19:00 · radiator idle</);
-  assert.match(html, new RegExp(`class="plan-mode-t num" style="color:#f2c46b"`));
+  assert.match(html, new RegExp(`class="plan-mode-t num" style="color:#c4a7e7"`));
   const rows = [...html.matchAll(/class="hm-rs">([^<]*)</g)].map((m) => m[1]);
   assert.deepEqual(rows.slice(0, 2), ['From 19:00 · schedule resumes', 'From 22:00']);
   assert.deepEqual([...html.matchAll(/class="hm-rt">([^<]*)</g)].map((m) => m[1]).slice(0, 2), ['Next: Comfort', 'Then: Night'], 'the end of an override leads with Next too');
@@ -5191,7 +5189,7 @@ ok('day plan: humidity is a small line under the room temperature, only with a r
   assert.equal(line({ humidity: 58.6 }), '59% humidity', 'rounded');
   assert.equal(line({ humidity: null }), undefined, 'no reading, no line');
   assert.match(planHtml('schedule', undefined, { humidity: 59 }), /<span class="plan-temp"><span class="num plan-big">[^<]*<\/span><span class="plan-hum">59% humidity<\/span><\/span>/);
-  assert.match(rule('.plan-hum').body, /color:#a3adba/, 'secondary text token');
+  assert.match(rule('.plan-hum').body, /color:#908caa/, 'secondary text token');
   assert.doesNotMatch(planHtml('schedule', undefined, { humidity: 59 }), /<div class="hm-rt">Humidity/, 'no row either');
   // The bathroom: humidity drives the fan, so it is a row of the Fan section and not in the Heating card.
   const cfg = { room: 'bathroom', entity: 'switch.bathroom_fan_extractor', decision: 'sensor.bathroom_fan_decision', label: 'Extractor fan' };
@@ -5220,15 +5218,10 @@ ok('day plan: hostile numbers cannot leave the picture', () => {
   for (const m of html.matchAll(/\sx="(-?[\d.]+)"|cx="(-?[\d.]+)"/g)) assert.ok(Number(m[1] || m[2]) >= 0 && Number(m[1] || m[2]) <= 326, m[0]);
 });
 
-ok('day plan: both themes draw with their own tokens', () => {
+ok('day plan: draws with the theme\'s own tokens', () => {
   const { now, hass } = planAt('manual');
   const rp = Raw.render('heating', { room: 'parlour' }, hass, now, { heatData: heatData(`${DAY0}17:00:00Z`) });
-  const cl = Raw.render('heating', { room: 'parlour', theme: 'classic' }, hass, now, { heatData: heatData(`${DAY0}17:00:00Z`) });
-  const t = Raw.THEMES;
-  for (const [html, th] of [[rp, t['rose-pine']], [cl, t.classic]]) {
-    for (const k of ['heat', 'tint', 'text', 'surface', 'textSecondary']) assert.ok(html.includes(th[k]), `${k} ${th[k]}`);
-  }
-  assert.ok(!rp.includes(t.classic.heat) && !cl.includes(t['rose-pine'].heat), 'no token leaks across themes');
+  for (const k of ['heat', 'tint', 'text', 'surface', 'textSecondary']) assert.ok(Raw.resolveVars(rp, 'rose-pine').includes(Raw.THEMES['rose-pine'][k]), k);
   assert.doesNotMatch(rp.replace(/var\(--pulse-\w+\)/g, ''), /#[0-9a-f]{6}\b(?!.*<\/svg>)/i, 'colour literals appear only inside the picture');
 });
 
@@ -5329,10 +5322,11 @@ ok('heating card: history rides on ui without changing the render signature, and
   assert.equal(gate.run('heating', cfg, hass, now + 2000, ui, false).skipped, false);
 });
 
-// ── Classic theme is byte-identical to the pre-theme card ────────────────────────────────────────
-// tests/fixtures/classic-golden.json holds a sha256 per rendered page (and for the stylesheet), taken from the
-// card as it was before design tokens existed. Pages now carry var(--pulse-token) instead of hex, so each page
-// is first resolved against the classic theme's values; a changed colour, class or word then shows as a changed hash.
+// ── Whole-page golden: every page and the stylesheet, hashed ────────────────────────────────────────
+// tests/fixtures/golden.json holds a sha256 per rendered page (and for the stylesheet), taken against the default
+// theme. Pages carry var(--pulse-token) instead of hex, so each page is first resolved against the default theme's
+// values; a changed colour, class or word then shows as a changed hash. After an intended change, regenerate with
+// PULSE_GOLDEN_WRITE=1 node pulse-card.test.mjs and review the diff.
 import { createHash } from 'node:crypto';
 const sha = (s) => createHash('sha256').update(s).digest('hex');
 const goldenPages = () => {
@@ -5350,20 +5344,20 @@ const goldenPages = () => {
   for (const [label, m, c, ui] of allCards()) pages[`rich/${label}`] = Raw.render(m, asTheme(c), rich, NOW, ui);
   return pages;
 };
-const goldenFile = new URL('./fixtures/classic-golden.json', import.meta.url).pathname;
+const goldenFile = new URL('./fixtures/golden.json', import.meta.url).pathname;
 if (process.env.PULSE_GOLDEN_WRITE) {
-  const pages = Object.fromEntries(Object.entries(goldenPages()).map(([k, v]) => [k, Raw.resolveVars ? Raw.resolveVars(v, 'classic') : v]));
-  writeFileSync(goldenFile, JSON.stringify({ style: sha(Raw.resolveVars ? Raw.resolveVars(Raw.STYLE, 'classic') : Raw.STYLE), pages: Object.fromEntries(Object.entries(pages).map(([k, v]) => [k, sha(v)])) }, null, 1) + '\n');
+  const pages = Object.fromEntries(Object.entries(goldenPages()).map(([k, v]) => [k, Raw.resolveVars ? Raw.resolveVars(v, Raw.DEFAULT_THEME) : v]));
+  writeFileSync(goldenFile, JSON.stringify({ style: sha(Raw.resolveVars ? Raw.resolveVars(Raw.STYLE, Raw.DEFAULT_THEME) : Raw.STYLE), pages: Object.fromEntries(Object.entries(pages).map(([k, v]) => [k, sha(v)])) }, null, 1) + '\n');
   console.log('wrote', goldenFile);
 } else {
-  ok('classic theme renders the same pages and stylesheet as the card did before themes', () => {
+  ok('the default theme renders the same pages and stylesheet as the golden', () => {
     const golden = JSON.parse(readFileSync(goldenFile, 'utf8'));
-    const resolve = (s) => (P.resolveVars ? P.resolveVars(s, 'classic') : s);
+    const resolve = (s) => (P.resolveVars ? P.resolveVars(s, Raw.DEFAULT_THEME) : s);
     assert.equal(sha(resolve(P.STYLE)), golden.style, 'stylesheet changed');
     const pages = goldenPages();
     assert.deepEqual(Object.keys(pages).sort(), Object.keys(golden.pages).sort());
     const changed = Object.keys(pages).filter((k) => sha(resolve(pages[k])) !== golden.pages[k]);
-    assert.deepEqual(changed, [], `pages changed under the classic theme: ${changed.slice(0, 8).join(', ')}`);
+    assert.deepEqual(changed, [], `pages changed under the default theme: ${changed.slice(0, 8).join(', ')}`);
   });
 }
 
@@ -5380,9 +5374,9 @@ ok('colour literals appear only inside the THEMES block', () => {
   assert.equal(stray, null, `colour literals outside THEMES: ${stray}`);
 });
 
-ok('every theme defines exactly the same tokens, and at least classic and rose-pine exist', () => {
-  assert.ok(Raw.THEMES.classic && Raw.THEMES['rose-pine']);
-  const want = Object.keys(Raw.THEMES.classic).sort();
+ok('every theme defines exactly the same tokens, and the default exists', () => {
+  assert.ok(Raw.THEMES[Raw.DEFAULT_THEME]);
+  const want = Object.keys(Raw.THEMES[Raw.DEFAULT_THEME]).sort();
   for (const [name, t] of Object.entries(Raw.THEMES)) assert.deepEqual(Object.keys(t).sort(), want, name);
   for (const k of Raw.COLOUR_KEYS) assert.ok(cardSrc.includes(`TOKENS.${k}`) || cardSrc.includes(`colour('${k}')`) || cardSrc.includes(`'${k}'`), `token ${k} is used by the card`);
 });
@@ -5446,7 +5440,6 @@ ok('the House page under the default theme: every variable resolves, no tertiary
     assert.doesNotMatch(html, /<(?:a|button)[^>]*>\s*<\/(?:a|button)>/, `${mode}: no empty links`);
   }
   const house = ['now-header', 'status', 'rooms', 'house-list', 'feed'].map((m) => Raw.render(m, {}, hass, NOW, {})).join('');
-  assert.doesNotMatch(Raw.resolveVars(house, 'rose-pine'), /#12151a|#f2b84b/, 'no classic colour leaks into the default theme');
   assert.match(Raw.resolveVars(house, 'rose-pine'), /background:#9ccfd8;color:#191724/, 'an occupied room takes Foam');
   assert.doesNotMatch(Raw.STYLE.split('\n').filter((l) => /^\.hm|^\.tab/.test(l)).join('\n'), /textTertiary/);
   // Every House-page rule uses tokens only (the colour-literal test covers the file; this holds the page's own rules to it).
@@ -5463,7 +5456,7 @@ const roomPageHass = () => {
 };
 const ROOM_PAGE_MODES = (k) => ['room-head', 'lights', 'heating', 'presence', 'media', 'automation', 'room-feed', 'garden-lights', 'garden-theme'].filter((m) => (GARDENS.includes(k) ? !['lights', 'heating', 'presence', 'media'].includes(m) : !m.startsWith('garden-')));
 
-ok('room and garden pages under the default theme: variables resolve, no tertiary text, glyphs hidden, no empty controls, no classic colour', () => {
+ok('room and garden pages under the default theme: variables resolve, no tertiary text, glyphs hidden, no empty controls', () => {
   const hass = roomPageHass();
   let seen = 0;
   for (const k of P.ALL_ROOM_KEYS) {
@@ -5475,7 +5468,6 @@ ok('room and garden pages under the default theme: variables resolve, no tertiar
       assert.doesNotMatch(html, /textTertiary/, `${k}/${mode}: no tertiary text`);
       for (const tag of html.match(/<svg[^>]*>/g) || []) assert.match(tag, /aria-hidden="true"/, `${k}/${mode}`);
       assert.doesNotMatch(html, /<(?:a|button)[^>]*>\s*<\/(?:a|button)>/, `${k}/${mode}: no empty links`);
-      assert.doesNotMatch(Raw.resolveVars(html, 'rose-pine'), /#12151a|#f2c46b|#1a1f26/, `${k}/${mode}: no classic colour in the default theme`);
       // Same side margins and the same section gap as the House page: every card is an `.hm` block.
       assert.match(html, /^<div class="p"><div class="hm( hm-first)?">/, `${k}/${mode}: built on the House page block`);
     }
@@ -5516,8 +5508,8 @@ const over = (fg, bg) => {
   const base = [1, 3, 5].map((i) => parseInt(bg.slice(i, i + 2), 16));
   return '#' + [r, g, b].map((c, i) => Math.round(c * a + base[i] * (1 - a)).toString(16).padStart(2, '0')).join('');
 };
-const long = (c) => (c.length === 4 ? `#${[...c.slice(1)].map((x) => x + x).join('')}` : c); // classic writes its white knob as #fff
-ok('energy tokens: the tile labels read on a tile, in both themes', () => {
+const long = (c) => (c.length === 4 ? `#${[...c.slice(1)].map((x) => x + x).join('')}` : c); // a theme may write its white knob as #fff
+ok('energy tokens: the tile labels read on a tile, in every theme', () => {
   for (const [name, t] of Object.entries(Raw.THEMES)) {
     for (const k of ['subEnergy', 'heat', 'textSecondary']) assert.ok(ratio(t[k], t.surface) >= 4.5, `${name}: ${k} label on a tile ${ratio(t[k], t.surface).toFixed(2)}`);
   }
@@ -5546,28 +5538,26 @@ ok('the new tokens: a slider track that shows on the surface and under the tint 
 });
 
 
-ok('the theme is chosen by config, defaults to rose-pine (classic stays selectable), and an unknown name fails loudly', () => {
+ok('the theme is chosen by config, defaults to rose-pine, and an unknown name fails loudly', () => {
   const hass = withRooms(P.ROOM_ORDER.map(FULL), []);
   assert.equal(Raw.DEFAULT_THEME, 'rose-pine');
   assert.equal(Raw.themeOf({}), Raw.THEMES['rose-pine']);
-  assert.equal(Raw.themeOf({ theme: 'classic' }), Raw.THEMES.classic);
+  assert.equal(Raw.themeOf({ theme: 'rose-pine' }), Raw.THEMES['rose-pine']);
   assert.equal(Raw.render('rooms', {}, hass, NOW), Raw.render('rooms', { theme: 'rose-pine' }, hass, NOW));
   assert.equal(Raw.styleFor({}), Raw.styleFor({ theme: 'rose-pine' }));
-  assert.notEqual(Raw.styleFor({ theme: 'classic' }), Raw.styleFor({}));
-  assert.match(Raw.styleFor({ theme: 'classic' }), /^:host\{--pulse-bg:#12151a;/);
-  assert.doesNotThrow(() => Raw.render('rooms', { theme: 'rose-pine' }, hass, NOW));
-  for (const bad of ['nord', '', 'Classic', null, 3]) assert.throws(() => Raw.render('rooms', { theme: bad }, hass, NOW), /unknown theme/, String(bad));
-  assert.throws(() => Raw.themeOf({ theme: 'nord' }), /known: classic, rose-pine/);
+  assert.match(Raw.styleFor({}), /^:host\{--pulse-bg:#191724;/);
+  for (const bad of ['nord', '', 'classic', 'Rose-Pine', null, 3]) assert.throws(() => Raw.render('rooms', { theme: bad }, hass, NOW), /unknown theme/, String(bad));
+  assert.throws(() => Raw.themeOf({ theme: 'nord' }), /known: rose-pine/);
   assert.throws(() => Raw.styleFor({ theme: 'nord' }), /unknown theme/);
 });
 
 ok('a theme missing a token, or with a stray one, fails at validation', () => {
-  const full = Raw.THEMES.classic;
+  const full = Raw.THEMES[Raw.DEFAULT_THEME];
   const without = (k) => { const { [k]: _gone, ...rest } = full; return rest; };
-  for (const k of Raw.COLOUR_KEYS.concat('priceStops')) assert.throws(() => Raw.checkThemes({ classic: full, odd: without(k) }), new RegExp(`missing: ${k}`), k);
-  assert.throws(() => Raw.checkThemes({ classic: full, odd: { ...full, extra: '#000000' } }), /unknown: extra/);
-  assert.throws(() => Raw.checkThemes({ classic: full, odd: { ...full, bg: '' } }), /token "bg"/);
-  assert.throws(() => Raw.checkThemes({ classic: full, odd: { ...full, priceStops: [[1, 2, 3]] } }), /priceStops/);
+  for (const k of Raw.COLOUR_KEYS.concat('priceStops')) assert.throws(() => Raw.checkThemes({ 'rose-pine': full, odd: without(k) }), new RegExp(`missing: ${k}`), k);
+  assert.throws(() => Raw.checkThemes({ 'rose-pine': full, odd: { ...full, extra: '#000000' } }), /unknown: extra/);
+  assert.throws(() => Raw.checkThemes({ 'rose-pine': full, odd: { ...full, bg: '' } }), /token "bg"/);
+  assert.throws(() => Raw.checkThemes({ 'rose-pine': full, odd: { ...full, priceStops: [[1, 2, 3]] } }), /priceStops/);
   assert.throws(() => Raw.TOKENS.nope, /unknown colour token "nope"/);
   assert.throws(() => Raw.colour('nope'), /unknown colour token/);
 });
@@ -5576,17 +5566,15 @@ ok('the stylesheet carries the theme as --pulse-* variables on :host and the mar
   const css = Raw.styleFor({ theme: 'rose-pine' });
   assert.match(css, /^:host\{--pulse-bg:#191724;/);
   for (const k of Raw.COLOUR_KEYS) assert.ok(css.includes(`--pulse-${k}:${Raw.THEMES['rose-pine'][k]}`), k);
-  assert.ok(!Raw.styleFor({ theme: 'classic' }).includes('#191724'));
+  assert.ok(!Raw.STYLE.includes('#191724'), 'the stylesheet body holds no colour');
   const vars = new Set([...Raw.STYLE.matchAll(/var\(--pulse-(\w+)\)/g)].map((m) => m[1]));
   for (const v of vars) assert.ok(Raw.COLOUR_KEYS.includes(v), v);
 });
 
-ok('price colours follow the theme: same algorithm, the theme\'s stops, and readable figures on its surface', () => {
+ok('price colours follow the theme: the theme\'s stops, and readable figures on its surface', () => {
   const day = mk({ 'event.octopus_energy_electricity_24e8140196_1012483035417_current_day_rates': { state: 'x', attributes: { rates: real } } });
   const fills = (theme) => Raw.render('energy-day', { theme }, day, Date.parse('2026-10-25T18:29:00Z'), {}).match(/fill="#[0-9a-f]{6}"/g).join();
-  assert.notEqual(fills('rose-pine'), fills('classic'));
   assert.equal(fills('rose-pine'), fills(undefined), 'no theme means the default');
-  assert.notEqual(fills('classic'), fills(undefined));
   const roseNow = (cents) => Raw.render('energy-head', { theme: 'rose-pine' }, mk({ [`${BASE}_current_rate`]: { state: String(cents / 100), attributes: {} } }), NOW);
   const colourOf = (html) => html.match(/<div class="hm-wv num"><span style="color:(#[0-9a-f]{6})">/)[1];
   assert.equal(colourOf(roseNow(-2)), Raw.THEMES['rose-pine'].priceNegative);
