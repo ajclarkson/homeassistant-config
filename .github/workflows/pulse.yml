@@ -2,9 +2,10 @@ name: pulse
 
 # The Pulse tests read these YAML files as well as www/: the whole packages/ and views/
 # directories, the dashboards and scenes.yaml. Keep the filters in step with the test.
+# This is the PR check; pushes to main run the tests in deploy.yml.
 on:
   pull_request:
-    paths: &paths
+    paths:
       - 'www/**'
       - 'tests/**'
       - 'info_templates.yaml'
@@ -15,9 +16,6 @@ on:
       - 'views/**'
       - 'packages/**'
       - '.github/workflows/pulse.yml'
-  push:
-    branches: [main]
-    paths: *paths
 
 permissions:
   contents: read
