@@ -10,10 +10,10 @@
  *
  * Config: `mode` (required), `room` / `camera` / `entity` / `decision` / `active` as each mode needs, and
  * `theme` (optional; `rose-pine` when absent, an unknown name is a card error), e.g.
- *   {type: custom:pulse-card, mode: status, theme: classic}
+ *   {type: custom:pulse-card, mode: status, theme: rose-pine}
  * Every card of a dashboard should name the same theme; a theme applies to the card that names it.
  *
- * To add a theme: copy the `classic` entry in THEMES, give it a new key, and change the values; every
+ * To add a theme: copy the `rose-pine` entry in THEMES, give it a new key, and change the values; every
  * token must be present (load fails otherwise) and tests/pulse-card.test.mjs holds it to the contrast
  * floors. To change wording: edit COPY (interface text) or the tables next to it (SUBSYSTEMS,
  * REASON_TEXT, UNDECLARED); the tests fail on an unused key or a reference to a missing one.
@@ -64,9 +64,9 @@
 
   // ── Themes (single definition of every colour) ───────────────────────────────────────────────
   // Tokens are named by role, not hue, so a theme can change a hue without a name lying. Every theme
-  // defines every token; the card picks one by `theme:` in its config (default `rose-pine`; `classic` is the
-  // original look). Colours reach CSS as custom properties (--pulse-<token>), set once on the card root, and
-  // reach JS (SVG attributes, price maths, the clip player outside the shadow root) through colour().
+  // defines every token; the card picks one by `theme:` in its config (default `rose-pine`). Colours reach CSS as custom
+  // properties (--pulse-<token>), set once on the card root, and reach JS (SVG attributes, price maths, the clip
+  // player outside the shadow root) through colour().
   // This block is the only place a colour literal may appear (a test greps for strays).
   //   Surfaces: bg page and sheet ground; surface cards; control chips, tiles, badges and tip fills;
   //     controlEdge their outline; separator row dividers.
@@ -88,29 +88,6 @@
   //   Price: priceStops are [hue, saturation %, lightness %] for the five PRICE_AT prices, interpolated
   //     in HSL (hues may run below 0 to cross red); priceNegative, priceExtreme, priceNeutral.
   const THEMES = {
-    classic: {
-      bg: '#12151a', surface: '#1a1f26', control: '#232a33', controlEdge: '#2f3843', separator: '#232a33',
-      text: '#e8ebef', textSoft: '#cfd5dd', textSecondary: '#a3adba', textTertiary: '#8f9aa8',
-      tint: '#f2c46b', tintInk: '#1d1708', tintFill: 'rgba(242,196,107,.16)', link: '#7aa7ff',
-      on: '#3a8f63', off: '#3a424d', knob: '#fff', knobOff: '#c4ccd6', sliderTrack: '#3a424d',
-      ok: '#6fcf97', heat: '#f08a4b',
-      attention: '#f2b84b', attentionBg: '#221d10', attentionBorder: '#4a3d1c', attentionRow: '#201c10',
-      tabBar: 'rgba(18,21,26,.82)', scrimFull: 'rgba(0,0,0,.94)',
-      streamWell: '#0c0e12', videoBg: '#000',
-      priceNegative: '#2ee6c8', priceExtreme: '#c2003b', priceNeutral: '#6b7684',
-      priceStops: [[142, 58, 46], [88, 62, 56], [52, 82, 60], [26, 88, 56], [4, 80, 50]],
-      // Tiles: a fill and the ink of the glyph on it. iOS system dark colours.
-      subLighting: '#ffd60a', subLightingInk: '#000000', subHeating: '#ff6b35', subHeatingInk: '#000000',
-      subOccupied: '#5e5ce6', subOccupiedInk: '#ffffff', subEnergy: '#ffd60a', subEnergyInk: '#000000',
-      subCameras: '#636366', subCamerasInk: '#ffffff', subFan: '#64d2ff', subFanInk: '#000000',
-      subShower: '#40c8e0', subShowerInk: '#000000', subSonos: '#bf5af2', subSonosInk: '#000000',
-      subHouseMode: '#0a84ff', subHouseModeInk: '#ffffff', subMo: '#ac8e68', subMoInk: '#000000',
-      subThermal: '#66d4cf', subThermalInk: '#000000', subWfh: '#ff375f', subWfhInk: '#000000',
-      subModifier: '#ff453a', subModifierInk: '#000000',
-      outside: '#30d158', outsideInk: '#000000', bins: '#32ade6', binsInk: '#000000', attentionInk: '#000000',
-      occupied: '#ff9f0a', occupiedInk: '#000000', present: '#30d158', presenceAway: '#48484a',
-      chevron: '#5a626d', tileIdle: '#2c2c2e', rail: '#2f3843',
-    },
     // Rose Pine with Tokyo Night fill-ins.
     'rose-pine': {
       bg: '#191724', surface: '#1f1d2e', control: '#26233a', controlEdge: '#403d52', separator: 'rgba(110,106,134,.35)',
@@ -139,10 +116,10 @@
   const DEFAULT_THEME = 'rose-pine';
   const PRICE_AT = [0, 15, 25, 35, 44.99]; // pence for each of a theme's priceStops
 
-  // Every theme must define exactly the tokens classic does: a missing or extra key fails at load,
+  // Every theme must define exactly the tokens the default does: a missing or extra key fails at load,
   // not as an invisible element on one page of one theme.
   function checkThemes(themes) {
-    const keys = Object.keys(themes.classic);
+    const keys = Object.keys(themes[DEFAULT_THEME]);
     for (const [name, t] of Object.entries(themes)) {
       const have = Object.keys(t);
       const missing = keys.filter((k) => !have.includes(k));
@@ -168,7 +145,7 @@
     },
   });
 
-  // Unknown theme names fail loudly (no silent fallback to classic); absent means the default.
+  // Unknown theme names fail loudly (no silent fallback); absent means the default.
   function themeOf(config) {
     const name = config && config.theme !== undefined ? config.theme : DEFAULT_THEME;
     if (typeof name !== 'string' || !Object.prototype.hasOwnProperty.call(THEMES, name)) throw new Error(`pulse-card: unknown theme "${name}" (known: ${Object.keys(THEMES).join(', ')})`);
@@ -192,8 +169,8 @@
   });
 
   // ── Price colours ──────────────────────────────────────────────────────────────────────────
-  // Graded by pence/kWh, interpolated in HSL between the theme's priceStops. In the classic theme
-  // lightness varies along the scale (not just hue) so green and red stay apart for colour-blind
+  // Graded by pence/kWh, interpolated in HSL between the theme's priceStops. Lightness
+  // varies along the scale (not just hue) so green and red stay apart for colour-blind
   // viewers; bar height and the numbers carry the price too. Negative prices are always good ("paid to
   // use") and get their own bright colour; >= PRICE_EXTREME_P is the theme's priceExtreme.
   const PRICE_EXTREME_P = 45;
@@ -826,8 +803,6 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
 .hm-group-row{margin-top:${HM_GROUP_GAP}px}
 .hm-scene{display:flex;flex-direction:column;align-items:flex-start;justify-content:space-between;min-height:76px;padding:12px 14px;border:0;border-radius:16px;font:inherit;font-size:15px;line-height:20px;font-weight:600;text-align:left;cursor:pointer;background:${TOKENS.surface};color:${TOKENS.text};-webkit-tap-highlight-color:transparent}
 .hm-scene.wide{grid-column:1/-1;min-height:64px}
-.hm-scene-t{display:flex;flex-direction:column;gap:2px}
-.hm-scene-s{font-size:13px;line-height:18px;font-weight:500;color:${TOKENS.textSecondary}}
 .hm-scene:disabled{opacity:.5;cursor:default}
 .hm-scene.on{background:${TOKENS.tintFill};box-shadow:inset 0 0 0 1.5px ${TOKENS.tint}}
 .hm-scene.on svg{color:${TOKENS.tint}}
@@ -1484,9 +1459,6 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     hand: 'M8 13V5a1.5 1.5 0 0 1 3 0v6M11 10V4a1.5 1.5 0 0 1 3 0v6M14 10V6a1.5 1.5 0 0 1 3 0v8a6 6 0 0 1-6 6h-1a6 6 0 0 1-5-3l-2-4a1.5 1.5 0 0 1 2.5-1.5L8 14',
     window: 'M4 4h16v16H4zM12 4v16M4 12h16',
     pause: 'M7 5h4v14H7zM13 5h4v14h-4z',
-    leaf: 'M5 19c0-8 5-13 14-14 0 9-5 14-14 14zM5 19l8-8',
-    skull: 'M12 3a7 7 0 0 0-7 7c0 2.5 1.2 4 3 5v3h8v-3c1.8-1 3-2.5 3-5a7 7 0 0 0-7-7zM9.5 11h.01M14.5 11h.01M10 18v2M14 18v2',
-    tree: 'M12 3l5 7h-3l4 6H6l4-6H7l5-7zM12 16v5',
     droplet: 'M12 3c3 4 6 7 6 11a6 6 0 0 1-12 0c0-4 3-7 6-11z',
     speaker: 'M7 3h10a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM12 12a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM12 7h.01',
     paw: 'M12 12c-3 0-5 2.5-5 5 0 2 1.5 3 3 3 1 0 1.5-.5 2-.5s1 .5 2 .5c1.5 0 3-1 3-3 0-2.5-2-5-5-5zM4 10a1.5 2 0 1 0 3 0 1.5 2 0 1 0-3 0zM8 5.5a1.5 2 0 1 0 3 0 1.5 2 0 1 0-3 0zM13 5.5a1.5 2 0 1 0 3 0 1.5 2 0 1 0-3 0zM17 10a1.5 2 0 1 0 3 0 1.5 2 0 1 0-3 0z',
@@ -1529,29 +1501,6 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     if (m.heat_labels.length && !m.target_reason) parts.push(`heating suspended: ${m.heat_labels.join(' · ').toLowerCase()}`);
     if (m.override_text) parts.push(m.override_text);
     return parts.join(' · ');
-  }
-  function bannerFor(m, items, scene) {
-    const mine = items.filter((i) => i.key === m.key);
-    // A heating hold (window or door open) suspends heating whether or not the sensor saw the target
-    // diverge from the mode: a safety minimum can make the target equal the mode's own.
-    if ((m.target_reason === 'window open' || m.heat_labels.length) && m.cfg.climate) {
-      const why = m.heat_labels.length ? m.heat_labels.join(' · ') : 'Window open';
-      // The controller waits out a grace period before forcing the minimum; until then the hold is
-      // true but heating is not yet suspended.
-      if (m.heat_labels.length && m.target_reason !== 'window open' && m.heating_source !== 'safety') {
-        return { warn: true, title: why, body: 'Heating drops to minimum if it stays open' };
-      }
-      const set = m.target === null ? 'held at minimum' : `set to ${fmt1(m.target)}°`;
-      const ends = m.target_reason === 'window open' && m.mode_name && m.mode_target !== null ? ` and returns to ${m.mode_name} (${fmt1(m.mode_target)}°) once it closes` : ' until all clear';
-      return { warn: true, title: 'Heating suspended', body: `${why} · ${set}${ends}` };
-    }
-    if (mine.length) {
-      return { warn: true, title: mine.length === 1 ? itemLabel(mine[0], m) : `${mine.length} things need attention`, body: mine.length === 1 ? itemDetail(mine[0], m) : mine.map((i) => itemDetail(i, m)).join(' · ') };
-    }
-    if (m.cfg.report && !m.hasReport) return { warn: false, dim: true, title: 'No report yet', body: 'sensor.info_rooms has no entry for this room' };
-    if (m.cfg.kind === 'garden') return { warn: false, title: 'Evening lighting', body: `Lights from sunset until ${m.window_off ? m.window_off + ' and bedtime' : 'bedtime'}` };
-    if (!m.cfg.report) return { warn: false, title: 'Lights only', body: 'This area has scenes and a lights automation, no climate or presence report' };
-    return { warn: false, title: 'All good', body: verdictFor(m, scene) };
   }
 
   // ── Sections ─────────────────────────────────────────────────────────────────────────────────
@@ -3319,9 +3268,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   // that theme) or off. Scenes are an implementation detail: the card never offers one directly, and it
   // never falls back silently when the theme has no scene.
   const THEME_LABELS = { normal: 'Normal', autumn: 'Autumn', halloween: 'Halloween', bonfire: 'Bonfire', christmas: 'Christmas' };
-  const THEME_ICON = { normal: 'bulb', autumn: 'leaf', halloween: 'skull', bonfire: 'flame', christmas: 'tree' };
   const themeLabel = (id) => THEME_LABELS[id] || str(id).replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
-  const themeIcon = (id) => ICON[THEME_ICON[id] || 'bulb'];
 
   // 'Wed 5 Nov' from a YYYY-MM-DD date, or '' for anything else. Built from the parts (not Date.parse) so the
   // weekday cannot shift with the time zone.
@@ -3401,12 +3348,6 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       calNext: calendarNext(attr(hass, cal, 'next')), calToggleId: `input_boolean.${key}_light_theme_calendar_enabled`,
     };
   }
-
-  const gardenHeadline = (g) => {
-    if (!g.reporting) return 'Lights unknown';
-    if (!g.on) return 'Off';
-    return g.hasTheme && g.theme ? `${themeLabel(g.theme)} · on` : 'On';
-  };
 
   // The one sentence under the headline; first match wins. A missing scene is shown first when the garden is off,
   // because it is why the button is disabled. Unknown times are dropped, never invented.
@@ -4235,7 +4176,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return disclosureStore[id] === true;
   }
 
-  const api = { parsedAttr, disclosureStore, toggleDisclosure, setOptimise, trackHass, depsUnchanged, makeRenderGate, RENDER_MAX_AGE_MS, deriveScenes, sceneRegistry, ROOM_TABLE, lightsStory, lightsState, verdictFor, houseActivity, parseHistory, readHistory, sentenceFor, roomActivity, splitSentence, timelineLead, unexplainedReasons, REASON_TEXT, UNDECLARED, SUPPRESS_SOURCES, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, SETTINGS_PATH, takesTaps, invisibleControl, disarm, rearm, coverNeed, topGuard, HEAD_MODES, TOP_GUARD_MAX, CAMERAS_PATH, PENDING_MS, cameraParts, cameraToggle, cameraPending, perform, pendingStart, pendingFor, pendingKey, markPending, ERROR_MS, haptic, tapHaptic, HAPTIC_TYPES, HAPTICS, ACT_HAPTIC, parseClips, frigateClipsId, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, GARDEN_ORDER, ALL_ROOM_KEYS, THEME_LABELS, THEME_ICON, ICON, SUBSYSTEMS, subsystemOf, placed, gardenModel, gardenSub, themeSource, shortDate, ALLOWED, writeAllowed, HOUSE_NUMBERS, HOUSE_MODIFIER, HOUSE_VACATION_HOURS, CAMERAS, PTZ_DIRS, DEVICE_REASONS, ROOM_SETTINGS, MO_TOGGLES, settingFor, render, priceColour, PRICE_AT, PRICE_EXTREME_P, THEMES, COLOUR_KEYS, DEFAULT_THEME, TOKENS, COPY, checkThemes, themeOf, useTheme, colour, resolveVars, styleFor, roomModel, attentionItems, handleAction, HEATING_MODES, heatingLock, setHeatingMode, zonedClock, parsePlan, planSegments, dayPlan, planNext, planHours, tidyHeatSpans, parseHeatHistory, heatRequest, makeHeatLoader, HEAT_REFRESH_MS, HEAT_RETRY_MS, callService, num, parseList };
+  const api = { parsedAttr, disclosureStore, toggleDisclosure, setOptimise, trackHass, depsUnchanged, makeRenderGate, RENDER_MAX_AGE_MS, deriveScenes, sceneRegistry, ROOM_TABLE, lightsStory, lightsState, verdictFor, houseActivity, parseHistory, readHistory, sentenceFor, roomActivity, splitSentence, timelineLead, unexplainedReasons, REASON_TEXT, UNDECLARED, SUPPRESS_SOURCES, STYLE, TABBAR_ENABLED, tabbarPlacement, TABS, cheapestWindow, COST_STAT, HIST_DAYS, HIST_MIN_ROWS, HIST_REFRESH_MS, histRequest, groupDailyCost, dailyCostFromWS, dayReadout, dailySummary, instantMs, localDate, energyStats, slotWindows, windowRange, coveredDay, isoDayLabel, standingNote, money, energyText, penceText, ENERGY_PATH, HOUSE_PATH, SETTINGS_PATH, takesTaps, invisibleControl, disarm, rearm, coverNeed, topGuard, HEAD_MODES, TOP_GUARD_MAX, CAMERAS_PATH, PENDING_MS, cameraParts, cameraToggle, cameraPending, perform, pendingStart, pendingFor, pendingKey, markPending, ERROR_MS, haptic, tapHaptic, HAPTIC_TYPES, HAPTICS, ACT_HAPTIC, parseClips, frigateClipsId, recentNote, slotAt, slotReadout, tooltipLeft, ratesOf, SCRUB_HOLD_MS, rateBands, DASH, formatPower, moAte, TOKENS, ROOMS, ROOM_ORDER, GARDEN_ORDER, ALL_ROOM_KEYS, THEME_LABELS, ICON, SUBSYSTEMS, subsystemOf, placed, gardenModel, gardenSub, themeSource, shortDate, ALLOWED, writeAllowed, HOUSE_NUMBERS, HOUSE_MODIFIER, HOUSE_VACATION_HOURS, CAMERAS, PTZ_DIRS, DEVICE_REASONS, ROOM_SETTINGS, MO_TOGGLES, settingFor, render, priceColour, PRICE_AT, PRICE_EXTREME_P, THEMES, COLOUR_KEYS, DEFAULT_THEME, TOKENS, COPY, checkThemes, themeOf, useTheme, colour, resolveVars, styleFor, roomModel, attentionItems, handleAction, HEATING_MODES, heatingLock, setHeatingMode, zonedClock, parsePlan, planSegments, dayPlan, planNext, planHours, tidyHeatSpans, parseHeatHistory, heatRequest, makeHeatLoader, HEAT_REFRESH_MS, HEAT_RETRY_MS, callService, num, parseList };
   root.PulseLib = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 
