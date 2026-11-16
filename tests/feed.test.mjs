@@ -181,6 +181,10 @@ test('wording table: audit wording for lighting, occupancy, house, cameras, wfh 
   assert.equal(text('lighting:lux_low', { lux: null, lux_threshold: 30, scene: null }), 'Scene set · room occupied (no light reading)');
   assert.equal(text('lighting:recent_auto_off', { scene: 'cosy_evening' }), 'Scene set (cosy evening) · back soon after lights went off');
   assert.equal(text('lighting:recent_auto_off', { scene: null }), 'Scene set · back soon after lights went off');
+  assert.equal(text('lighting:lux_low', { lux: 12, lux_threshold: 30, scene: 'kitchen_all', evening_end: '20:00' }), 'Scene set (kitchen all) · room occupied and dark (12 lx, on at 30 or below) · evening until 20:00');
+  assert.equal(text('lighting:lux_low', { lux: null, lux_threshold: 30, scene: 'kitchen_all', evening_end: '20:00' }), 'Scene set (kitchen all) · room occupied (no light reading) · evening until 20:00');
+  assert.equal(text('lighting:recent_auto_off', { scene: 'kitchen_all', evening_end: '20:00' }), 'Scene set (kitchen all) · back soon after lights went off · evening until 20:00');
+  assert.equal(text('lighting:recent_auto_off', { scene: 'kitchen_all', evening_end: 'soon' }), 'Scene set (kitchen all) · back soon after lights went off', 'a malformed fact adds nothing');
   assert.equal(text('lighting:theme_scene_missing', { theme: 'halloween' }), 'Normal scene used · no Halloween scene set up');
   assert.equal(text('lighting:theme_scene_missing', { theme: null }), 'Normal scene used · no scene set up for this theme');
   assert.equal(text('lighting:theme_effects_stopped', { theme: 'bonfire' }), 'Light effects stopped · Bonfire scene replaced');

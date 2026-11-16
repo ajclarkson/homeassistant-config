@@ -309,6 +309,16 @@ input_number:
         step: 1
         unit_of_measurement: h
 
+input_datetime:
+    # Kitchen evening scene: from sunset until this time the lights automation uses the room's evening scene.
+    # No initial: initial is applied on every restart and would undo a change made in Pulse. With none, a new
+    # helper starts at 00:00:00 (outside Pulse's 16:00-23:00 range), so set it once after the first reload:
+    # input_datetime.set_datetime with time: "20:00:00". The value is restored across restarts after that.
+    kitchen_automation_lights_evening_end:
+        name: Kitchen evening lights end
+        has_date: false
+        has_time: true
+
 input_select:
     house_active_mode_modifier:
         name: House Active Mode Modifier

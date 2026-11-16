@@ -559,7 +559,7 @@ test('energy view is registered and adds no write paths', () => {
   assert.equal(v.path, 'energy');
   assert.deepEqual(v.sections[0].cards.map((c) => c.mode), ['energy-head', 'energy-day', 'energy-cost', 'energy-history', 'energy-usage', 'tabbar']);
   assert.match(readFileSync(root + 'info-dashboard.yaml', 'utf8'), /views\/info-energy\.yaml/);
-  assert.deepEqual(Object.keys(P.ALLOWED).sort(), ['button', 'input_boolean', 'input_number', 'input_select', 'light', 'media_player', 'scene', 'switch']);
+  assert.deepEqual(Object.keys(P.ALLOWED).sort(), ['button', 'input_boolean', 'input_datetime', 'input_number', 'input_select', 'light', 'media_player', 'scene', 'switch']);
   assert.match(readFileSync(root + 'packages/frontend.yaml', 'utf8'), /pulse-card-loader\.js/);
 });
 
@@ -631,7 +631,7 @@ test('history request is a read-only recorder statistics call for the two cost s
   assert.ok(r.statistic_ids.every((id) => id.startsWith('sensor.') && !id.startsWith('octopus_energy:')));
   assert.equal(r.start_time, '2026-10-04T12:00:00.000Z');
   assert.deepEqual(r.types, ['state', 'last_reset', 'sum', 'change']);
-  assert.deepEqual(Object.keys(P.ALLOWED).sort(), ['button', 'input_boolean', 'input_number', 'input_select', 'light', 'media_player', 'scene', 'switch']);
+  assert.deepEqual(Object.keys(P.ALLOWED).sort(), ['button', 'input_boolean', 'input_datetime', 'input_number', 'input_select', 'light', 'media_player', 'scene', 'switch']);
   assert.ok(!('recorder' in P.ALLOWED) && !('mqtt' in P.ALLOWED));
 });
 
