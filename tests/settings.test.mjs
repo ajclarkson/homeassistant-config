@@ -31,6 +31,10 @@ const EXPECTED_CLAMPS = {
   'input_number.foreign_office_automation_door_notification_cooldown_mins': [15, 240],
 };
 
+// Time rows (minutes since midnight) the card steps, equal to the automation's clamp in homerun-automations (EVENING_END_RANGE).
+const EXPECTED_TIME_CLAMPS = { 'input_datetime.kitchen_automation_lights_evening_end': ['16:00', '23:00'] };
+const hm = (mins) => `${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`;
+
 const luxId = /^input_number\.\w+_automation_lux_threshold_dark$/;
 
 // The settings groups (ROOM_TABLE) a rendered Automation list draws from, in order.
@@ -232,6 +236,9 @@ test('settings: foreign office door heating steppers and the Sonos follow toggle
 });
 
 test('settings: the stepper ranges equal the expected clamps, and sit inside the helper ranges HA enforces', () => {
+  const times = settingRows().filter((x) => x.row.kind === 'time').map((x) => x.row);
+  assert.deepEqual(times.map((r) => [r.id, hm(r.min), hm(r.max)]), Object.entries(EXPECTED_TIME_CLAMPS).map(([id, [lo, hi]]) => [id, lo, hi]));
+  for (const r of times) assert.ok(helpersYaml.input_datetime[r.id.split('.')[1]], `${r.id} is a helper`);
   const steppers = settingRows().filter((x) => x.row.kind === 'number').map((x) => x.row);
   for (const r of steppers) {
     const want = luxId.test(r.id) ? [0, 500] : EXPECTED_CLAMPS[r.id];
@@ -272,12 +279,12 @@ test('settings: steppers clamp to the table and snap to the step; a toggle flips
 test('settings: every row writes only its own table helper; unknown and prototype keys, and a kind mismatch, throw', () => {
   for (const { room, group, row } of settingRows()) {
     const calls = [];
-    const h = { ...sheetHass({ [row.id]: b(row.kind === 'toggle' ? 'off' : String((row.min + row.max) / 2)) }), callService: (...a) => calls.push(a) };
+    const h = { ...sheetHass({ [row.id]: b(row.kind === 'toggle' ? 'off' : row.kind === 'time' ? '20:00:00' : String((row.min + row.max) / 2)) }), callService: (...a) => calls.push(a) };
     const act = row.kind === 'toggle' ? 'setting-toggle' : 'setting-number';
     P.handleAction(h, { dataset: { act, room, group, key: row.key, delta: '1' } });
     assert.equal(calls.length, 1, `${room}/${group}/${row.key}`);
     assert.equal(calls[0][2].entity_id, row.id, `${room}/${group}/${row.key} writes ${row.id}`);
-    assert.equal(calls[0][0], row.kind === 'toggle' ? 'input_boolean' : 'input_number');
+    assert.equal(calls[0][0], row.kind === 'toggle' ? 'input_boolean' : row.kind === 'time' ? 'input_datetime' : 'input_number');
     assert.deepEqual(P.pendingStart({ pending: {} }, h, { act, room, group, key: row.key, delta: '1' }, NOW) && true, true, 'pending tracks the same helper');
   }
   const h = { ...sheetHass(), callService: () => assert.fail('must not write') };
@@ -323,7 +330,7 @@ test('settings: rows with a missing or unusable helper are hidden and an empty l
 test('settings: every row names a helper that exists in packages/helpers.yaml, with no exceptions', () => {
   const missing = settingRows().filter(({ row }) => !helperIds.has(row.id)).map(({ room, group, row }) => `${room}/${group}/${row.key}`);
   assert.deepEqual(missing, []);
-  for (const { row } of settingRows()) assert.match(row.id, row.kind === 'toggle' ? /^input_boolean\.\w+$/ : /^input_number\.\w+$/);
+  for (const { row } of settingRows()) assert.match(row.id, row.kind === 'toggle' ? /^input_boolean\.\w+$/ : row.kind === 'time' ? /^input_datetime\.\w+$/ : /^input_number\.\w+$/);
 });
 
 test('settings: the room page no longer renders Automations, the fan steppers, or Follow calendar', () => {
@@ -372,4 +379,54 @@ test('Mo toggles: two switches on the Settings page that write only their own he
   const settingsView = loadYaml('views/info-settings.yaml');
   assert.ok(settingsView.sections[0].cards.some((c) => c.mode === 'house-mo'), 'on the Settings page');
   assert.ok(!settingsView.sections[0].cards.some((c) => c.mode === 'house-mo' && c.room), 'not a room setting');
+});
+
+test('settings: the kitchen evening row is a time stepper on the kitchen Lights group only, hidden without its helper', () => {
+  const id = 'input_datetime.kitchen_automation_lights_evening_end';
+  const rows = settingRows().filter((x) => x.row.id === id);
+  assert.deepEqual(rows.map((x) => [x.room, x.group, x.row.key]), [['kitchen', 'lights', 'evening_end']]);
+  const html = sheet('kitchen', sheetHass({ [id]: b('20:00:00') }));
+  assert.match(html, /Evening lights until/);
+  assert.match(html, /From sunset until this time, lights come on with the All scene/);
+  assert.match(html, /20:00/);
+  assert.doesNotMatch(sheet('parlour'), /Evening lights until/);
+  for (const bad of [null, b('unavailable'), b('unknown'), b('2026-11-16')]) assert.doesNotMatch(sheet('kitchen', sheetHass({ [id]: bad })), /Evening lights until/);
+});
+
+test('settings: the evening time steps by 15 minutes, writes HH:MM:SS to set_datetime and clamps at 16:00 and 23:00', () => {
+  const id = 'input_datetime.kitchen_automation_lights_evening_end';
+  const calls = [];
+  const h = { ...sheetHass(), callService: (...a) => calls.push(a) };
+  const tap = (delta) => P.handleAction(h, { dataset: { act: 'setting-number', room: 'kitchen', group: 'lights', key: 'evening_end', delta } });
+  const at = (v) => { h.states[id] = b(v); };
+  at('20:00:00'); tap('1'); tap('-1');
+  at('16:00:00'); tap('-1');
+  at('23:00:00'); tap('1');
+  at('20:07:00'); tap('1');
+  assert.deepEqual(calls.map((c) => [c[0], c[1], c[2].entity_id, c[2].time, Object.keys(c[2]).sort().join()]), [
+    ['input_datetime', 'set_datetime', id, '20:15:00', 'entity_id,time'],
+    ['input_datetime', 'set_datetime', id, '19:45:00', 'entity_id,time'],
+    ['input_datetime', 'set_datetime', id, '16:00:00', 'entity_id,time'],
+    ['input_datetime', 'set_datetime', id, '23:00:00', 'entity_id,time'],
+    ['input_datetime', 'set_datetime', id, '20:15:00', 'entity_id,time'],
+  ]);
+  calls.length = 0;
+  at('unavailable'); tap('1');
+  assert.equal(calls.length, 0, 'an unreadable helper is never written');
+});
+
+test('writes: only the evening-end input_datetime is allowed through set_datetime', () => {
+  assert.equal(P.writeAllowed('input_datetime', 'set_datetime', 'input_datetime.kitchen_automation_lights_evening_end'), true);
+  assert.equal(P.writeAllowed('input_datetime', 'set_datetime', 'input_datetime.house_wake_time'), false);
+  assert.equal(P.writeAllowed('input_datetime', 'set_datetime', 'input_datetime.kitchen_automation_lights_evening_end_x'), false);
+  assert.equal(P.writeAllowed('input_datetime', 'reload', 'input_datetime.kitchen_automation_lights_evening_end'), false);
+  const h = { ...sheetHass(), callService: () => { throw new Error('reached HA'); } };
+  assert.throws(() => P.callService(h, 'input_datetime', 'set_datetime', { entity_id: 'input_datetime.other', time: '20:00:00' }), /not an allowed write path/);
+});
+
+test('helpers: the kitchen evening end is a time-only input_datetime with no initial (initial would reset it on every restart)', () => {
+  const h = helpersYaml.input_datetime.kitchen_automation_lights_evening_end;
+  assert.equal(h.has_time, true);
+  assert.equal(h.has_date, false);
+  assert.equal('initial' in h, false);
 });

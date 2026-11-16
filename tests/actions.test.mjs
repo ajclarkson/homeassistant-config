@@ -30,6 +30,7 @@ const writableEntities = () => {
     for (const [id] of r.media || []) for (const s of ['media_play_pause', 'volume_set', 'turn_on', 'turn_off']) out.push(['media_player', s, id]);
     for (const g of r.settings) for (const row of g.rows) {
       if (row.kind === 'toggle') out.push(['input_boolean', 'turn_on', row.id], ['input_boolean', 'turn_off', row.id]);
+      else if (row.kind === 'time') out.push(['input_datetime', 'set_datetime', row.id]);
       else out.push(['input_number', 'set_value', row.id]);
     }
     if (r.kind === 'room') out.push(['input_boolean', 'turn_on', `input_boolean.${r.key}_automation_presence_override`]); // keepOccupiedRow
@@ -73,7 +74,7 @@ test('write paths are whitelisted; others throw', () => {
 });
 
 test('this step adds no write paths', () => {
-  assert.deepEqual(Object.keys(P.ALLOWED).sort(), ['button', 'input_boolean', 'input_number', 'input_select', 'light', 'media_player', 'scene', 'switch']);
+  assert.deepEqual(Object.keys(P.ALLOWED).sort(), ['button', 'input_boolean', 'input_datetime', 'input_number', 'input_select', 'light', 'media_player', 'scene', 'switch']);
 });
 
 test('pending: a tap marks the control busy at once; a state change clears it', async () => {

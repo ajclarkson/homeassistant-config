@@ -290,13 +290,13 @@ export const worded = [...declared].filter(([, v]) => v.outcome !== 'ignored');
 // ── Room settings: the inline Automation list (step 5b) ────────────────────────────────────────────────────────────────────
 export const helpersYaml = loadYaml('packages/helpers.yaml');
 
-export const helperIds = new Set([...Object.keys(helpersYaml.input_boolean).map((k) => `input_boolean.${k}`), ...Object.keys(helpersYaml.input_number).map((k) => `input_number.${k}`)]);
+export const helperIds = new Set([...Object.keys(helpersYaml.input_boolean).map((k) => `input_boolean.${k}`), ...Object.keys(helpersYaml.input_number).map((k) => `input_number.${k}`), ...Object.keys(helpersYaml.input_datetime).map((k) => `input_datetime.${k}`)]);
 
 export const settingRows = () => Object.entries(P.ROOM_SETTINGS).flatMap(([room, groups]) => groups.flatMap((g) => g.rows.map((row) => ({ room, group: g.key, row }))));
 
 export const sheetHass = (over = {}) => {
   const states = {};
-  for (const { row } of settingRows()) states[row.id] = b(row.kind === 'toggle' ? 'on' : String(row.min));
+  for (const { row } of settingRows()) states[row.id] = b(row.kind === 'toggle' ? 'on' : row.kind === 'time' ? '20:00:00' : String(row.min));
   return mk({ ...states, ...over });
 };
 
