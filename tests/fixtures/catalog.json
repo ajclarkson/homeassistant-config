@@ -270,6 +270,7 @@
         },
         "lux_low": {
           "facts": [
+            "evening_end",
             "lux",
             "lux_threshold",
             "scene"
@@ -318,6 +319,7 @@
         },
         "recent_auto_off": {
           "facts": [
+            "evening_end",
             "scene"
           ],
           "outcome": "acted"
@@ -580,6 +582,7 @@
         },
         "lux_low": {
           "facts": [
+            "evening_end",
             "lux",
             "lux_threshold",
             "scene"
@@ -628,6 +631,7 @@
         },
         "recent_auto_off": {
           "facts": [
+            "evening_end",
             "scene"
           ],
           "outcome": "acted"
@@ -948,6 +952,7 @@
         },
         "lux_low": {
           "facts": [
+            "evening_end",
             "lux",
             "lux_threshold",
             "scene"
@@ -996,6 +1001,7 @@
         },
         "recent_auto_off": {
           "facts": [
+            "evening_end",
             "scene"
           ],
           "outcome": "acted"
@@ -1578,6 +1584,7 @@
         },
         "lux_low": {
           "facts": [
+            "evening_end",
             "lux",
             "lux_threshold",
             "scene"
@@ -1626,6 +1633,7 @@
         },
         "recent_auto_off": {
           "facts": [
+            "evening_end",
             "scene"
           ],
           "outcome": "acted"
@@ -1780,6 +1788,7 @@
         },
         "lux_low": {
           "facts": [
+            "evening_end",
             "lux",
             "lux_threshold",
             "scene"
@@ -1828,6 +1837,7 @@
         },
         "recent_auto_off": {
           "facts": [
+            "evening_end",
             "scene"
           ],
           "outcome": "acted"
@@ -2040,6 +2050,7 @@
         },
         "lux_low": {
           "facts": [
+            "evening_end",
             "lux",
             "lux_threshold",
             "scene"
@@ -2088,6 +2099,7 @@
         },
         "recent_auto_off": {
           "facts": [
+            "evening_end",
             "scene"
           ],
           "outcome": "acted"
@@ -2922,6 +2934,7 @@
         },
         "lux_low": {
           "facts": [
+            "evening_end",
             "lux",
             "lux_threshold",
             "scene"
@@ -2970,6 +2983,7 @@
         },
         "recent_auto_off": {
           "facts": [
+            "evening_end",
             "scene"
           ],
           "outcome": "acted"
@@ -3236,6 +3250,7 @@
         },
         "lux_low": {
           "facts": [
+            "evening_end",
             "lux",
             "lux_threshold",
             "scene"
@@ -3284,6 +3299,7 @@
         },
         "recent_auto_off": {
           "facts": [
+            "evening_end",
             "scene"
           ],
           "outcome": "acted"

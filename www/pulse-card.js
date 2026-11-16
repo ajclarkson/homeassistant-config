@@ -395,6 +395,8 @@
   const luxText = (f) => `${fmtLux(f.lux)}, on at ${fmtThreshold(f.lux_threshold)} or below`;
   const fmtHours = (v) => { const n = num(v); return n === null ? 'a long time' : `${clampInt(n, 0, 24 * 31)} h`; };
   // " (scene)" after "Scene set" when homerun says which scene; nothing when it does not.
+  // The evening scene's end time ('HH:MM'), present only when that scene was chosen. Anything else adds nothing.
+  const eveningNote = (v) => (/^\d{2}:\d{2}$/.test(str(v)) ? ` · evening until ${v}` : '');
   const sceneNote = (v) => (str(v).trim() ? ` (${pretty(v)})` : '');
   // A person is named by the fact (adam -> Adam); a missing one leaves the sentence without a name.
   const personLead = (v, tail) => (str(v).trim() ? `${capFirst(pretty(v).toLowerCase())} ${lowerFirst(tail)}` : tail);
@@ -457,12 +459,12 @@
     'lighting:guest_room_sleep_bypass': () => 'Not switched off at bedtime: room kept for a guest',
     'lighting:house_sleep_mode': () => 'Lights off · house set to asleep',
     'lighting:lux_high': (f) => `Stayed off: bright enough, ${fmtLux(f.lux)} (on at ${fmtThreshold(f.lux_threshold)} or below)`,
-    'lighting:lux_low': (f) => (num(f.lux) === null ? `Scene set${sceneNote(f.scene)} · room occupied (no light reading)` : `Scene set${sceneNote(f.scene)} · room occupied and dark (${luxText(f)})`),
+    'lighting:lux_low': (f) => (num(f.lux) === null ? `Scene set${sceneNote(f.scene)} · room occupied (no light reading)` : `Scene set${sceneNote(f.scene)} · room occupied and dark (${luxText(f)})`) + eveningNote(f.evening_end),
     'lighting:occupancy_off': () => 'Lights off · room empty',
     'lighting:occupancy_settle_off': () => 'Lights off · room stayed empty',
     'lighting:on_outside_evening_window': (f) => `Off in ${fmtMinutes(f.minutes)} · turned on by hand outside lighting hours`,
     'lighting:preview_ended': () => 'Lights off · preview over',
-    'lighting:recent_auto_off': (f) => `Scene set${sceneNote(f.scene)} · back soon after lights went off`,
+    'lighting:recent_auto_off': (f) => `Scene set${sceneNote(f.scene)} · back soon after lights went off${eveningNote(f.evening_end)}`,
     'lighting:schedule_off': () => 'Lights off · end of the evening',
     'lighting:sleep_mode': () => 'Stayed off: house asleep',
     'lighting:sunrise': () => 'Lights off · sunrise',
@@ -856,7 +858,10 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
   // detection thresholds (shower_rise, above_baseline, end_drop, end_confirm). Those stay in HA settings.
   const toggleRow = (key, id, title, sub) => ({ kind: 'toggle', key, id, title, sub });
   const stepRow = (key, id, title, sub, min, max, step, unit) => ({ kind: 'number', key, id, title, sub, min, max, step, unit });
+  // A time of day (an input_datetime without a date), stepped in minutes since midnight. min and max are minutes too.
+  const timeRow = (key, id, title, sub, min, max, step) => ({ kind: 'time', key, id, title, sub, min, max, step });
   const luxRow = (k) => stepRow('lux_dark', `input_number.${k}_automation_lux_threshold_dark`, 'Dark below', 'Lux reading under which the room counts as dark', 0, 500, 1, ' lx');
+  const EVENING_UNTIL = timeRow('evening_end', 'input_datetime.kitchen_automation_lights_evening_end', 'Evening lights until', 'From sunset until this time, lights come on with the All scene', 16 * 60, 23 * 60, 15);
   const lightsGroup = (k, extra) => ({ key: 'lights', title: 'Lights', rows: [toggleRow('automation', `input_boolean.${k}_automation_lights_enabled`, 'Lights automation', 'Decides lights from presence and time of day'), luxRow(k), ...extra] });
   const presenceGroup = (k) => ({ key: 'presence', title: 'Presence', rows: [toggleRow('motion', `input_boolean.${k}_sensor_motion_enabled`, 'Motion sensor', 'Off means movement is ignored and the room relies on holds')] });
   const heatingGroup = (k, extra) => ({ key: 'heating', title: 'Heating', rows: [toggleRow('automation', `input_boolean.${k}_automation_heating_enabled`, 'Heating automation', 'Sets the target from mode, windows and schedule'), ...extra] });
@@ -900,7 +905,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       heatMode: 'input_select.kitchen_heating_manual_mode',
       lights: [['light.kitchen_light_ceiling', 'Ceiling'], ['light.kitchen_light_cooker', 'Cooker'], ['switch.kitchen_light_cabinets', 'Cabinets']],
       media: [['media_player.kitchen', 'Kitchen speaker', 'player']],
-      settings: indoor('kitchen', sonosGroup('kitchen')),
+      settings: [lightsGroup('kitchen', [EVENING_UNTIL]), heatingGroup('kitchen', []), presenceGroup('kitchen'), sonosGroup('kitchen')],
     },
     {
       key: 'hallway_downstairs', kind: 'room', order: 3, area: 'hallway_downstairs',
@@ -3175,9 +3180,9 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
         for (const r of g.rows) {
           if (rkeys.has(r.key)) throw new Error(`pulse-card: duplicate setting ${room}/${g.key}/${r.key}`);
           rkeys.add(r.key);
-          const domain = r.kind === 'toggle' ? 'input_boolean' : 'input_number';
+          const domain = r.kind === 'toggle' ? 'input_boolean' : r.kind === 'time' ? 'input_datetime' : 'input_number';
           if (!new RegExp(`^${domain}\\.[a-z0-9_]+$`).test(r.id)) throw new Error(`pulse-card: setting ${room}/${g.key}/${r.key} must be an ${domain}, got "${r.id}"`);
-          if (r.kind === 'number' && !(r.min < r.max && r.step > 0 && r.step <= r.max - r.min)) throw new Error(`pulse-card: setting ${room}/${g.key}/${r.key} has a bad range`);
+          if ((r.kind === 'number' || r.kind === 'time') && !(r.min < r.max && r.step > 0 && r.step <= r.max - r.min)) throw new Error(`pulse-card: setting ${room}/${g.key}/${r.key} has a bad range`);
         }
       }
     }
@@ -3193,6 +3198,22 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     return row;
   }
 
+  // input_datetime (time only) reports 'HH:MM:SS'; anything else (unavailable, a date) is unusable, so null.
+  function parseSettingTime(v) {
+    const m = /^(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(str(v));
+    if (!m || Number(m[1]) > 23 || Number(m[2]) > 59) return null;
+    return Number(m[1]) * 60 + Number(m[2]);
+  }
+  const minsToHm = (mins) => { const n = clampInt(mins, 0, 24 * 60 - 1); return `${String(Math.floor(n / 60)).padStart(2, '0')}:${String(n % 60).padStart(2, '0')}`; };
+  // Steps the time and writes it as the 'HH:MM:SS' set_datetime wants, clamped to the row's range (which equals the automation's).
+  function stepTime(hass, row, delta) {
+    const cur = parseSettingTime(state(hass, row.id));
+    if (cur === null) return undefined;
+    const dir = Number(delta) < 0 ? -1 : 1;
+    const stepped = Math.round((cur + dir * row.step) / row.step) * row.step;
+    return callService(hass, 'input_datetime', 'set_datetime', { entity_id: row.id, time: `${minsToHm(Math.max(row.min, Math.min(row.max, stepped)))}:00` });
+  }
+
   // One setting of the Automation list: a switch row, or a stepper row with its value in the label. A row whose
   // helper cannot be read is left out.
   function settingRowHtml(hass, room, group, row) {
@@ -3200,6 +3221,10 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     if (row.kind === 'toggle') {
       const s = state(hass, row.id);
       return usable(s) ? hmToggleRow({ title: row.title, sub: row.sub, on: s === 'on', act: 'setting-toggle', data }) : '';
+    }
+    if (row.kind === 'time') {
+      const mins = parseSettingTime(state(hass, row.id));
+      return mins === null ? '' : hmStepperRow({ title: row.title, sub: row.sub, shown: minsToHm(mins), act: 'setting-number', data });
     }
     const v = num(state(hass, row.id));
     return v === null ? '' : hmStepperRow({ title: row.title, sub: row.sub, shown: `${row.step < 1 ? v.toFixed(1) : String(Math.round(v))}${row.unit}`, act: 'setting-number', data });
@@ -4048,6 +4073,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
     input_boolean: { turn_on: [BOOLEAN_PATTERN], turn_off: [BOOLEAN_PATTERN] },
     input_select: { select_option: [SELECT_PATTERN] },
     input_number: { set_value: [NUMBER_PATTERN] },
+    input_datetime: { set_datetime: [/^input_datetime\.\w+_automation_lights_evening_end$/] },
   };
 
   // True when a call to domain.service on this entity is allowed.
@@ -4136,6 +4162,7 @@ a,.tap{color:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-c
       }
       case 'setting-number': {
         const row = settingFor(el.dataset.room, el.dataset.group, el.dataset.key);
+        if (row.kind === 'time') return stepTime(hass, row, el.dataset.delta);
         if (row.kind !== 'number') throw new Error(`pulse-card: setting "${el.dataset.key}" is not a number`);
         return stepNumber(hass, row, el.dataset.delta);
       }
