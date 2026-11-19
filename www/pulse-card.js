@@ -507,6 +507,7 @@
     'heating:unknown_mode': (f) => `Heating left as it is: unknown mode${modeWord(f.mode) ? ` (${modeWord(f.mode)})` : ''}`,
     'heating:valve_characteristic_lost': (f) => `Notification sent · ${roomName(f.room) ? lowerFirst(roomName(f.room)) : 'a'} radiator valve needs recalibrating`,
     'house_mode:all_left_door_recently': () => 'House set to away · everyone left',
+    'house_mode:presence_unknown': (f, c) => `Stayed home: can't tell who is in (${c.name(f.first_unknown) || f.first_unknown || 'presence unknown'})`,
     'house_mode:away_duration_exceeded': () => 'House set to holiday · away for a long time',
     'house_mode:bed_not_occupied': () => 'Not set to asleep: bed empty',
     'house_mode:bed_occupied': () => 'Stayed asleep: bed occupied',
