@@ -2260,6 +2260,13 @@
           "facts": [],
           "outcome": "ignored"
         },
+        "presence_unknown": {
+          "facts": [
+            "unknown_count",
+            "first_unknown"
+          ],
+          "outcome": "declined"
+        },
         "not_in_away_mode": {
           "facts": [],
           "outcome": "ignored"
