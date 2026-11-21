@@ -488,7 +488,9 @@
     'lighting:theme_opted_out': () => 'Porch light stayed as it is: this theme ignores motion',
     'lighting:theme_scene_settled': (f) => (str(f.theme).trim() ? `Light effects started · ${fmtTheme(f.theme)} scene on` : 'Light effects started · theme scene on'),
     'heating:demand_ended': () => 'Boiler off · no room needs heat',
-    'heating:demand_started': (f) => `Boiler on · ${roomList(f.rooms) || 'a room'} calling for heat`,
+    'heating:demand_started': (f) => `Boiler on · ${roomList(f.rooms) || 'a room'} calling for heat`
+      + (roomList(f.unconfirmed_rooms) ? ` · ${roomList(f.unconfirmed_rooms)} not responding` : ''),
+    'heating:demand_withheld': (f) => `Boiler off · ${roomList(f.unconfirmed_rooms) || 'a radiator'} not responding`,
     'heating:door_closed_was_suspended': () => 'House heating back on · patio door closed',
     'heating:door_open_heating_on': () => 'House heating paused · patio door left open',
     'heating:heating_disabled': () => 'Boiler off · house heating switched off',
