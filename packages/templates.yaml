@@ -265,11 +265,8 @@ template:
         unit_of_measurement: "p/kWh"
         state: >
           {% set v = state_attr('binary_sensor.octopus_energy_target_cheapest_2h_waking_hours','next_average_value') | float(none) %}
-          {% if v is not none %}
-            {{ (v * 100) | round(2) }}
-          {% else %}
-            unknown
-          {% endif %}
+          {# none, not the text "unknown": a sensor with a unit must render a number or none #}
+          {{ (v * 100) | round(2) if v is not none else none }}
 
       - name: "Octopus Today Negative Windows"
         unique_id: octopus_today_negative_windows
@@ -571,11 +568,8 @@ template:
               {% endif %}
             {% endif %}
           {% endfor %}
-          {% if temps.vals | length == 0 %}
-            unknown
-          {% else %}
-            {{ (temps.vals | sum / (temps.vals | length)) | round(1) }}
-          {% endif %}
+          {# none, not the text "unknown": a sensor with a unit must render a number or none #}
+          {{ (temps.vals | sum / (temps.vals | length)) | round(1) if temps.vals else none }}
 
       - name: House Heating Rooms
         unique_id: house_heating_rooms
