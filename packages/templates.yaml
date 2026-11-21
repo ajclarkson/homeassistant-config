@@ -1,6 +1,8 @@
 template:
   # Active Scene Sensors
-  # Stateless templates: find the most recently activated scene per room by last_changed.
+  # Stateless templates: find the most recently activated scene per room by its state, which HA
+  # sets to the activation time and restores across reloads and restarts. last_changed is not
+  # usable: a Scenes reload or restart resets it on every scene at once.
   # New scenes are picked up automatically as long as they follow the scene.{room}_ prefix.
   - sensor:
       - name: "Parlour Active Scene"
@@ -8,8 +10,9 @@ template:
         state: >
           {% set ns = namespace(latest='', t=as_datetime('1970-01-01T00:00:00+00:00')) %}
           {% for s in states.scene %}
-            {% if s.entity_id.startswith('scene.parlour_') and s.last_changed > ns.t %}
-              {% set ns.t = s.last_changed %}
+            {% set t = as_datetime(s.state) %}
+            {% if s.entity_id.startswith('scene.parlour_') and t is not none and t > ns.t %}
+              {% set ns.t = t %}
               {% set ns.latest = s.entity_id | replace('scene.', '') %}
             {% endif %}
           {% endfor %}
@@ -20,8 +23,9 @@ template:
         state: >
           {% set ns = namespace(latest='', t=as_datetime('1970-01-01T00:00:00+00:00')) %}
           {% for s in states.scene %}
-            {% if s.entity_id.startswith('scene.hallway_downstairs_') and s.last_changed > ns.t %}
-              {% set ns.t = s.last_changed %}
+            {% set t = as_datetime(s.state) %}
+            {% if s.entity_id.startswith('scene.hallway_downstairs_') and t is not none and t > ns.t %}
+              {% set ns.t = t %}
               {% set ns.latest = s.entity_id | replace('scene.', '') %}
             {% endif %}
           {% endfor %}
@@ -32,8 +36,9 @@ template:
         state: >
           {% set ns = namespace(latest='', t=as_datetime('1970-01-01T00:00:00+00:00')) %}
           {% for s in states.scene %}
-            {% if s.entity_id.startswith('scene.hallway_upstairs_') and s.last_changed > ns.t %}
-              {% set ns.t = s.last_changed %}
+            {% set t = as_datetime(s.state) %}
+            {% if s.entity_id.startswith('scene.hallway_upstairs_') and t is not none and t > ns.t %}
+              {% set ns.t = t %}
               {% set ns.latest = s.entity_id | replace('scene.', '') %}
             {% endif %}
           {% endfor %}
@@ -44,8 +49,9 @@ template:
         state: >
           {% set ns = namespace(latest='', t=as_datetime('1970-01-01T00:00:00+00:00')) %}
           {% for s in states.scene %}
-            {% if s.entity_id.startswith('scene.kitchen_') and s.last_changed > ns.t %}
-              {% set ns.t = s.last_changed %}
+            {% set t = as_datetime(s.state) %}
+            {% if s.entity_id.startswith('scene.kitchen_') and t is not none and t > ns.t %}
+              {% set ns.t = t %}
               {% set ns.latest = s.entity_id | replace('scene.', '') %}
             {% endif %}
           {% endfor %}
@@ -56,8 +62,9 @@ template:
         state: >
           {% set ns = namespace(latest='', t=as_datetime('1970-01-01T00:00:00+00:00')) %}
           {% for s in states.scene %}
-            {% if s.entity_id.startswith('scene.bedroom_') and s.last_changed > ns.t %}
-              {% set ns.t = s.last_changed %}
+            {% set t = as_datetime(s.state) %}
+            {% if s.entity_id.startswith('scene.bedroom_') and t is not none and t > ns.t %}
+              {% set ns.t = t %}
               {% set ns.latest = s.entity_id | replace('scene.', '') %}
             {% endif %}
           {% endfor %}
@@ -68,8 +75,9 @@ template:
         state: >
           {% set ns = namespace(latest='', t=as_datetime('1970-01-01T00:00:00+00:00')) %}
           {% for s in states.scene %}
-            {% if s.entity_id.startswith('scene.bathroom_') and s.last_changed > ns.t %}
-              {% set ns.t = s.last_changed %}
+            {% set t = as_datetime(s.state) %}
+            {% if s.entity_id.startswith('scene.bathroom_') and t is not none and t > ns.t %}
+              {% set ns.t = t %}
               {% set ns.latest = s.entity_id | replace('scene.', '') %}
             {% endif %}
           {% endfor %}
@@ -80,8 +88,9 @@ template:
         state: >
           {% set ns = namespace(latest='', t=as_datetime('1970-01-01T00:00:00+00:00')) %}
           {% for s in states.scene %}
-            {% if s.entity_id.startswith('scene.home_office_') and s.last_changed > ns.t %}
-              {% set ns.t = s.last_changed %}
+            {% set t = as_datetime(s.state) %}
+            {% if s.entity_id.startswith('scene.home_office_') and t is not none and t > ns.t %}
+              {% set ns.t = t %}
               {% set ns.latest = s.entity_id | replace('scene.', '') %}
             {% endif %}
           {% endfor %}
@@ -92,8 +101,9 @@ template:
         state: >
           {% set ns = namespace(latest='', t=as_datetime('1970-01-01T00:00:00+00:00')) %}
           {% for s in states.scene %}
-            {% if s.entity_id.startswith('scene.foreign_office_') and s.last_changed > ns.t %}
-              {% set ns.t = s.last_changed %}
+            {% set t = as_datetime(s.state) %}
+            {% if s.entity_id.startswith('scene.foreign_office_') and t is not none and t > ns.t %}
+              {% set ns.t = t %}
               {% set ns.latest = s.entity_id | replace('scene.', '') %}
             {% endif %}
           {% endfor %}
@@ -104,8 +114,9 @@ template:
         state: >
           {% set ns = namespace(latest='', t=as_datetime('1970-01-01T00:00:00+00:00')) %}
           {% for s in states.scene %}
-            {% if s.entity_id.startswith('scene.back_garden_') and s.last_changed > ns.t %}
-              {% set ns.t = s.last_changed %}
+            {% set t = as_datetime(s.state) %}
+            {% if s.entity_id.startswith('scene.back_garden_') and t is not none and t > ns.t %}
+              {% set ns.t = t %}
               {% set ns.latest = s.entity_id | replace('scene.', '') %}
             {% endif %}
           {% endfor %}
@@ -116,8 +127,9 @@ template:
         state: >
           {% set ns = namespace(latest='', t=as_datetime('1970-01-01T00:00:00+00:00')) %}
           {% for s in states.scene %}
-            {% if s.entity_id.startswith('scene.front_garden_') and s.last_changed > ns.t %}
-              {% set ns.t = s.last_changed %}
+            {% set t = as_datetime(s.state) %}
+            {% if s.entity_id.startswith('scene.front_garden_') and t is not none and t > ns.t %}
+              {% set ns.t = t %}
               {% set ns.latest = s.entity_id | replace('scene.', '') %}
             {% endif %}
           {% endfor %}
