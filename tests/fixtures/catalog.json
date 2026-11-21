@@ -2296,7 +2296,8 @@
       "reasons": {
         "demand": {
           "facts": [
-            "rooms"
+            "rooms",
+            "unconfirmed_rooms"
           ],
           "outcome": "ignored"
         },
@@ -2306,9 +2307,22 @@
         },
         "demand_started": {
           "facts": [
-            "rooms"
+            "rooms",
+            "unconfirmed_rooms"
           ],
           "outcome": "acted"
+        },
+        "demand_withheld": {
+          "facts": [
+            "unconfirmed_rooms"
+          ],
+          "outcome": "acted"
+        },
+        "demand_withheld_idle": {
+          "facts": [
+            "unconfirmed_rooms"
+          ],
+          "outcome": "ignored"
         },
         "heating_disabled": {
           "facts": [],
