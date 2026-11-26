@@ -137,9 +137,17 @@
           "facts": [],
           "outcome": "acted"
         },
+        "fan_retry_after_bounce": {
+          "facts": [],
+          "outcome": "acted"
+        },
         "fan_run_extended": {
           "facts": [],
           "outcome": "ignored"
+        },
+        "fan_start_failed": {
+          "facts": [],
+          "outcome": "declined"
         }
       },
       "subsystem": "fan"

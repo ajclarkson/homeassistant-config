@@ -539,6 +539,8 @@
     'fan:fan_off_humidity_normal': () => 'Fan off · humidity back to normal',
     'fan:fan_off_max_run': () => 'Fan off · ran its maximum time',
     'fan:fan_on_shower_started': () => 'Fan on · shower started',
+    'fan:fan_retry_after_bounce': () => 'Fan restarted · it switched itself off',
+    'fan:fan_start_failed': () => 'Fan didn\'t start · switched itself off twice',
     'mo:eating': (f) => `Mo eating${roomName(f.room) ? ` · ${roomName(f.room)}` : ''}`,
     'mo:spotted': (f) => `Mo spotted${roomName(f.room) ? ` · ${roomName(f.room)}` : ''}`,
     'modifier:guest_absent': () => 'Home office released · guest mode off',
